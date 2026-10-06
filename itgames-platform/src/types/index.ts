@@ -115,6 +115,8 @@ export interface Heat {
     teamName: string;
     registerNumber: string;
     athletes: string[];
+    // id da vaga (LaneSlot) no servidor; necessário para trocar raias pela API
+    slotId?: string;
   }[];
 }
 
