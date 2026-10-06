@@ -79,6 +79,8 @@ export interface MailLogEntry {
   status: 'sent' | 'failed' | 'skipped';
   error: string | null;
   createdAt: string;
+  // false para e-mails que não guardam os dados do envio (recuperação de senha, teste)
+  resendable: boolean;
 }
 
 // Imagens enviadas ficam na própria API (/uploads/...); URLs externas passam como estão.

@@ -107,13 +107,20 @@ export function MailLogsCard({ refreshKey }: Props) {
                   {l.error && <div className="text-[11px] text-red-300 mt-1 max-w-xs break-words">{l.error}</div>}
                 </td>
                 <td className="py-2 text-right">
-                  {l.status !== 'sent' && (
+                  {l.status !== 'sent' && l.resendable && (
                     <button
                       onClick={() => resend(l.id)}
                       className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] font-bold"
                     >
                       Reenviar
                     </button>
+                  )}
+                  {l.status !== 'sent' && !l.resendable && (
+                    <span className="text-[10px] text-zinc-500 max-w-[11rem] inline-block">
+                      {l.type === 'password_reset'
+                        ? 'O link tem token e não é reenviado: peça um novo em "Esqueci minha senha".'
+                        : 'Este e-mail não pode ser reenviado.'}
+                    </span>
                   )}
                 </td>
               </tr>

@@ -199,11 +199,13 @@ export class MailService {
 
   async listLogs(q: { status?: string; limit?: number }) {
     const limit = Math.min(Math.max(Number(q.limit) || 50, 1), 200);
-    return this.prisma.emailLog.findMany({
+    const logs = await this.prisma.emailLog.findMany({
       where: q.status ? { status: q.status } : {},
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
+    // A lista não devolve as variáveis do envio; só diz se dá para reenviar (precisa de payload e de um tipo que ainda existe)
+    return logs.map(({ payload, ...log }) => ({ ...log, resendable: !!payload && isMailType(log.type) }));
   }
 
   // Reenvia com as variáveis gravadas e o template atual. Sem payload (reset de senha, teste) não dá.

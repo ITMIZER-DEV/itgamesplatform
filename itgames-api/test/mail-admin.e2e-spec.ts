@@ -188,6 +188,24 @@ describe('Mail admin (e2e)', () => {
       expect(limited.body).toHaveLength(2);
     });
 
+    it('cada linha informa se pode ser reenviada e a lista não expõe o payload', async () => {
+      await ctx.prisma.emailLog.createMany({
+        data: [
+          { type: 'payment_confirmed', toAddress: 'a@x.com', subject: 's', status: 'failed', payload: { nome: 'Ana' } },
+          { type: 'password_reset', toAddress: 'b@x.com', subject: 's', status: 'skipped' },
+          { type: 'test', toAddress: 'c@x.com', subject: 's', status: 'failed', error: 'x' },
+          { type: 'tipo_antigo', toAddress: 'd@x.com', subject: 's', status: 'failed', payload: { a: 'b' } },
+        ],
+      });
+      const res = await http().get('/mail/logs').set(bearer(tAdmin)).expect(200);
+      const byTo = Object.fromEntries(res.body.map((l: any) => [l.toAddress, l]));
+      expect(byTo['a@x.com'].resendable).toBe(true);
+      expect(byTo['b@x.com'].resendable).toBe(false); // recuperação de senha: o link tem token
+      expect(byTo['c@x.com'].resendable).toBe(false); // teste
+      expect(byTo['d@x.com'].resendable).toBe(false); // tipo que não existe mais
+      expect(res.body.every((l: any) => !('payload' in l))).toBe(true);
+    });
+
     it('reenviar usa o payload gravado e o template atual; sem payload retorna 400; inexistente 404', async () => {
       await configureMail(ctx);
       const log = await ctx.prisma.emailLog.create({
