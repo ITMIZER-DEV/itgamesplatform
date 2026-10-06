@@ -1,0 +1,21 @@
+src/app/athlete/page.tsx(315,50): error TS2339: Property 'teamId' does not exist on type 'LeaderboardRank'.
+src/app/athlete/page.tsx(961,38): error TS2339: Property 'estimatedStartTime' does not exist on type 'Heat'.
+src/app/athlete/page.tsx(1016,76): error TS2339: Property 'workoutTitle' does not exist on type 'ScoreEntry'.
+src/app/athlete/page.tsx(1029,88): error TS2339: Property 'scoreResultFormatted' does not exist on type 'ScoreEntry'.
+src/app/athlete/page.tsx(1033,82): error TS2339: Property 'pointsAwarded' does not exist on type 'ScoreEntry'.
+src/app/athlete/page.tsx(1076,40): error TS2339: Property 'teamId' does not exist on type 'LeaderboardRank'.
+src/app/athlete/page.tsx(1079,36): error TS2339: Property 'teamId' does not exist on type 'LeaderboardRank'.
+src/app/athlete/page.tsx(1111,62): error TS7015: Element implicitly has an 'any' type because index expression is not of type 'number'.
+src/components/layout/Navbar.tsx(192,30): error TS2339: Property 'highlight' does not exist on type '{ href: string; label: string; icon: LucideIcon; badge: string; } | { href: string; label: string; icon: LucideIcon; badge?: undefined; } | { href: string; label: string; icon: LucideIcon; highlight: boolean; } | { ...; }'.
+  Property 'highlight' does not exist on type '{ href: string; label: string; icon: LucideIcon; badge: string; }'.
+src/components/layout/Navbar.tsx(197,86): error TS2339: Property 'highlight' does not exist on type '{ href: string; label: string; icon: LucideIcon; badge: string; } | { href: string; label: string; icon: LucideIcon; badge?: undefined; } | { href: string; label: string; icon: LucideIcon; highlight: boolean; } | { ...; }'.
+  Property 'highlight' does not exist on type '{ href: string; label: string; icon: LucideIcon; badge: string; }'.
+src/components/layout/Navbar.tsx(199,25): error TS2339: Property 'badge' does not exist on type '{ href: string; label: string; icon: LucideIcon; badge: string; } | { href: string; label: string; icon: LucideIcon; badge?: undefined; } | { href: string; label: string; icon: LucideIcon; highlight: boolean; } | { ...; }'.
+  Property 'badge' does not exist on type '{ href: string; label: string; icon: LucideIcon; highlight: boolean; }'.
+src/components/layout/Navbar.tsx(201,29): error TS2339: Property 'badge' does not exist on type '{ href: string; label: string; icon: LucideIcon; badge: string; } | { href: string; label: string; icon: LucideIcon; badge?: undefined; } | { href: string; label: string; icon: LucideIcon; highlight: boolean; } | { ...; }'.
+  Property 'badge' does not exist on type '{ href: string; label: string; icon: LucideIcon; highlight: boolean; }'.
+src/lib/acl.ts(1,10): error TS2305: Module '"@/types"' has no exported member 'UserRole'.
+src/lib/acl.ts(60,36): error TS2367: This comparison appears to be unintentional because the types '"ORGANIZER" | "JUDGE" | "GUEST"' and '"SUPER_ADMIN"' have no overlap.
+src/lib/acl.ts(62,58): error TS2367: This comparison appears to be unintentional because the types '"ATHLETE" | "GUEST"' and '"SUPER_ADMIN"' have no overlap.
+src/lib/acl.ts(66,38): error TS2367: This comparison appears to be unintentional because the types '"JUDGE" | "ATHLETE" | "GUEST"' and '"SUPER_ADMIN"' have no overlap.
+src/lib/acl.ts(68,14): error TS2367: This comparison appears to be unintentional because the types '"ORGANIZER" | "JUDGE" | "ATHLETE" | "GUEST"' and '"SUPER_ADMIN"' have no overlap.

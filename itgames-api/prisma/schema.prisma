@@ -1,0 +1,269 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  passwordHash  String
+  name          String
+  cpf           String?        @unique
+  phoneNumber   String?
+  mustChangePassword Boolean    @default(false)
+  role          String         @default("ATHLETE") // SUPER_ADMIN, ORGANIZER, JUDGE, ATHLETE
+  tenantOrgId   String?        // ID da organização/organizador para isolamento multi-tenant
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  organizedGames GameOrganizer[]
+  athleteProfile AthleteProfile?
+
+  @@map("users")
+}
+
+model AthleteProfile {
+  id            String         @id @default(uuid())
+  userId        String         @unique
+  birthDate     DateTime?
+  gender        String?        // "M" | "F"
+  boxOrGym      String?
+  tshirtSize    String?
+  emergencyContact String?
+  emergencyPhone   String?
+  termsAccepted    Boolean     @default(true)
+  termsAcceptedAt  DateTime    @default(now())
+  
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("athlete_profiles")
+}
+
+model Game {
+  code                  String         @id
+  name                  String
+  date                  String?
+  description           String?
+  location              String?
+  Events                Int?           @default(0)
+  status                String?        @default("live")
+  foto                  String?
+  isLowestPointsBetter  Boolean        @default(false)
+  showTime              Boolean        @default(true)
+  showWeight            Boolean        @default(true)
+  showReps              Boolean        @default(true)
+  showScoreRevision     Boolean        @default(false)
+  lanesCount            Int?           @default(8)
+  eventType             String?        @default("crossfit") // "crossfit" | "hyrox"
+  pixKey                String?        // Chave Pix da competição
+  pixBeneficiary        String?        // Favorecido / Titular da conta Pix
+  
+
+  registrations         Registration[]
+  categories            Category[]
+  heats                 Heat[]
+  auditLogs             AuditLog[]
+  organizers            GameOrganizer[]
+
+  @@map("games")
+}
+
+model Category {
+  code            Int
+  name            String
+  description     String?
+  standards       String?
+  amount          Float?         @default(0)
+  foto            String?
+  gamesId         String
+  maxAthlete      Int?           @default(1)
+  
+  // Regras avançadas de Categoria e Equipe
+  teamType        String?        @default("individual") // "individual" | "duo" | "trio" | "team_4"
+  genderRule      String?        @default("open")       // "open" | "male" | "female" | "mixed_1m_1f" | "mixed_2m_2f" | "mixed_free"
+  minIndividualAge Int?          // Ex: 35 para Master 35+
+  maxIndividualAge Int?          // Ex: 18 para Teen até 18
+  minTeamSumAge   Int?           // Ex: 110 para Time Master soma 110+
+  maxTeamSumAge   Int?
+  
+  registrations   Registration[]
+  game            Game           @relation(fields: [gamesId], references: [code], onDelete: Cascade)
+  events          Event[]
+  workouts        Workout[]
+  heats           Heat[]
+
+  @@id([code, gamesId])
+  @@map("games_category")
+}
+
+model Event {
+  idEvent         Int
+  workout         Int?
+  category        Int
+  game            String
+  title           String
+  description     String?
+  status          Boolean?       @default(true)
+  sumulaTemplate  String?
+  
+  categoryRef     Category       @relation(fields: [category, game], references: [code, gamesId], onDelete: Cascade)
+  scores          Score[]
+
+  @@id([idEvent, game])
+  @@map("games_events")
+}
+
+model Workout {
+  code          Int
+  type          String?        // 'for_time', 'amrap', 'max_load', 'complex', 'hyrox_standard'
+  description   String?
+  category      Int
+  game          String
+  title         String?
+  timeCap       String?
+  foto          String?
+  status        Boolean?       @default(true)
+  
+  categoryRef   Category       @relation(fields: [category, game], references: [code, gamesId], onDelete: Cascade)
+  heats         Heat[]
+
+  @@id([code, game])
+  @@map("games_workout")
+}
+
+model Registration {
+  code          Int
+  categoryId    Int
+  gameCode      String
+  team          String
+  amount        Float?
+  status        String?        @default("paid")
+  check         Boolean?       @default(false)
+  number        String?        // #101
+  
+  category      Category       @relation(fields: [categoryId, gameCode], references: [code, gamesId], onDelete: Cascade)
+  game          Game           @relation(fields: [gameCode], references: [code], onDelete: Cascade)
+  athletes      Athlete[]
+  scores        Score[]
+  laneSlots     LaneSlot[]
+
+  @@id([code, gameCode])
+  @@map("GamesRegister")
+}
+
+model Athlete {
+  code          Int
+  name          String
+  cpf           String?
+  check         Boolean?       @default(false)
+  team          Int
+  game          String
+  category      Int?
+  phonenumber   String?
+  tshirtSize    String?        // PP, P, M, G, GG, XG, XGG
+  birthDate     DateTime?
+  gender        String?        // M, F
+  
+  registration  Registration   @relation(fields: [team, game], references: [code, gameCode], onDelete: Cascade)
+
+  @@id([code, team])
+  @@map("games_register_athletes")
+}
+
+model Score {
+  code            Int            @id @default(autoincrement())
+  idEvent         Int
+  game            String
+  category        Int
+  codeTeam        Int
+  time            String?
+  weight          String?
+  reps            String?
+  judge           String?
+  dateScore       String?
+  dateCheck       String?
+  status          Boolean?       @default(true)
+  photo           String?        // FOTO DA SÚMULA FÍSICA / COMPROVANTE
+  numberTeam      String?
+  point           Float?
+  rank            Int?
+  isWO            Boolean?       @default(false)
+  tieBreakTime    String?
+  penaltySeconds  Int?           @default(0)
+  scoreStatus     String?        @default("approved_by_head_judge") // draft, submitted, approved, contested
+  
+  registration    Registration   @relation(fields: [codeTeam, game], references: [code, gameCode], onDelete: Cascade)
+  eventRef        Event          @relation(fields: [idEvent, game], references: [idEvent, game], onDelete: Cascade)
+  auditLogs       AuditLog[]
+
+  @@unique([codeTeam, idEvent, game], name: "team_event")
+  @@map("games_scores")
+}
+
+// Baterias e Raias
+model Heat {
+  id              String         @id @default(uuid())
+  gameCode        String
+  categoryId      Int
+  workoutCode     Int
+  heatNumber      Int
+  startTime       String         // "09:00"
+  status          String         @default("scheduled") // scheduled, calling, in_progress, completed
+  
+  game            Game           @relation(fields: [gameCode], references: [code], onDelete: Cascade)
+  category        Category       @relation(fields: [categoryId, gameCode], references: [code, gamesId], onDelete: Cascade)
+  workout         Workout        @relation(fields: [workoutCode, gameCode], references: [code, game], onDelete: Cascade)
+  slots           LaneSlot[]
+
+  @@map("games_heats")
+}
+
+model LaneSlot {
+  id              String         @id @default(uuid())
+  heatId          String
+  laneNumber      Int
+  teamCode        Int
+  gameCode        String
+  
+  heat            Heat           @relation(fields: [heatId], references: [id], onDelete: Cascade)
+  registration    Registration   @relation(fields: [teamCode, gameCode], references: [code, gameCode], onDelete: Cascade)
+
+  @@map("games_heat_slots")
+}
+
+// Trilha de Auditoria Imutável (Audit Trail)
+model AuditLog {
+  id              String         @id @default(uuid())
+  gameCode        String
+  scoreId         Int?
+  changedBy       String         // "Juiz Roberto", "Head Judge Carlos"
+  role            String         // "judge", "head_judge", "admin"
+  action          String         // "create", "update", "approve", "rectify"
+  oldValue        String?
+  newValue        String?
+  reason          String?
+  timestamp       DateTime       @default(now())
+  ipAddress       String?
+  
+  game            Game           @relation(fields: [gameCode], references: [code], onDelete: Cascade)
+  score           Score?         @relation(fields: [scoreId], references: [code], onDelete: SetNull)
+
+  @@map("games_audit_logs")
+}
+
+// Vínculo N:N entre campeonato e organizadores
+model GameOrganizer {
+  gameCode  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  game      Game     @relation(fields: [gameCode], references: [code], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([gameCode, userId])
+  @@map("games_organizers")
+}

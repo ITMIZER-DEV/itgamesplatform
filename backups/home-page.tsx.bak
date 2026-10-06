@@ -1,0 +1,551 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { 
+  Trophy, 
+  FileSpreadsheet, 
+  Activity, 
+  Gavel, 
+  UserCheck, 
+  LayoutDashboard, 
+  Tv, 
+  Printer, 
+  ArrowRight, 
+  ShieldCheck, 
+  Users, 
+  Timer,
+  Sparkles,
+  Flame,
+  CheckCircle2
+} from 'lucide-react';
+import { storage } from '@/lib/storage';
+import { GameEvent, TeamRegistration, WorkoutRule, Heat, ScoreEntry } from '@/types';
+import { getCurrentUserSession, UserSession } from '@/lib/acl';
+
+export default function HomePage() {
+  const [session, setSession] = useState<UserSession>({ role: 'GUEST' });
+  const [activeGame, setActiveGame] = useState<GameEvent | null>(null);
+  const [teams, setTeams] = useState<TeamRegistration[]>([]);
+  const [workouts, setWorkouts] = useState<WorkoutRule[]>([]);
+  const [heats, setHeats] = useState<Heat[]>([]);
+  const [scores, setScores] = useState<ScoreEntry[]>([]);
+
+  useEffect(() => {
+    storage.initDefaultsIfEmpty();
+
+    const loadData = () => {
+      setSession(getCurrentUserSession());
+      const activeId = storage.getActiveGameId();
+      const game = storage.getGameById(activeId) || storage.getGames()[0];
+      setActiveGame(game);
+
+      if (game) {
+        setTeams(storage.getTeams(game.id));
+        setWorkouts(storage.getWorkouts(game.id));
+        setHeats(storage.getHeats(game.id));
+        setScores(storage.getScores(game.id));
+      }
+    };
+
+    loadData();
+    window.addEventListener('itgames_storage_updated', loadData);
+    window.addEventListener('itgames_auth_changed', loadData);
+    return () => {
+      window.removeEventListener('itgames_storage_updated', loadData);
+      window.removeEventListener('itgames_auth_changed', loadData);
+    };
+  }, []);
+
+  const totalAthletes = teams.reduce((acc, t) => acc + t.athletes.length, 0);
+  const checkedInAthletes = teams.reduce((acc, t) => acc + t.athletes.filter(a => a.checkIn).length, 0);
+  const approvedScores = scores.filter(s => s.scoreStatus === 'approved_by_head_judge').length;
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      
+      {/* HERO SECTION COM STATUS AO VIVO */}
+      {activeGame && (
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-zinc-900 via-zinc-900 to-zinc-950 border border-zinc-700/80 p-6 sm:p-10 shadow-2xl">
+          {/* Luz de fundo decorativa */}
+          <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-0 -mb-12 -ml-12 w-96 h-96 bg-red-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div className="space-y-3 max-w-2xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-400 text-xs font-bold uppercase tracking-wider">
+                <Flame className="w-3.5 h-3.5 fill-amber-400" />
+                <span>Modalidade: {activeGame.eventType === 'crossfit' ? 'CrossFit Oficial' : 'HYROX Racing'}</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                <span>Status: {activeGame.status === 'live' ? 'Em Andamento (LIVE)' : 'Em Preparação'}</span>
+              </div>
+
+              <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white">
+                {activeGame.name}
+              </h1>
+
+              <p className="text-sm sm:text-base text-zinc-400 line-clamp-2">
+                {activeGame.description} • <strong className="text-zinc-300">{activeGame.location}</strong>
+              </p>
+            </div>
+
+            {/* BOTÕES DE AÇÃO CONTEXTUAIS POR PERFIL */}
+            <div className="flex flex-wrap items-center gap-3">
+              {session.role === 'GUEST' && (
+                <>
+                  <Link
+                    href="/athlete/register"
+                    className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-black text-sm shadow-xl shadow-amber-500/20 transition-all hover:scale-105 active:scale-95"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>INSCREVER-SE NO EVENTO</span>
+                  </Link>
+                  <Link
+                    href="/leaderboard"
+                    className="flex items-center gap-2 px-5 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-sm border border-zinc-600 transition-all hover:border-zinc-500"
+                  >
+                    <Trophy className="w-4 h-4 text-amber-400" />
+                    <span>VER LEADERBOARD AO VIVO</span>
+                  </Link>
+                </>
+              )}
+
+              {session.role === 'ATHLETE' && (
+                <>
+                  <Link
+                    href="/athlete"
+                    className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-sm shadow-xl shadow-purple-600/20 transition-all hover:scale-105 active:scale-95"
+                  >
+                    <UserCheck className="w-4 h-4" />
+                    <span>MEU PORTAL DO ATLETA</span>
+                  </Link>
+                  <Link
+                    href="/athlete/register"
+                    className="flex items-center gap-2 px-5 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-sm border border-zinc-600 transition-all"
+                  >
+                    <Sparkles className="w-4 h-4 text-purple-400" />
+                    <span>NOVA INSCRIÇÃO</span>
+                  </Link>
+                </>
+              )}
+
+              {(session.role === 'ORGANIZER' || session.role === 'SUPER_ADMIN') && (
+                <>
+                  <Link
+                    href="/admin"
+                    className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-black text-sm shadow-xl shadow-amber-500/20 transition-all hover:scale-105 active:scale-95"
+                  >
+                    <LayoutDashboard className="w-4 h-4" />
+                    <span>PAINEL DO ORGANIZADOR</span>
+                  </Link>
+                  <Link
+                    href="/sumulas"
+                    className="flex items-center gap-2 px-5 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-sm border border-zinc-600 transition-all hover:border-zinc-500"
+                  >
+                    <Printer className="w-4 h-4 text-amber-400" />
+                    <span>IMPRIMIR SÚMULAS (A4)</span>
+                  </Link>
+                </>
+              )}
+
+              {session.role === 'JUDGE' && (
+                <>
+                  <Link
+                    href="/judge"
+                    className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white font-black text-sm shadow-xl shadow-red-600/20 transition-all hover:scale-105 active:scale-95"
+                  >
+                    <Gavel className="w-4 h-4" />
+                    <span>APP DO JUIZ DE ARENA</span>
+                  </Link>
+                  <Link
+                    href="/heats"
+                    className="flex items-center gap-2 px-5 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-sm border border-zinc-600 transition-all"
+                  >
+                    <Activity className="w-4 h-4 text-red-400" />
+                    <span>BATERIAS DO DIA</span>
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* INDICADORES EM TEMPO REAL */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-8 pt-6 border-t border-zinc-800">
+            <div className="bg-zinc-950/60 rounded-2xl p-4 border border-zinc-800/80">
+              <div className="text-xs text-zinc-400 flex items-center gap-1.5 font-medium">
+                <Users className="w-4 h-4 text-amber-400" />
+                Atletas Inscritos
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-white mt-1">
+                {totalAthletes} <span className="text-xs font-normal text-zinc-500">({checkedInAthletes} c/ check-in)</span>
+              </div>
+            </div>
+
+            <div className="bg-zinc-950/60 rounded-2xl p-4 border border-zinc-800/80">
+              <div className="text-xs text-zinc-400 flex items-center gap-1.5 font-medium">
+                <Timer className="w-4 h-4 text-blue-400" />
+                Provas / WODs
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-white mt-1">
+                {workouts.length} <span className="text-xs font-normal text-zinc-500">configurados</span>
+              </div>
+            </div>
+
+            <div className="bg-zinc-950/60 rounded-2xl p-4 border border-zinc-800/80">
+              <div className="text-xs text-zinc-400 flex items-center gap-1.5 font-medium">
+                <Activity className="w-4 h-4 text-emerald-400" />
+                Baterias Criadas
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-white mt-1">
+                {heats.length} <span className="text-xs font-normal text-zinc-500">({activeGame.lanesCount} raias)</span>
+              </div>
+            </div>
+
+            <div className="bg-zinc-950/60 rounded-2xl p-4 border border-zinc-800/80">
+              <div className="text-xs text-zinc-400 flex items-center gap-1.5 font-medium">
+                <CheckCircle2 className="w-4 h-4 text-purple-400" />
+                Scores Aprovados
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-white mt-1">
+                {approvedScores} <span className="text-xs font-normal text-zinc-500">súmulas auditadas</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GRADE DE MÓDULOS CONTEXTUAIS */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-amber-400" />
+            {session.role === 'GUEST' && 'Área Pública da Competição'}
+            {session.role === 'ATHLETE' && 'Painel do Atleta'}
+            {session.role === 'ORGANIZER' && 'Módulos da Organização'}
+            {session.role === 'JUDGE' && 'Módulos de Arbitragem'}
+            {session.role === 'SUPER_ADMIN' && 'Governança & Controle Global'}
+          </h2>
+          <span className="text-xs text-zinc-400">
+            {session.role === 'GUEST' ? 'Acesse os recursos abertos ou faça login' : `Perfil ativo: ${session.role}`}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          
+          {/* CARDS PARA VISITANTES (GUEST) */}
+          {session.role === 'GUEST' && (
+            <>
+              {/* 1. INSCRIÇÃO COM CAMISETA */}
+              <Link 
+                href="/athlete/register"
+                className="group relative rounded-2xl bg-zinc-900/90 border border-purple-500/40 hover:border-purple-500 p-6 flex flex-col justify-between transition-all hover:shadow-xl hover:shadow-purple-500/10 hover:-translate-y-1"
+              >
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center border border-purple-500/30 group-hover:scale-110 transition-transform">
+                    <Sparkles className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-purple-400 uppercase tracking-wider">Inscrições Abertas</span>
+                    <h3 className="text-xl font-bold text-white group-hover:text-purple-400 transition-colors">
+                      Inscrição no Campeonato
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+                      Inscreva seu time ou vaga individual, selecione o <strong>Tamanho da Camiseta (PP a XGG)</strong>, informe sua Box e receba confirmação imediata.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-bold text-purple-400">
+                  <span>Fazer Inscrição Agora</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </Link>
+
+              {/* 2. LEADERBOARD OFICIAL */}
+              <Link 
+                href="/leaderboard"
+                className="group relative rounded-2xl bg-zinc-900/90 border border-emerald-500/40 hover:border-emerald-500 p-6 flex flex-col justify-between transition-all hover:shadow-xl hover:shadow-emerald-500/10 hover:-translate-y-1"
+              >
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/30 group-hover:scale-110 transition-transform">
+                    <Trophy className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Resultados & Ranks</span>
+                    <h3 className="text-xl font-bold text-white group-hover:text-emerald-400 transition-colors">
+                      Leaderboard Oficial Ao Vivo
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+                      Acompanhe as pontuações homologadas em tempo real por categoria, baterias e evolução dos competidores na arena.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-bold text-emerald-400">
+                  <span>Ver Classificação</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </Link>
+
+              {/* 3. LOGIN & CONTROLE DE ACESSO */}
+              <Link 
+                href="/login"
+                className="group relative rounded-2xl bg-zinc-900/90 border border-amber-500/40 hover:border-amber-500 p-6 flex flex-col justify-between transition-all hover:shadow-xl hover:shadow-amber-500/10 hover:-translate-y-1"
+              >
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/30 group-hover:scale-110 transition-transform">
+                    <ShieldCheck className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">Acesso Autenticado</span>
+                    <h3 className="text-xl font-bold text-white group-hover:text-amber-400 transition-colors">
+                      Login / Cadastro de Perfil
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+                      Área exclusiva para Atletas acessarem seus comprovantes, Organizadores gerenciarem campeonatos e Juízes lançarem súmulas.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-bold text-amber-400">
+                  <span>Acessar Login</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </Link>
+            </>
+          )}
+
+          {/* CARDS PARA ATLETA (ATHLETE) */}
+          {session.role === 'ATHLETE' && (
+            <>
+              <Link 
+                href="/athlete"
+                className="group relative rounded-2xl bg-zinc-900/90 border border-purple-500/50 hover:border-purple-400 p-6 flex flex-col justify-between transition-all hover:shadow-xl hover:shadow-purple-500/10 hover:-translate-y-1"
+              >
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center border border-purple-500/40 group-hover:scale-110 transition-transform">
+                    <UserCheck className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-purple-400 uppercase tracking-wider">Meu Espaço</span>
+                    <h3 className="text-xl font-bold text-white group-hover:text-purple-400 transition-colors">
+                      Portal do Atleta & BIB QR Code
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+                      Consulte sua credencial, número de peito, horários de largada, raias e scores homologados.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-bold text-purple-400">
+                  <span>Abrir Meu Portal</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </Link>
+
+              <Link 
+                href="/athlete/register"
+                className="group relative rounded-2xl bg-zinc-900/90 border border-zinc-800 hover:border-purple-500/50 p-6 flex flex-col justify-between transition-all hover:shadow-xl hover:shadow-purple-500/10 hover:-translate-y-1"
+              >
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center border border-purple-500/30 group-hover:scale-110 transition-transform">
+                    <Sparkles className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-purple-400 uppercase tracking-wider">Inscrição</span>
+                    <h3 className="text-xl font-bold text-white group-hover:text-purple-400 transition-colors">
+                      Nova Inscrição em Categorias
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+                      Garanta sua vaga em outras categorias individuais ou monte seu time/dupla/trio.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-bold text-purple-400">
+                  <span>Inscrever Outra Prova</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </Link>
+
+              <Link 
+                href="/leaderboard"
+                className="group relative rounded-2xl bg-zinc-900/90 border border-emerald-500/30 hover:border-emerald-500 p-6 flex flex-col justify-between transition-all hover:shadow-xl hover:shadow-emerald-500/10 hover:-translate-y-1"
+              >
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/30 group-hover:scale-110 transition-transform">
+                    <Trophy className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Classificação Geral</span>
+                    <h3 className="text-xl font-bold text-white group-hover:text-emerald-400 transition-colors">
+                      Live Leaderboard
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+                      Acompanhe sua posição no ranking em tempo real a cada bateria finalizada.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-bold text-emerald-400">
+                  <span>Ver Leaderboard</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </Link>
+            </>
+          )}
+
+          {/* CARDS PARA ORGANIZADOR E SUPER ADMIN */}
+          {(session.role === 'ORGANIZER' || session.role === 'SUPER_ADMIN') && (
+            <>
+              <Link 
+                href="/admin"
+                className="group relative rounded-2xl bg-zinc-900/90 border border-amber-500/40 hover:border-amber-500 p-6 flex flex-col justify-between transition-all hover:shadow-xl hover:shadow-amber-500/10 hover:-translate-y-1"
+              >
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/30 group-hover:scale-110 transition-transform">
+                    <LayoutDashboard className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">Gestão do Evento</span>
+                    <h3 className="text-xl font-bold text-white group-hover:text-amber-400 transition-colors">
+                      Painel do Organizador & Categorias
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+                      Crie e <strong>Edite Categorias</strong>, configure WODs, gerencie check-in com conferência de camisetas e homologue scores.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-bold text-amber-400">
+                  <span>Gerenciar Evento</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </Link>
+
+              <Link 
+                href="/sumulas"
+                className="group relative rounded-2xl bg-zinc-900/90 border border-zinc-800 hover:border-amber-500/50 p-6 flex flex-col justify-between transition-all hover:shadow-xl hover:shadow-amber-500/10 hover:-translate-y-1"
+              >
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/30 group-hover:scale-110 transition-transform">
+                    <FileSpreadsheet className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">Súmulas A4</span>
+                    <h3 className="text-xl font-bold text-white group-hover:text-amber-400 transition-colors">
+                      Estúdio de Súmulas & Impressão
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+                      Templates oficiais para pranchetas, tags dinâmicas de bateria e raia, e impressão rápida em lote.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-bold text-amber-400">
+                  <span>Abrir Estúdio</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </Link>
+
+              <Link 
+                href="/heats"
+                className="group relative rounded-2xl bg-zinc-900/90 border border-zinc-800 hover:border-blue-500/50 p-6 flex flex-col justify-between transition-all hover:shadow-xl hover:shadow-blue-500/10 hover:-translate-y-1"
+              >
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center border border-blue-500/30 group-hover:scale-110 transition-transform">
+                    <Activity className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">Cronograma</span>
+                    <h3 className="text-xl font-bold text-white group-hover:text-blue-400 transition-colors">
+                      Baterias & Raias (Heats)
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+                      Gerador automático de raias, horários de largada, troca de raia em tempo real e Seeding da final.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-bold text-blue-400">
+                  <span>Gerenciar Baterias</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </Link>
+            </>
+          )}
+
+          {/* CARDS PARA JUIZ (JUDGE) */}
+          {session.role === 'JUDGE' && (
+            <>
+              <Link 
+                href="/judge"
+                className="group relative rounded-2xl bg-zinc-900/90 border border-red-500/40 hover:border-red-500 p-6 flex flex-col justify-between transition-all hover:shadow-xl hover:shadow-red-500/10 hover:-translate-y-1"
+              >
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/40 group-hover:scale-110 transition-transform">
+                    <Gavel className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-red-400 uppercase tracking-wider">Mesa de Arbitragem</span>
+                    <h3 className="text-xl font-bold text-white group-hover:text-red-400 transition-colors">
+                      App do Juiz de Arena
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+                      Scorekeeper touch-first de pista, contagem de repetições, botão No-Rep e assinatura digital.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-bold text-red-400">
+                  <span>Abrir App do Juiz</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </Link>
+
+              <Link 
+                href="/heats"
+                className="group relative rounded-2xl bg-zinc-900/90 border border-zinc-800 hover:border-blue-500/50 p-6 flex flex-col justify-between transition-all hover:shadow-xl hover:shadow-blue-500/10 hover:-translate-y-1"
+              >
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center border border-blue-500/30 group-hover:scale-110 transition-transform">
+                    <Activity className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">Escala do Dia</span>
+                    <h3 className="text-xl font-bold text-white group-hover:text-blue-400 transition-colors">
+                      Baterias & Raias Escaladas
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+                      Consulte a ordem de entrada dos atletas e raias sob sua responsabilidade na arena.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-bold text-blue-400">
+                  <span>Ver Baterias</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </Link>
+
+              <Link 
+                href="/leaderboard"
+                className="group relative rounded-2xl bg-zinc-900/90 border border-emerald-500/30 hover:border-emerald-500 p-6 flex flex-col justify-between transition-all hover:shadow-xl hover:shadow-emerald-500/10 hover:-translate-y-1"
+              >
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/30 group-hover:scale-110 transition-transform">
+                    <Trophy className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Resultados</span>
+                    <h3 className="text-xl font-bold text-white group-hover:text-emerald-400 transition-colors">
+                      Leaderboard Oficial
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+                      Consulte as pontuações homologadas e posições atualizadas da competição.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-bold text-emerald-400">
+                  <span>Ver Leaderboard</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </Link>
+            </>
+          )}
+
+        </div>
+      </div>
+
+    </div>
+  );
+}

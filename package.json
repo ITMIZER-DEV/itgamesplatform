@@ -1,0 +1,14 @@
+{
+  "name": "itgames-workspace",
+  "version": "1.0.0",
+  "description": "ITGames Arena Platform - Fullstack Workspace para CrossFit & HYROX",
+  "private": true,
+  "scripts": {
+    "stack:up": "docker compose up -d --build",
+    "stack:down": "docker compose down",
+    "stack:logs": "docker compose logs -f",
+    "dev:frontend": "npm --prefix itgames-platform run dev",
+    "dev:api": "npm --prefix itgames-api run start:dev",
+    "prisma:studio": "npm --prefix itgames-api run prisma:studio"
+  }
+}

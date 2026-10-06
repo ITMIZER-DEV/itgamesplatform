@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # ────────────────────────────────────────────────────────────────────────────
+  # 1. BANCO DE DADOS POSTGRESQL 18 (Alpine)
+  # ────────────────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:18-alpine
+    container_name: itgames-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-itgames_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-itgames_password}
+      POSTGRES_DB: ${POSTGRES_DB:-itgames_db}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - itgames_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-itgames_user} -d ${POSTGRES_DB:-itgames_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - itgames-network
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 2. BACKEND API (NestJS 10 + Prisma 5)
+  # ────────────────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./itgames-api
+      dockerfile: Dockerfile
+    image: itgames-api:latest
+    container_name: itgames-api
+    restart: always
+    environment:
+      PORT: 3333
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-itgames_user}:${POSTGRES_PASSWORD:-itgames_password}@postgres:5432/${POSTGRES_DB:-itgames_db}?schema=public"
+      DIRECT_URL: "postgresql://${POSTGRES_USER:-itgames_user}:${POSTGRES_PASSWORD:-itgames_password}@postgres:5432/${POSTGRES_DB:-itgames_db}?schema=public"
+      CORS_ORIGIN: "${CORS_ORIGIN:-*}"
+      JWT_SECRET: "${JWT_SECRET:-itgames_jwt_super_secret_production_key_2026}"
+    ports:
+      - "${API_PORT:-3334}:3333"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - itgames-network
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 3. FRONTEND PLATFORM (Next.js 15)
+  # ────────────────────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./itgames-platform
+      dockerfile: Dockerfile
+    image: itgames-platform:latest
+    container_name: itgames-platform
+    restart: always
+    environment:
+      PORT: 3000
+      API_INTERNAL_URL: "http://api:3333"
+      NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-}"
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - api
+    networks:
+      - itgames-network
+
+volumes:
+  itgames_pgdata:
+    driver: local
+
+networks:
+  itgames-network:
+    driver: bridge

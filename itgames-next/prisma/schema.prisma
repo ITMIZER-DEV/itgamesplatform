@@ -1,0 +1,357 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Game {
+  code          String         @id
+  name          String
+  date          String?
+  description   String?
+  location      String?
+  Events        Int?           @default(0)
+  status        String?
+  foto          String?
+  isLowestPointsBetter Boolean @default(false)
+  showTime      Boolean @default(true)
+  showWeight    Boolean @default(true)
+  showReps      Boolean @default(true)
+  showScoreRevision Boolean @default(false)
+  registrations Registration[]
+  categories    Category[]
+
+  @@map("games")
+}
+
+model Category {
+  code          Int
+  name          String
+  description   String?
+  standards     String?
+  amount        Float?         @default(0)
+  foto          String?
+  gamesId       String
+  maxAthlete    Int?           @default(1)
+  registrations Registration[]
+  game          Game           @relation(fields: [gamesId], references: [code])
+  events        Event[]
+  workouts      Workout[]
+
+  @@id([code, gamesId])
+  @@map("games_category")
+}
+
+model Event {
+  idEvent     Int
+  workout     Int?
+  category    Int
+  game        String
+  title       String
+  description String?
+  status          Boolean? @default(true)
+  sumulaTemplate  String?
+  categoryRef     Category @relation(fields: [category, game], references: [code, gamesId])
+  scores      Score[]
+
+  @@id([idEvent, game])
+  @@map("games_events")
+}
+
+model Workout {
+  code        Int
+  type        String?
+  description String?
+  category    Int
+  game        String
+  title       String?
+  timeCap     String?
+  foto        String?
+  status      Boolean?
+  categoryRef Category @relation(fields: [category, game], references: [code, gamesId])
+
+  @@id([code, game])
+  @@map("games_workout")
+}
+
+model Score {
+  code         Int          @id @default(autoincrement())
+  idEvent      Int
+  game         String
+  category     Int
+  codeTeam     Int
+  time         String?
+  weight       String?
+  reps         String?
+  judge        String?
+  dateScore    String?
+  dateCheck    String?
+  status       Boolean?
+  photo        String?
+  numberTeam   String?
+  point        Float?
+  rank         Int?
+  isWO         Boolean?     @default(false)
+  registration Registration @relation(fields: [codeTeam, game], references: [code, gameCode], onDelete: Cascade)
+  eventRef     Event        @relation(fields: [idEvent, game], references: [idEvent, game])
+
+  @@unique([codeTeam, idEvent, game], name: "team_event")
+  @@map("games_scores")
+}
+
+model Registration {
+  code       Int
+  categoryId Int
+  gameCode   String
+  team       String
+  amount     Float?
+  status     String?
+  check      Boolean?  @default(false)
+  number     String?
+  category   Category  @relation(fields: [categoryId, gameCode], references: [code, gamesId])
+  game       Game      @relation(fields: [gameCode], references: [code])
+  athletes   Athlete[]
+  scores     Score[]
+  leaderboard Leaderboard[]
+
+  @@id([code, gameCode])
+  @@map("GamesRegister")
+}
+
+model Athlete {
+  code         Int
+  name         String
+  cpf          String?
+  check        Boolean?     @default(false)
+  team         Int
+  game         String
+  category     Int?
+  phonenumber  String?
+  registration Registration @relation(fields: [team, game], references: [code, gameCode], onDelete: Cascade)
+
+  @@id([code, team])
+  @@map("games_register_athletes")
+}
+
+model Judge {
+  idPerson String
+  game     String
+  name     String
+  cpf      String?
+
+  @@id([idPerson, game])
+  @@map("games_judge")
+}
+
+model Person {
+  idPerson     String        @id @default(uuid())
+  email        String?
+  name         String
+  cpf          String?       @unique
+  sexo         String?
+  phoneNumber  String?
+  tenant_id    Int?          @default(1)
+  status       String?       @default("new")
+  foto         String?
+  uuid           String?
+  dataNascimento DateTime?
+  createdAt      DateTime?     @default(now())
+  updatedAt      DateTime?     @updatedAt
+  Organization Organization? @relation(fields: [tenant_id], references: [code])
+  users        User[]
+  client       Client?
+
+  @@map("persons")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String?
+  personId  String
+  person    Person   @relation(fields: [personId], references: [idPerson], onDelete: Cascade)
+  role      String   @default("USER") // ADMIN, JUDGE, etc.
+  token     String?
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Client {
+  id        String   @id @default(uuid())
+  personId  String   @unique
+  person    Person   @relation(fields: [personId], references: [idPerson], onDelete: Cascade)
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("clients")
+}
+
+model Organization {
+  code           Int             @id
+  NomeEmpresa    String
+  cnpj                  String?
+  razaosocial           String?
+  logomarca             String?
+  logradouro            String?
+  bairro                String?
+  cep                   String?
+  cidade                String?
+  estado                String?
+  telefone              String?
+  logradouroComplemento String?
+  url                   String?
+  segment               String?
+  status                String?
+  email                 String?
+  firebaseConfig FirebaseConfig?
+  persons        Person[]
+
+  @@map("organizations")
+}
+
+model FirebaseConfig {
+  organization_id             Int          @id @unique
+  type                        String
+  project_id                  String
+  private_key_id              String
+  private_key                 String
+  client_email                String
+  client_id                   String
+  auth_uri                    String
+  token_uri                   String
+  auth_provider_x509_cert_url String
+  client_x509_cert_url        String
+  organization                Organization @relation(fields: [organization_id], references: [code], onDelete: Cascade)
+
+  @@map("firebase_config")
+}
+
+model Points {
+  code     Int    @id @default(autoincrement())
+  game     String
+  category Int
+  position Int
+  points   Int
+
+  @@unique([game, category, position])
+  @@map("games_points")
+}
+
+model TypeWorkout {
+  id    Int    @id @default(autoincrement())
+  title String
+  type  String
+
+  @@map("TypeWorkout")
+}
+
+model Profile {
+  id       Int     @id @default(autoincrement())
+  idPerson String
+  cpf      String?
+  game     String
+  category Int?
+  profile  String?
+  code     Int?
+
+  @@map("games_profile")
+}
+
+model MenuApp {
+  id      Int     @id
+  title   String
+  url     String
+  icon    String?
+  status  String?
+  profile String?
+  role    String?
+  type    String?
+
+  @@map("menuapp")
+}
+
+model Calendar {
+  id          Int       @id @default(autoincrement())
+  title       String
+  description String?
+  date        DateTime?
+  game        String?
+
+  @@map("Calendar")
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  title     String
+  message   String
+  userId    String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("Notifications")
+}
+
+model Leaderboard {
+  id           Int          @id @default(autoincrement())
+  game         String
+  category     Int
+  position     Int
+  teamCode     Int
+  points       Float?
+  registration Registration @relation(fields: [teamCode, game], references: [code, gameCode], onDelete: Cascade)
+
+  @@unique([game, category, teamCode], name: "game_category_teamCode")
+  @@map("games_leaderboard")
+}
+
+model LeaderboardHistory {
+  id           Int       @id @default(autoincrement())
+  game         String
+  category     Int
+  teamCode     Int
+  eventId      Int
+  pointsAdded  Float
+  totalPoints  Float
+  rank         Int
+  calculatedAt DateTime  @default(now())
+  calculatedBy String?
+  reversed     Boolean   @default(false)
+  reversedAt   DateTime?
+  reversedBy   String?
+
+  @@index([game, category, teamCode])
+  @@index([game, category, eventId])
+  @@map("games_leaderboard_history")
+}
+
+model EventCalculation {
+  id            Int      @id @default(autoincrement())
+  game          String
+  category      Int
+  eventId       Int
+  operation     String
+  executedAt    DateTime @default(now())
+  executedBy    String?
+  affectedTeams Int
+
+  @@index([game, category, eventId])
+  @@map("games_event_calculations")
+}
+
+model Lead {
+  id          String   @id @default(uuid())
+  name        String
+  email       String
+  phone       String
+  description String?
+  status      String   @default("new") // new, contacted, closed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("leads")
+}

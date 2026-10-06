@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js
+.next/
+out/
+build/
+
+# NestJS build output
+dist/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs
+*.log
+
+# OS files
+.DS_Store
+*.pem
+Thumbs.db
+
+# IDE & Agents
+.idea/
+.vscode/
+*.swp
+*.swo
+.agents/
+.gemini/
+
+# Docker
+docker-data/
+itgames_pgdata/
+

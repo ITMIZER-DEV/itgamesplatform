@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # 1. Banco de Dados PostgreSQL 18
+  postgres:
+    image: postgres:18-alpine
+    container_name: itgames-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: itgames_user
+      POSTGRES_PASSWORD: itgames_password
+      POSTGRES_DB: itgames_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - itgames_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U itgames_user -d itgames_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - itgames-network
+
+  # 2. Backend API NestJS
+  api:
+    build:
+      context: ./itgames-api
+      dockerfile: Dockerfile
+    container_name: itgames-api
+    restart: always
+    environment:
+      PORT: 3333
+      DATABASE_URL: "postgresql://itgames_user:itgames_password@postgres:5432/itgames_db?schema=public"
+      DIRECT_URL: "postgresql://itgames_user:itgames_password@postgres:5432/itgames_db?schema=public"
+      CORS_ORIGIN: "${CORS_ORIGIN:-http://localhost:3000}"
+      JWT_SECRET: "${JWT_SECRET:?Defina JWT_SECRET no arquivo .env da raiz}"
+      UPLOADS_DIR: /app/uploads
+    volumes:
+      - itgames_uploads:/app/uploads
+    ports:
+      - "3334:3333"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - itgames-network
+
+  # 3. Frontend Next.js Platform
+  frontend:
+    build:
+      context: ./itgames-platform
+      dockerfile: Dockerfile
+    container_name: itgames-platform
+    restart: always
+    environment:
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: "http://localhost:3334"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    networks:
+      - itgames-network
+
+volumes:
+  itgames_pgdata:
+    driver: local
+  itgames_uploads:
+    driver: local
+
+networks:
+  itgames-network:
+    driver: bridge
