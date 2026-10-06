@@ -1,0 +1,6 @@
+# Não levar arquivos locais para a imagem: um .env.local com NEXT_PUBLIC_API_URL ficaria gravado no JavaScript do navegador
+node_modules
+.next
+.env*
+.git
+npm-debug.log*

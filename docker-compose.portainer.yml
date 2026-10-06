@@ -57,6 +57,7 @@ services:
       DIRECT_URL: "postgresql://${POSTGRES_USER:-itgames_user}:${POSTGRES_PASSWORD:-itgames_password}@postgres:5432/${POSTGRES_DB:-itgames_db}?schema=public"
       CORS_ORIGIN: "${CORS_ORIGIN:-*}"
       JWT_SECRET: "${JWT_SECRET:-itgames_jwt_super_secret_production_key_2026}"
+      MAIL_ENCRYPTION_KEY: "${MAIL_ENCRYPTION_KEY:-}"
     depends_on:
       postgres:
         condition: service_healthy
