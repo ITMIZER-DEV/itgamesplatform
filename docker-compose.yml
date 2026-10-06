@@ -2,26 +2,45 @@ version: '3.8'
 
 services:
   # ────────────────────────────────────────────────────────────────────────────
-  # 1. BANCO DE DADOS POSTGRESQL 16 (Alpine LTS)
+  # 1. BANCO DE DADOS POSTGRESQL 18 (Alpine - Tuned High Performance)
   # ────────────────────────────────────────────────────────────────────────────
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: itgames-postgres
     restart: always
+    shm_size: 2g
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-itgames_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-itgames_password}
       POSTGRES_DB: ${POSTGRES_DB:-itgames_db}
+    volumes:
+      - itgames_pgdata:/var/lib/postgresql
+    command: >
+      postgres
+      -c listen_addresses=*
+      -c shared_buffers=2GB
+      -c effective_cache_size=6GB
+      -c maintenance_work_mem=512MB
+      -c work_mem=32MB
+      -c max_connections=150
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c max_worker_processes=4
+      -c max_parallel_workers=4
+      -c max_parallel_workers_per_gather=2
+      -c max_parallel_maintenance_workers=2
+      -c wal_buffers=16MB
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
+      -c checkpoint_completion_target=0.9
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
-    volumes:
-      - itgames_pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-itgames_user} -d ${POSTGRES_DB:-itgames_db} || exit 1"]
       interval: 5s
       timeout: 5s
-      retries: 10
-      start_period: 15s
+      retries: 20
+      start_period: 30s
     networks:
       - itgames-network
 
