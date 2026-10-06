@@ -19,8 +19,7 @@ import {
   LogOut,
   User
 } from 'lucide-react';
-import { storage } from '@/lib/storage';
-import { GameEvent } from '@/types';
+import { useGames } from '@/lib/use-games';
 import { getCurrentUserSession, logoutUser, UserSession } from '@/lib/acl';
 import { toast } from 'sonner';
 import { ThemeToggle } from './ThemeToggle';
@@ -30,36 +29,27 @@ import { BrandLogo } from '@/components/brand/BrandLogo';
 export function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [games, setGames] = useState<GameEvent[]>([]);
-  const [activeGameId, setActiveGameId] = useState<string>('');
+  const { games, activeGame, setActiveGame, isLoading: gamesLoading } = useGames();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [session, setSession] = useState<UserSession>({ role: 'GUEST' });
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    storage.initDefaultsIfEmpty();
     const loadState = () => {
-      const g = storage.getGames();
-      setGames(g);
-      setActiveGameId(storage.getActiveGameId());
       setSession(getCurrentUserSession());
       setReady(true);
     };
 
     loadState();
-    window.addEventListener('itgames_storage_updated', loadState);
     window.addEventListener('itgames_auth_changed', loadState);
     return () => {
-      window.removeEventListener('itgames_storage_updated', loadState);
       window.removeEventListener('itgames_auth_changed', loadState);
     };
   }, []);
 
-  const activeGame = games.find(g => g.id === activeGameId) || games[0];
-
   const handleSelectGame = (gameId: string) => {
-    storage.setActiveGameId(gameId);
-    setActiveGameId(gameId);
+    const game = games.find((g) => g.id === gameId);
+    if (game) setActiveGame(game.code);
     setIsDropdownOpen(false);
   };
 
@@ -155,6 +145,11 @@ export function Navbar() {
             </Link>
 
             {/* SELETOR DE EVENTO */}
+            {!activeGame && !gamesLoading && (
+              <span className="hidden md:inline-flex items-center px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-semibold text-zinc-500">
+                Nenhum campeonato disponível
+              </span>
+            )}
             {activeGame && (
               <div className="relative hidden md:block">
                 <button 
@@ -175,7 +170,7 @@ export function Navbar() {
                       <button
                         key={game.id}
                         onClick={() => handleSelectGame(game.id)}
-                        className={`w-full text-left p-2.5 rounded-lg text-xs flex flex-col gap-0.5 transition-colors ${game.id === activeGameId ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300' : 'hover:bg-zinc-800 text-zinc-300'}`}
+                        className={`w-full text-left p-2.5 rounded-lg text-xs flex flex-col gap-0.5 transition-colors ${game.id === activeGame?.id ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300' : 'hover:bg-zinc-800 text-zinc-300'}`}
                       >
                         <div className="flex items-center justify-between font-bold">
                           <span>{game.name}</span>

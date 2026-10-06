@@ -466,6 +466,7 @@ export class ApiClient {
   }
 
   // 6. Baterias & Raias
+  // Baterias: estritos (erro da API vira ApiError e a tela mostra o aviso)
   async generateHeats(body: {
     gameCode: string;
     categoryId: number;
@@ -475,14 +476,14 @@ export class ApiClient {
     intervalMinutes: number;
     isFinalSeeding?: boolean;
   }) {
-    return this.request<any>('/heats/generate', {
+    return this.strict<any>('/heats/generate', {
       method: 'POST',
       body: JSON.stringify(body),
     });
   }
 
   async swapLanes(slotIdA: string, slotIdB: string) {
-    return this.request<any>('/heats/swap-lanes', {
+    return this.strict<any>('/heats/swap-lanes', {
       method: 'POST',
       body: JSON.stringify({ slotIdA, slotIdB }),
     });
@@ -492,8 +493,13 @@ export class ApiClient {
     return this.request<Heat[]>(`/heats/game/${gameCode}/workout/${workoutCode}`);
   }
 
+  // Lê as baterias de um WOD (com as vagas e as equipes); diferente de getHeats, não engole erros
+  async fetchHeats(gameCode: string, workoutCode: number): Promise<any[]> {
+    return this.strict<any[]>(`/heats/game/${gameCode}/workout/${workoutCode}`);
+  }
+
   async updateHeatStatus(heatId: string, status: string) {
-    return this.request<any>(`/heats/${heatId}/status`, {
+    return this.strict<any>(`/heats/${heatId}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     });
