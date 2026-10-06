@@ -363,6 +363,22 @@ export class ApiClient {
   async getAuditLogs(gameCode: string) {
     return this.request<AuditLogEntry[]>(`/audit/game/${gameCode}`);
   }
+
+  // 8. Backup & Sincronização
+  async exportBackup() {
+    const res = await this.send('/backup/export', { method: 'GET' }, true);
+    if (!res.ok) {
+      throw new ApiError(res.status, 'Falha ao exportar backup');
+    }
+    return await res.json();
+  }
+
+  async importBackup(data: any) {
+    return this.strict<any>('/backup/import', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, true);
+  }
 }
 
 export const apiClient = new ApiClient();

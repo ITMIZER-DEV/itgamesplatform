@@ -5,6 +5,7 @@ import {
   LayoutDashboard, 
   Plus, 
   Building2, 
+  Database,
   DollarSign, 
   Users, 
   ShieldCheck, 
@@ -42,6 +43,7 @@ import { BANNER_MAX_ORIGINAL_BYTES, prepareBanner } from '@/lib/banner-image';
 import { getCurrentUserSession } from '@/lib/acl';
 import { OrganizersPanel } from '@/components/admin/OrganizersPanel';
 import { GameOrganizersModal } from '@/components/admin/GameOrganizersModal';
+import { BackupRestoreModal } from '@/components/admin/BackupRestoreModal';
 import { toast } from 'sonner';
 import { AclGuard } from '@/components/auth/AclGuard';
 
@@ -57,6 +59,7 @@ export default function AdminDashboardPage() {
   const [contestTickets, setContestTickets] = useState<ContestTicket[]>([]);
   const [judges, setJudges] = useState<JudgeStaff[]>([]);
   const [selectedProofTeam, setSelectedProofTeam] = useState<TeamRegistration | null>(null);
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
 
   // Perfil Ativo: Super Admin (Plataforma Global & Liberações) vs Organizador (Meus Campeonatos)
 
@@ -944,13 +947,24 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        <button
-          onClick={openNewGame}
-          className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition-transform active:scale-95"
-        >
-          <Plus className="w-4 h-4" />
-          <span>+ Cadastrar Campeonato</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsBackupModalOpen(true)}
+            className="px-3.5 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white font-bold text-xs border border-zinc-700 flex items-center gap-2 transition-colors"
+            title="Backup e sincronização de dados (Exportar / Importar Snapshot)"
+          >
+            <Database className="w-4 h-4 text-amber-400" />
+            <span>Backup & Sincronização</span>
+          </button>
+
+          <button
+            onClick={openNewGame}
+            className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition-transform active:scale-95"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Cadastrar Campeonato</span>
+          </button>
+        </div>
       </div>
 
       {/* CABEÇALHO DO PAINEL ADMIN */}
@@ -2874,6 +2888,12 @@ export default function AdminDashboardPage() {
           onChanged={() => loadData()}
         />
       )}
+
+      <BackupRestoreModal
+        isOpen={isBackupModalOpen}
+        onClose={() => setIsBackupModalOpen(false)}
+        onSuccess={() => loadData()}
+      />
       </div>
     </AclGuard>
   );

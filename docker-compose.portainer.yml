@@ -14,7 +14,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-itgames_password}
       POSTGRES_DB: ${POSTGRES_DB:-itgames_db}
     volumes:
-      - itgames_pgdata:/var/lib/postgresql
+      - itgames_pgdata_v18:/var/lib/postgresql
     command: >
       postgres
       -c listen_addresses=*
@@ -88,7 +88,7 @@ services:
       - itgames-network
 
 volumes:
-  itgames_pgdata:
+  itgames_pgdata_v18:
     driver: local
 
 networks:
