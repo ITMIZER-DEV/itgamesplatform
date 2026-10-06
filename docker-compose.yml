@@ -2,10 +2,10 @@ version: '3.8'
 
 services:
   # ────────────────────────────────────────────────────────────────────────────
-  # 1. BANCO DE DADOS POSTGRESQL 18 (Alpine)
+  # 1. BANCO DE DADOS POSTGRESQL 16 (Alpine LTS)
   # ────────────────────────────────────────────────────────────────────────────
   postgres:
-    image: postgres:18-alpine
+    image: postgres:16-alpine
     container_name: itgames-postgres
     restart: always
     environment:
