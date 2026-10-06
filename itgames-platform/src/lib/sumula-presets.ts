@@ -12,9 +12,12 @@ export const DEFAULT_SUMULA_TEMPLATES: SumulaTemplate[] = [
 <div class="sumula-card" style="font-family: Arial, sans-serif; max-width: 190mm; margin: 0 auto; border: 2px solid #000; padding: 14px; background: #fff; color: #000;">
   <!-- CABEÇALHO -->
   <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px;">
-    <div>
-      <h1 style="font-size: 18px; font-weight: 900; margin: 0; text-transform: uppercase;">#GAMENAME#</h1>
-      <p style="font-size: 12px; margin: 2px 0 0 0; color: #333;">SÚMULA OFICIAL DE PROVA | #CATEGORYNAME#</p>
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <img src="/brand/logo-itgames-black.png" alt="ITGAMES" style="height: 32px; width: auto; object-fit: contain;" />
+      <div>
+        <h1 style="font-size: 16px; font-weight: 900; margin: 0; text-transform: uppercase;">#GAMENAME#</h1>
+        <p style="font-size: 11px; margin: 2px 0 0 0; color: #333;">SÚMULA OFICIAL DE PROVA | #CATEGORYNAME#</p>
+      </div>
     </div>
     <div style="text-align: right; background: #000; color: #fff; padding: 4px 10px; border-radius: 4px;">
       <span style="font-size: 14px; font-weight: bold;">INSCRIÇÃO: #REGISTERNUMBER#</span>

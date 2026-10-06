@@ -17,6 +17,7 @@ import { useLeaderboard } from '@/lib/use-leaderboard';
 import { GameEvent, Category, WorkoutRule, TeamRegistration, ScoreEntry, LeaderboardRank } from '@/types';
 import { calculateOverallLeaderboard } from '@/lib/scoring';
 import confetti from 'canvas-confetti';
+import { BrandLogo } from '@/components/brand/BrandLogo';
 
 export default function BigScreenLeaderboardPage() {
   const { view } = useLeaderboard(15000);
@@ -88,7 +89,7 @@ export default function BigScreenLeaderboardPage() {
       
       {/* CABEÇALHO DO TELÃO DE ARENA */}
       <div className="flex items-center justify-between border-b-2 border-amber-500/30 pb-6">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-5">
           <Link 
             href="/leaderboard"
             className="p-3 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition-colors"
@@ -96,6 +97,8 @@ export default function BigScreenLeaderboardPage() {
           >
             <ArrowLeft className="w-6 h-6" />
           </Link>
+
+          <BrandLogo variant="white" size="lg" />
 
           <div>
             <div className="flex items-center gap-3">
@@ -107,7 +110,7 @@ export default function BigScreenLeaderboardPage() {
                 {activeGame?.name} • {activeGame?.location}
               </span>
             </div>
-            <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-white mt-1 flex items-center gap-3">
+            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white mt-1 flex items-center gap-3">
               <span>CATEGORIA:</span>
               <span className="text-amber-400 bg-amber-400/10 px-4 py-1 rounded-2xl border border-amber-400/30">
                 {currentCategory?.name || 'Geral'}

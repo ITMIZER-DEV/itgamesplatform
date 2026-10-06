@@ -17,6 +17,8 @@ import { toast } from 'sonner';
 import { apiClient, ApiError } from '@/lib/api-client';
 import { homeForRole, saveSession } from '@/lib/acl';
 
+import { BrandLogo } from '@/components/brand/BrandLogo';
+
 export default function LoginPage() {
   const router = useRouter();
   
@@ -102,12 +104,13 @@ export default function LoginPage() {
     <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto space-y-8 animate-in fade-in duration-300">
       
       {/* CABEÇALHO */}
-      <div className="text-center space-y-2">
+      <div className="text-center space-y-3 flex flex-col items-center">
+        <BrandLogo variant="white" size="lg" className="items-center" />
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-black uppercase tracking-wider">
           <Trophy className="w-4 h-4" />
-          <span>ITGames Arena • Autenticação</span>
+          <span>Arena • Autenticação Unificada</span>
         </div>
-        <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
           Acesse sua Conta ou Cadastre-se
         </h1>
         <p className="text-xs sm:text-sm text-zinc-400 max-w-xl mx-auto">

@@ -25,6 +25,7 @@ import { getCurrentUserSession, logoutUser, UserSession } from '@/lib/acl';
 import { toast } from 'sonner';
 import { ThemeToggle } from './ThemeToggle';
 import { PublicTopBar } from './PublicTopBar';
+import { BrandLogo } from '@/components/brand/BrandLogo';
 
 export function Navbar() {
   const pathname = usePathname();
@@ -145,20 +146,7 @@ export function Navbar() {
           {/* LOGO & SELETOR DE CAMPEONATO PÚBLICO */}
           <div className="flex items-center gap-4">
             <Link href="/" className="flex items-center gap-2 group">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 via-orange-600 to-red-600 flex items-center justify-center text-black font-black shadow-lg shadow-amber-500/30 group-hover:scale-105 transition-transform">
-                <Flame className="w-5 h-5 text-black fill-black" />
-              </div>
-              <div>
-                <span className="text-lg font-black tracking-wider text-white flex items-center gap-1">
-                  IT<span className="text-amber-400">GAMES</span>
-                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-400 font-bold border border-amber-400/30">
-                    ARENA
-                  </span>
-                </span>
-                <span className="text-[9px] text-zinc-400 block -mt-1 font-medium tracking-tight">
-                  CrossFit & HYROX Platform
-                </span>
-              </div>
+              <BrandLogo variant="white" size="md" />
             </Link>
 
             {/* SELETOR DE EVENTO */}
