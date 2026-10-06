@@ -18,26 +18,48 @@ import {
   ArrowLeftRight,
   Crown
 } from 'lucide-react';
-import { storage } from '@/lib/storage';
-import { GameEvent, Category, WorkoutRule, TeamRegistration, Heat } from '@/types';
-import { generateHeatsAndLanes } from '@/lib/heats-generator';
-import { calculateOverallLeaderboard } from '@/lib/scoring';
-import { apiClient } from '@/lib/api-client';
+import { Category, WorkoutRule, TeamRegistration, Heat } from '@/types';
+import { apiClient, ApiError } from '@/lib/api-client';
+import { useGames } from '@/lib/use-games';
+import { mapCategory, mapHeat, mapRegistration, mapWorkout } from '@/lib/arena-data';
 import { toast } from 'sonner';
 import { AclGuard } from '@/components/auth/AclGuard';
 
 export default function HeatsPage() {
-  const [activeGame, setActiveGame] = useState<GameEvent | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [workouts, setWorkouts] = useState<WorkoutRule[]>([]);
-  const [teams, setTeams] = useState<TeamRegistration[]>([]);
-  const [heats, setHeats] = useState<Heat[]>([]);
+  const { activeGame, isLoading: gamesLoading, error: gamesError, role } = useGames();
+  // gerar e trocar raias: organizador do campeonato ou super admin (o servidor também valida)
+  const canEdit = role === 'SUPER_ADMIN' || role === 'ORGANIZER';
 
-  // Filtros
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
-  const [selectedWorkoutId, setSelectedWorkoutId] = useState<string>('');
+  const gameCode = activeGame?.code ?? '';
+  const eventType = activeGame?.eventType;
+  const [reloadKey, setReloadKey] = useState(0);
+  const reload = () => setReloadKey((k) => k + 1);
 
-  // Configurações do Gerador Automático
+  // dados do campeonato ativo; guardam o código a que pertencem para nunca mostrar dados de outro campeonato
+  const [data, setData] = useState<{
+    game: string;
+    categories: Category[];
+    workouts: WorkoutRule[];
+    teams: TeamRegistration[];
+  } | null>(null);
+  const [dataError, setDataError] = useState<string | null>(null);
+  const [heatsData, setHeatsData] = useState<{ key: string; heats: Heat[] } | null>(null);
+
+  const fresh = data && data.game === gameCode ? data : null;
+  const categories = fresh?.categories ?? [];
+  const allWorkouts = fresh?.workouts ?? [];
+  const teams = fresh?.teams ?? [];
+
+  // seleção do usuário; os valores efetivos são derivados abaixo (sempre válidos para os dados carregados)
+  const [pickedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [pickedWorkoutId, setSelectedWorkoutId] = useState<string>('');
+  const currentCategory = categories.find((c) => c.id === pickedCategoryId) || categories[0];
+  const selectedCategoryId = currentCategory?.id ?? '';
+  const workouts = allWorkouts.filter((w) => w.categoryId === selectedCategoryId);
+  const currentWorkout = workouts.find((w) => w.id === pickedWorkoutId) || workouts[0];
+  const selectedWorkoutId = currentWorkout?.id ?? '';
+
+  // Gerador
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [totalLanes, setTotalLanes] = useState(8);
   const [startHour, setStartHour] = useState('09:00');
@@ -45,143 +67,157 @@ export default function HeatsPage() {
   const [isFinalSeeding, setIsFinalSeeding] = useState(false);
 
   // Troca de Raias (Swap)
-  const [selectedLaneToSwap, setSelectedLaneToSwap] = useState<{ heatId: string; lane: number; teamName: string } | null>(null);
+  const [selectedLaneToSwap, setSelectedLaneToSwap] = useState<{
+    heatId: string;
+    lane: number;
+    teamName: string;
+    slotId?: string;
+  } | null>(null);
 
+  // Categorias, WODs e inscrições do campeonato ativo. O juiz não pode listar inscrições (403): as equipes dele
+  // vêm das baterias.
   useEffect(() => {
-    storage.initDefaultsIfEmpty();
-
-    const loadData = () => {
-      const activeId = storage.getActiveGameId();
-      const game = storage.getGameById(activeId) || storage.getGames()[0];
-      setActiveGame(game);
-
-      if (game) {
-        const cats = storage.getCategories(game.id);
-        const wods = storage.getWorkouts(game.id);
-        const tms = storage.getTeams(game.id);
-        const hts = storage.getHeats(game.id);
-
-        setCategories(cats);
-        setWorkouts(wods);
-        setTeams(tms);
-        setHeats(hts);
-
-        if (cats.length > 0 && !selectedCategoryId) {
-          setSelectedCategoryId(cats[0].id);
+    if (!gameCode) return;
+    let cancelled = false;
+    Promise.all([
+      apiClient.listCategories(gameCode),
+      apiClient.listWorkouts(gameCode),
+      canEdit ? apiClient.listRegistrations(gameCode) : Promise.resolve([] as any[]),
+    ])
+      .then(([cats, wods, regs]) => {
+        if (cancelled) return;
+        if (!cats || !wods || !regs) {
+          setDataError('Não foi possível carregar as categorias, os WODs e as inscrições deste campeonato.');
+          return;
         }
-        if (wods.length > 0 && !selectedWorkoutId) {
-          setSelectedWorkoutId(wods[0].id);
-        }
-      }
+        setDataError(null);
+        const categoryList = cats.map((c) => mapCategory(c, gameCode, eventType));
+        const nameById = new Map(categoryList.map((c) => [c.id, c.name]));
+        setData({
+          game: gameCode,
+          categories: categoryList,
+          workouts: wods.map((w) => mapWorkout(w, gameCode)),
+          teams: regs
+            .filter((r) => r.status !== 'cancelled')
+            .map((r) => mapRegistration(r, gameCode, nameById.get(String(r.categoryId)))),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setDataError('Não foi possível carregar os dados deste campeonato.');
+      });
+    return () => {
+      cancelled = true;
     };
+  }, [gameCode, eventType, canEdit, reloadKey]);
 
-    loadData();
-    window.addEventListener('itgames_storage_updated', loadData);
-    return () => window.removeEventListener('itgames_storage_updated', loadData);
-  }, []);
+  // Baterias do WOD selecionado
+  const heatsKey = currentWorkout ? `${gameCode}:${currentWorkout.id}:${reloadKey}` : '';
+  useEffect(() => {
+    if (!gameCode || !selectedWorkoutId) return;
+    let cancelled = false;
+    const key = `${gameCode}:${selectedWorkoutId}:${reloadKey}`;
+    apiClient
+      .fetchHeats(gameCode, Number(selectedWorkoutId))
+      .then((list) => {
+        if (!cancelled) setHeatsData({ key, heats: list.map((h) => mapHeat(h, gameCode)) });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setHeatsData({ key, heats: [] });
+        toast.error(err instanceof ApiError ? err.message : 'Não foi possível carregar as baterias.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [gameCode, selectedWorkoutId, reloadKey]);
 
-  const currentCategory = categories.find(c => c.id === selectedCategoryId) || categories[0];
-  const currentWorkout = workouts.find(w => w.id === selectedWorkoutId) || workouts[0];
+  const heats = heatsData && heatsData.key === heatsKey ? heatsData.heats : [];
+  const isLoadingHeats = !!currentWorkout && !(heatsData && heatsData.key === heatsKey);
 
   // Baterias filtradas
-  const filteredHeats = heats.filter(
-    h => h.gameId === activeGame?.id && 
-         h.workoutId === currentWorkout?.id &&
-         h.categoryId === currentCategory?.id
-  );
+  const filteredHeats = heats.filter((h) => h.categoryId === selectedCategoryId);
 
-  // Times da categoria
-  const categoryTeams = teams.filter(t => t.categoryId === currentCategory?.id);
+  // Equipes da categoria: organizador vê as inscritas; juiz conta as que já estão em baterias
+  const categoryTeams: unknown[] = canEdit
+    ? teams.filter((t) => t.categoryId === selectedCategoryId)
+    : filteredHeats.flatMap((h) => h.laneAssignments);
+
+  const openGenerator = () => {
+    if (!canEdit) {
+      toast.error('Apenas o organizador do campeonato pode gerar baterias.');
+      return;
+    }
+    setIsModalOpen(true);
+  };
 
   const handleGenerateHeats = async () => {
     if (!activeGame || !currentWorkout || !currentCategory) return;
-
-    let currentLeaderboard = undefined;
-    if (isFinalSeeding) {
-      const allScores = storage.getScores(activeGame.id);
-      currentLeaderboard = calculateOverallLeaderboard(
-        categoryTeams,
-        workouts.filter(w => w.categoryId === currentCategory.id),
-        allScores,
-        activeGame.eventType === 'hyrox'
-      );
-    }
-
-    const generated = generateHeatsAndLanes({
-      gameId: activeGame.id,
-      workoutId: currentWorkout.id,
-      categoryId: currentCategory.id,
-      totalLanes,
-      startHour,
-      intervalMinutes,
-      teams: categoryTeams,
-      isFinalSeeding,
-      currentLeaderboard
-    });
-
-    // Salvar local e tentar sincronizar com a API
-    storage.saveHeats(generated);
-    setHeats(storage.getHeats(activeGame.id));
-
     try {
-      await apiClient.generateHeats({
-        gameCode: activeGame.id,
-        categoryId: parseInt(currentCategory.id.replace(/\D/g, '')) || 1,
-        workoutCode: parseInt(currentWorkout.id.replace(/\D/g, '')) || 1,
+      const res = await apiClient.generateHeats({
+        gameCode: activeGame.code,
+        categoryId: Number(currentCategory.id),
+        workoutCode: Number(currentWorkout.id),
         totalLanes,
         startHour,
         intervalMinutes,
         isFinalSeeding,
       });
-    } catch (e) {
-      console.log('[Heats] Sincronização offline-first ativa.');
+      if (!res?.success) {
+        // ex.: nenhuma equipe inscrita nesta categoria
+        toast.error(res?.message || 'Não foi possível gerar as baterias.');
+        return;
+      }
+      setIsModalOpen(false);
+      reload();
+      toast.success(`${res.totalHeats} baterias geradas com sucesso para ${categoryTeams.length} atletas!`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Não foi possível gerar as baterias.');
     }
-
-    setIsModalOpen(false);
-    toast.success(`${generated.length} baterias geradas com sucesso para ${categoryTeams.length} atletas!`);
   };
 
   const handleUpdateStatus = async (heatId: string, status: Heat['status']) => {
-    storage.updateHeatStatus(heatId, status);
-    setHeats(storage.getHeats(activeGame?.id));
-    await apiClient.updateHeatStatus(heatId, status);
-    toast.success(`Status da bateria atualizado para ${status}!`);
+    try {
+      await apiClient.updateHeatStatus(heatId, status);
+      reload();
+      toast.success(`Status da bateria atualizado para ${status}!`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Não foi possível atualizar o status da bateria.');
+    }
   };
 
-  const handleLaneClickForSwap = (heatId: string, laneNumber: number, teamName: string) => {
+  const handleLaneClickForSwap = async (heatId: string, laneNumber: number, teamName: string, slotId?: string) => {
+    if (!canEdit) {
+      toast.error('Apenas o organizador do campeonato pode trocar raias.');
+      return;
+    }
     if (!selectedLaneToSwap) {
-      setSelectedLaneToSwap({ heatId, lane: laneNumber, teamName });
+      setSelectedLaneToSwap({ heatId, lane: laneNumber, teamName, slotId });
       toast.info(`Raia ${laneNumber} (${teamName}) selecionada. Clique em outra raia da mesma bateria para trocar.`);
-    } else {
-      if (selectedLaneToSwap.heatId !== heatId) {
-        toast.error('Só é possível trocar raias dentro da mesma bateria!');
-        setSelectedLaneToSwap(null);
-        return;
-      }
-      if (selectedLaneToSwap.lane === laneNumber) {
-        setSelectedLaneToSwap(null);
-        return;
-      }
+      return;
+    }
+    if (selectedLaneToSwap.heatId !== heatId) {
+      toast.error('Só é possível trocar raias dentro da mesma bateria!');
+      setSelectedLaneToSwap(null);
+      return;
+    }
+    if (selectedLaneToSwap.lane === laneNumber) {
+      setSelectedLaneToSwap(null);
+      return;
+    }
+    if (!selectedLaneToSwap.slotId || !slotId) {
+      toast.error('Não foi possível identificar as raias. Recarregue a página.');
+      setSelectedLaneToSwap(null);
+      return;
+    }
 
-      // Executa a troca nas baterias locais
-      const updatedHeats = heats.map(h => {
-        if (h.id !== heatId) return h;
-        const newAssignments = h.laneAssignments.map(la => {
-          if (la.lane === selectedLaneToSwap.lane) {
-            return { ...la, lane: laneNumber };
-          }
-          if (la.lane === laneNumber) {
-            return { ...la, lane: selectedLaneToSwap.lane };
-          }
-          return la;
-        });
-        newAssignments.sort((a, b) => a.lane - b.lane);
-        return { ...h, laneAssignments: newAssignments };
-      });
-
-      storage.saveHeats(updatedHeats);
-      setHeats(updatedHeats);
-      toast.success(`Raias trocadas: Raia ${selectedLaneToSwap.lane} ⇄ Raia ${laneNumber}!`);
+    const from = selectedLaneToSwap.lane;
+    try {
+      await apiClient.swapLanes(selectedLaneToSwap.slotId, slotId);
+      reload();
+      toast.success(`Raias trocadas: Raia ${from} ⇄ Raia ${laneNumber}!`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Não foi possível trocar as raias.');
+    } finally {
       setSelectedLaneToSwap(null);
     }
   };
@@ -215,7 +251,7 @@ export default function HeatsPage() {
           </button>
 
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={openGenerator}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-blue-500/20 transition-transform active:scale-95"
           >
             <Sparkles className="w-4 h-4" />
@@ -237,6 +273,31 @@ export default function HeatsPage() {
           >
             Cancelar Troca
           </button>
+        </div>
+      )}
+
+      {/* ESTADOS: sem campeonato, erro ou dados incompletos */}
+      {!gamesLoading && !activeGame && (
+        <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800 text-sm text-zinc-300 no-print">
+          {gamesError || 'Nenhum campeonato disponível.'}
+        </div>
+      )}
+      {dataError && (
+        <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/40 text-sm text-red-300 no-print flex items-center justify-between gap-3">
+          <span>{dataError}</span>
+          <button onClick={reload} className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs font-bold">
+            Tentar de novo
+          </button>
+        </div>
+      )}
+      {activeGame && !dataError && fresh && categories.length === 0 && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-sm text-amber-200 no-print">
+          Este campeonato ainda não tem categorias cadastradas.
+        </div>
+      )}
+      {activeGame && !dataError && fresh && categories.length > 0 && workouts.length === 0 && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-sm text-amber-200 no-print">
+          Esta categoria ainda não tem WODs cadastrados.
         </div>
       )}
 
@@ -278,7 +339,9 @@ export default function HeatsPage() {
       </div>
 
       {/* LISTAGEM DAS BATERIAS E GRID DE RAIAS */}
-      {filteredHeats.length === 0 ? (
+      {isLoadingHeats ? (
+        <div className="text-center py-16 text-sm text-zinc-400">Carregando baterias...</div>
+      ) : filteredHeats.length === 0 ? (
         <div className="text-center py-16 glass-panel rounded-3xl border border-zinc-800 space-y-4">
           <Activity className="w-12 h-12 text-zinc-600 mx-auto" />
           <h3 className="text-lg font-bold text-white">Nenhuma bateria gerada para este workout</h3>
@@ -286,7 +349,7 @@ export default function HeatsPage() {
             Clique no botão <strong>"Gerar Baterias Automáticas"</strong> para que o sistema distribua os {categoryTeams.length} atletas nas raias da arena.
           </p>
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={openGenerator}
             className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs"
           >
             Configurar e Gerar Baterias
@@ -368,7 +431,7 @@ export default function HeatsPage() {
                       return (
                         <div 
                           key={lane.lane}
-                          onClick={() => handleLaneClickForSwap(heat.id, lane.lane, lane.teamName)}
+                          onClick={() => handleLaneClickForSwap(heat.id, lane.lane, lane.teamName, lane.slotId)}
                           className={`p-3.5 rounded-xl border flex items-start justify-between gap-2 cursor-pointer transition-all duration-200 ${
                             isSelected 
                               ? 'bg-amber-500/20 border-amber-400 ring-2 ring-amber-400' 
