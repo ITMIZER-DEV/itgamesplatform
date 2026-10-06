@@ -11,15 +11,8 @@ import {
   ContestTicket,
   JudgeStaff
 } from '@/types';
-import {
-  MOCK_GAMES,
-  MOCK_CATEGORIES,
-  MOCK_WORKOUTS,
-  MOCK_TEAMS,
-  MOCK_SCORES,
-  MOCK_HEATS,
-  MOCK_ORGANIZATIONS
-} from './mock-data';
+import { MOCK_ORGANIZATIONS } from './mock-data';
+import { purgeMockData } from './mock-purge';
 import { DEFAULT_SUMULA_TEMPLATES } from './sumula-presets';
 
 const STORAGE_KEYS = {
@@ -66,24 +59,9 @@ class DataStorage {
   public initDefaultsIfEmpty(): void {
     if (!this.isBrowser()) return;
 
-    if (!localStorage.getItem(STORAGE_KEYS.GAMES)) {
-      this.setItem(STORAGE_KEYS.GAMES, MOCK_GAMES);
-    }
-    if (!localStorage.getItem(STORAGE_KEYS.CATEGORIES)) {
-      this.setItem(STORAGE_KEYS.CATEGORIES, MOCK_CATEGORIES);
-    }
-    if (!localStorage.getItem(STORAGE_KEYS.WORKOUTS)) {
-      this.setItem(STORAGE_KEYS.WORKOUTS, MOCK_WORKOUTS);
-    }
-    if (!localStorage.getItem(STORAGE_KEYS.TEAMS)) {
-      this.setItem(STORAGE_KEYS.TEAMS, MOCK_TEAMS);
-    }
-    if (!localStorage.getItem(STORAGE_KEYS.SCORES)) {
-      this.setItem(STORAGE_KEYS.SCORES, MOCK_SCORES);
-    }
-    if (!localStorage.getItem(STORAGE_KEYS.HEATS)) {
-      this.setItem(STORAGE_KEYS.HEATS, MOCK_HEATS);
-    }
+    // remove os campeonatos fictícios que versões antigas gravaram neste navegador
+    purgeMockData(localStorage);
+
     if (!localStorage.getItem(STORAGE_KEYS.TEMPLATES)) {
       this.setItem(STORAGE_KEYS.TEMPLATES, DEFAULT_SUMULA_TEMPLATES);
     }
@@ -91,48 +69,16 @@ class DataStorage {
       this.setItem(STORAGE_KEYS.ORGANIZATIONS, MOCK_ORGANIZATIONS);
     }
     if (!localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS)) {
-      this.setItem(STORAGE_KEYS.AUDIT_LOGS, [
-        {
-          id: 'log_init_1',
-          scoreId: 'score_1',
-          gameId: 'game_cf_2026',
-          workoutId: 'wod_cf_1',
-          registrationId: 'team_cf_1',
-          changedBy: 'Árbitro Roberto C.',
-          role: 'judge',
-          action: 'create',
-          newValue: '06:14.2 (100 pts)',
-          reason: 'Lançamento inicial de campo via tablet do juiz',
-          timestamp: '2026-10-15T10:15:00Z',
-          ipOrDevice: 'Tablet Arena #4'
-        },
-        {
-          id: 'log_init_2',
-          scoreId: 'score_1',
-          gameId: 'game_cf_2026',
-          workoutId: 'wod_cf_1',
-          registrationId: 'team_cf_1',
-          changedBy: 'Head Judge Carlos M.',
-          role: 'head_judge',
-          action: 'approve',
-          newValue: 'Aprovado e Homologado',
-          reason: 'Conferência de súmula com assinatura do atleta',
-          timestamp: '2026-10-15T10:20:00Z',
-          ipOrDevice: 'Mesa Central de Arbitragem'
-        }
-      ] as AuditLogEntry[]);
+      this.setItem(STORAGE_KEYS.AUDIT_LOGS, [] as AuditLogEntry[]);
     }
     if (!localStorage.getItem(STORAGE_KEYS.CONTEST_TICKETS)) {
       this.setItem(STORAGE_KEYS.CONTEST_TICKETS, [] as ContestTicket[]);
-    }
-    if (!localStorage.getItem(STORAGE_KEYS.ACTIVE_GAME_ID)) {
-      this.setItem(STORAGE_KEYS.ACTIVE_GAME_ID, 'game_cf_2026');
     }
   }
 
   // Games
   public getGames(): GameEvent[] {
-    return this.getItem<GameEvent[]>(STORAGE_KEYS.GAMES, MOCK_GAMES);
+    return this.getItem<GameEvent[]>(STORAGE_KEYS.GAMES, []);
   }
 
   public getGameById(id: string): GameEvent | undefined {
@@ -165,7 +111,7 @@ class DataStorage {
 
   // Categories
   public getCategories(gameId?: string): Category[] {
-    const list = this.getItem<Category[]>(STORAGE_KEYS.CATEGORIES, MOCK_CATEGORIES);
+    const list = this.getItem<Category[]>(STORAGE_KEYS.CATEGORIES, []);
     return gameId ? list.filter(c => c.gameId === gameId) : list;
   }
 
@@ -187,7 +133,7 @@ class DataStorage {
 
   // Workouts
   public getWorkouts(gameId?: string): WorkoutRule[] {
-    const list = this.getItem<WorkoutRule[]>(STORAGE_KEYS.WORKOUTS, MOCK_WORKOUTS);
+    const list = this.getItem<WorkoutRule[]>(STORAGE_KEYS.WORKOUTS, []);
     return gameId ? list.filter(w => w.gameId === gameId) : list;
   }
 
@@ -204,7 +150,7 @@ class DataStorage {
 
   // Teams / Registrations
   public getTeams(gameId?: string): TeamRegistration[] {
-    const list = this.getItem<TeamRegistration[]>(STORAGE_KEYS.TEAMS, MOCK_TEAMS);
+    const list = this.getItem<TeamRegistration[]>(STORAGE_KEYS.TEAMS, []);
     return gameId ? list.filter(t => t.gameId === gameId) : list;
   }
 
@@ -226,7 +172,7 @@ class DataStorage {
 
   // Scores
   public getScores(gameId?: string): ScoreEntry[] {
-    const list = this.getItem<ScoreEntry[]>(STORAGE_KEYS.SCORES, MOCK_SCORES);
+    const list = this.getItem<ScoreEntry[]>(STORAGE_KEYS.SCORES, []);
     return gameId ? list.filter(s => s.gameId === gameId) : list;
   }
 
@@ -296,7 +242,7 @@ class DataStorage {
 
   // Heats
   public getHeats(gameId?: string): Heat[] {
-    const list = this.getItem<Heat[]>(STORAGE_KEYS.HEATS, MOCK_HEATS);
+    const list = this.getItem<Heat[]>(STORAGE_KEYS.HEATS, []);
     return gameId ? list.filter(h => h.gameId === gameId) : list;
   }
 
