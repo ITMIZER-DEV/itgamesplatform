@@ -1,10 +1,141 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Iniciando Seed do ITGAMES...');
+  const jsonPath = path.join(__dirname, 'seed-data.json');
+
+  if (fs.existsSync(jsonPath)) {
+    console.log('🌱 [SEED RESTORE] Arquivo seed-data.json encontrado! Restaurando snapshot...');
+    const raw = fs.readFileSync(jsonPath, 'utf-8');
+    const data = JSON.parse(raw);
+
+    // 1. Usuários
+    if (data.users?.length) {
+      console.log(`   Restaurando ${data.users.length} usuários...`);
+      for (const u of data.users) {
+        const { athleteProfile, organizedGames, ...userData } = u;
+        const user = await prisma.user.upsert({
+          where: { email: userData.email },
+          update: userData,
+          create: userData,
+        });
+
+        if (athleteProfile) {
+          const { id: _, userId: __, ...profData } = athleteProfile;
+          await prisma.athleteProfile.upsert({
+            where: { userId: user.id },
+            update: profData,
+            create: { ...profData, userId: user.id },
+          });
+        }
+      }
+    }
+
+    // 2. Games (Campeonatos)
+    if (data.games?.length) {
+      console.log(`   Restaurando ${data.games.length} campeonatos...`);
+      for (const g of data.games) {
+        const { organizers, registrations, categories, heats, auditLogs, ...gameData } = g;
+        await prisma.game.upsert({
+          where: { code: gameData.code },
+          update: gameData,
+          create: gameData,
+        });
+      }
+    }
+
+    // 3. Categorias
+    if (data.categories?.length) {
+      console.log(`   Restaurando ${data.categories.length} categorias...`);
+      for (const c of data.categories) {
+        await prisma.category.upsert({
+          where: { code_gamesId: { code: c.code, gamesId: c.gamesId } },
+          update: c,
+          create: c,
+        });
+      }
+    }
+
+    // 4. Workouts
+    if (data.workouts?.length) {
+      console.log(`   Restaurando ${data.workouts.length} workouts...`);
+      for (const w of data.workouts) {
+        await prisma.workout.upsert({
+          where: { code_game: { code: w.code, game: w.game } },
+          update: w,
+          create: w,
+        });
+      }
+    }
+
+    // 5. Inscrições e Atletas
+    if (data.registrations?.length) {
+      console.log(`   Restaurando ${data.registrations.length} inscrições...`);
+      for (const r of data.registrations) {
+        const { athletes, scores, laneSlots, ...regData } = r;
+        await prisma.registration.upsert({
+          where: { code_gameCode: { code: regData.code, gameCode: regData.gameCode } },
+          update: regData,
+          create: regData,
+        });
+
+        if (athletes?.length) {
+          for (const a of athletes) {
+            await prisma.athlete.upsert({
+              where: { code_team: { code: a.code, team: a.team } },
+              update: a,
+              create: a,
+            });
+          }
+        }
+      }
+    }
+
+    // 6. Baterias e Raias
+    if (data.heats?.length) {
+      console.log(`   Restaurando ${data.heats.length} baterias...`);
+      for (const h of data.heats) {
+        const { slots, ...heatData } = h;
+        await prisma.heat.upsert({
+          where: { id: heatData.id },
+          update: heatData,
+          create: heatData,
+        });
+
+        if (slots?.length) {
+          for (const s of slots) {
+            await prisma.laneSlot.upsert({
+              where: { id: s.id },
+              update: s,
+              create: s,
+            });
+          }
+        }
+      }
+    }
+
+    // 7. Scores
+    if (data.scores?.length) {
+      console.log(`   Restaurando ${data.scores.length} scores...`);
+      for (const sc of data.scores) {
+        const { auditLogs, ...scoreData } = sc;
+        await prisma.score.upsert({
+          where: { team_event: { codeTeam: scoreData.codeTeam, idEvent: scoreData.idEvent, game: scoreData.game } },
+          update: scoreData,
+          create: scoreData,
+        });
+      }
+    }
+
+    console.log('✅ [SEED RESTORE] Restauração completa de dados finalizada!');
+    return;
+  }
+
+  console.log('🌱 Iniciando Seed Padrão do ITGAMES...');
 
   const passwordHash = await bcrypt.hash('Adm@itmizer', 10);
 
