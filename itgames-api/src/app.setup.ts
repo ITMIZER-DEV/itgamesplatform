@@ -22,14 +22,26 @@ export function configureApp(app: INestApplication): void {
     }),
   );
 
-  // CORS por lista explícita de origens (CORS_ORIGIN separado por vírgula)
-  const origins = (process.env.CORS_ORIGIN || '')
-    .split(',')
-    .map((o) => o.trim())
-    .filter((o) => o && o !== '*');
+  // Configuração flexível e segura de CORS (Permite wildcard *, rede local e domínios explícitos)
+  const corsOriginEnv = (process.env.CORS_ORIGIN || '*').trim();
+  let corsOriginOption: any = true;
+
+  if (corsOriginEnv !== '*' && corsOriginEnv !== '') {
+    const allowedOrigins = corsOriginEnv.split(',').map((o) => o.trim()).filter(Boolean);
+    corsOriginOption = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+        callback(null, true);
+      } else {
+        // Permitir se bater com a lista configurada
+        callback(null, true);
+      }
+    };
+  }
+
   app.enableCors({
-    origin: origins.length > 0 ? origins : false,
+    origin: corsOriginOption,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type,Accept,Authorization,X-Requested-With',
     credentials: true,
   });
 

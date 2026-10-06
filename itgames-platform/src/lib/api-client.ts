@@ -2,19 +2,16 @@ import { ScoreEntry, Heat, AuditLogEntry, GameEvent, Category, WorkoutRule, Team
 import { storage } from './storage';
 import { getAuthToken, logoutUser } from './acl';
 
-const getApiBaseUrl = (): string => {
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
-  }
+export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
-    // Mesma stack: acessa a porta 3334 no mesmo hostname do navegador
+    if (process.env.NEXT_PUBLIC_API_URL) {
+      return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
+    }
+    // Mesma stack: acessa a porta 3334 no mesmo hostname/IP do navegador
     return `${window.location.protocol}//${window.location.hostname}:3334`;
   }
-  return 'http://localhost:3334';
-};
-
-const API_BASE_URL = getApiBaseUrl();
-
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3334';
+}
 
 export class ApiError extends Error {
   constructor(
@@ -40,15 +37,17 @@ export interface OrganizerUser {
 // Imagens enviadas ficam na própria API (/uploads/...); URLs externas passam como estão.
 export function assetUrl(path?: string | null): string {
   if (!path) return '';
-  return path.startsWith('/uploads/') ? `${API_BASE_URL}${path}` : path;
+  const baseUrl = getApiBaseUrl();
+  return path.startsWith('/uploads/') ? `${baseUrl}${path}` : path;
 }
 
 export class ApiClient {
   private send(endpoint: string, options: RequestInit = {}, withAuth = true): Promise<Response> {
+    const baseUrl = getApiBaseUrl();
     const token = withAuth ? getAuthToken() : null;
     // multipart (upload): o navegador define o Content-Type com o boundary
     const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData;
-    return fetch(`${API_BASE_URL}${endpoint}`, {
+    return fetch(`${baseUrl}${endpoint}`, {
       ...options,
       headers: {
         ...(isForm ? {} : { 'Content-Type': 'application/json' }),
@@ -77,7 +76,7 @@ export class ApiClient {
       }
       return await response.json();
     } catch (error) {
-      console.warn(`[API] Falha de conexão com backend ${API_BASE_URL}${endpoint}.`);
+      console.warn(`[API] Falha de conexão com backend ${getApiBaseUrl()}${endpoint}.`);
       return null;
     }
   }
