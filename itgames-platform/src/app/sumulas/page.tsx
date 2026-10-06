@@ -29,6 +29,7 @@ import {
   Sliders
 } from 'lucide-react';
 import { storage } from '@/lib/storage';
+import { useGames } from '@/lib/use-games';
 import { GameEvent, Category, WorkoutRule, TeamRegistration, Heat, SumulaTemplate, WorkoutType, EventType } from '@/types';
 import { replaceSumulaVariables, DEFAULT_SUMULA_TEMPLATES } from '@/lib/sumula-presets';
 import { OFFICIAL_WOD_PRESETS, WodPreset } from '@/lib/wod-presets';
@@ -36,8 +37,7 @@ import { toast } from 'sonner';
 import { AclGuard } from '@/components/auth/AclGuard';
 
 export default function SumulasStudioPage() {
-  const [games, setGames] = useState<GameEvent[]>([]);
-  const [activeGame, setActiveGame] = useState<GameEvent | null>(null);
+  const { games, activeGame } = useGames();
   const [categories, setCategories] = useState<Category[]>([]);
   const [workouts, setWorkouts] = useState<WorkoutRule[]>([]);
   const [teams, setTeams] = useState<TeamRegistration[]>([]);
@@ -77,12 +77,7 @@ export default function SumulasStudioPage() {
     storage.initDefaultsIfEmpty();
 
     const loadData = () => {
-      const allGames = storage.getGames();
-      setGames(allGames);
-
-      const activeId = storage.getActiveGameId();
-      const game = storage.getGameById(activeId) || allGames[0];
-      setActiveGame(game);
+      const game = activeGame;
 
       if (game) {
         const cats = storage.getCategories(game.id);
@@ -121,7 +116,7 @@ export default function SumulasStudioPage() {
     loadData();
     window.addEventListener('itgames_storage_updated', loadData);
     return () => window.removeEventListener('itgames_storage_updated', loadData);
-  }, []);
+  }, [activeGame]);
 
   const currentCategory = categories.find(c => c.id === selectedCategoryId) || categories[0];
   const currentWorkout = workouts.find(w => w.id === selectedWorkoutId) || workouts[0];
@@ -444,6 +439,14 @@ export default function SumulasStudioPage() {
     <AclGuard resource="sumulas" requiredRoleLabel="Organizadores e Mesa Técnica">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       
+      {(!activeGame || categories.length === 0) && (
+        <div className="no-print p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200">
+          {activeGame
+            ? 'Os dados deste campeonato (categorias, WODs, equipes e baterias) ainda não estão disponíveis nesta tela.'
+            : 'Nenhum campeonato disponível.'}
+        </div>
+      )}
+
       {/* CABEÇALHO PRINCIPAL DO ESTÚDIO */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-6 no-print">
         <div>

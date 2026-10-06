@@ -26,6 +26,7 @@ import {
   WifiOff
 } from 'lucide-react';
 import { storage } from '@/lib/storage';
+import { useGames } from '@/lib/use-games';
 import { GameEvent, Category, WorkoutRule, TeamRegistration, Heat, ScoreEntry, JudgeStaff } from '@/types';
 import { formatSecondsToTime } from '@/lib/scoring';
 import { apiClient, ApiError } from '@/lib/api-client';
@@ -43,7 +44,7 @@ const NO_REP_REASONS = [
 ];
 
 export default function JudgeAppPage() {
-  const [activeGame, setActiveGame] = useState<GameEvent | null>(null);
+  const { activeGame } = useGames();
   const [categories, setCategories] = useState<Category[]>([]);
   const [workouts, setWorkouts] = useState<WorkoutRule[]>([]);
   const [heats, setHeats] = useState<Heat[]>([]);
@@ -90,9 +91,7 @@ export default function JudgeAppPage() {
     storage.initDefaultsIfEmpty();
 
     const loadData = () => {
-      const activeId = storage.getActiveGameId();
-      const game = storage.getGameById(activeId) || storage.getGames()[0];
-      setActiveGame(game);
+      const game = activeGame;
 
       if (game) {
         const wods = storage.getWorkouts(game.id);
@@ -123,7 +122,7 @@ export default function JudgeAppPage() {
     loadData();
     window.addEventListener('itgames_storage_updated', loadData);
     return () => window.removeEventListener('itgames_storage_updated', loadData);
-  }, []);
+  }, [activeGame]);
 
   // Cronômetro
   useEffect(() => {
@@ -299,6 +298,14 @@ export default function JudgeAppPage() {
     <AclGuard resource="judge" requiredRoleLabel="Juízes de Arena e Head Judges">
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
       
+      {(!activeGame || categories.length === 0) && (
+        <div className="no-print p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200">
+          {activeGame
+            ? 'Os dados deste campeonato (categorias, WODs, equipes e baterias) ainda não estão disponíveis nesta tela.'
+            : 'Nenhum campeonato disponível.'}
+        </div>
+      )}
+
       {/* CABEÇALHO DO JUIZ */}
       <div className="glass-panel rounded-3xl p-5 border border-red-500/30 bg-gradient-to-r from-red-950/40 via-zinc-900 to-zinc-900 shadow-xl flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
