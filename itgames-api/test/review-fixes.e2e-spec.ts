@@ -1,6 +1,7 @@
 import * as request from 'supertest';
 import {
   bearer,
+  CPF_A,
   createCategoryFixture,
   createGameFixture,
   createTestApp,
@@ -69,12 +70,15 @@ describe('Correções da revisão final (e2e)', () => {
     expect(body).not.toContain('1990-05-17');
   });
 
-  it('I1: inscrição pública não consegue se declarar paga (status sempre pending)', async () => {
+  it('I1: inscrição de atleta não consegue se declarar paga (status sempre pending)', async () => {
     await createGameFixture(ctx.prisma, 'LIVE1', { status: 'live', organizerIds: [orgA.id] });
     await createCategoryFixture(ctx.prisma, 'LIVE1');
+    await createUser(ctx.prisma, { email: 'atl@t.com', role: 'ATHLETE', cpf: CPF_A });
+    const tAth = await login(ctx.app, 'atl@t.com');
     const res = await http()
       .post('/events/LIVE1/registrations')
-      .send({ categoryId: 1, teamName: 'Time A', status: 'paid', athletes: [{ name: 'Atleta', gender: 'M' }] })
+      .set(bearer(tAth))
+      .send({ categoryId: 1, teamName: 'Time A', status: 'paid', athletes: [{ cpf: CPF_A }] })
       .expect(201);
     expect(res.body.registration.status).toBe('pending');
   });

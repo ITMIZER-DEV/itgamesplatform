@@ -41,6 +41,17 @@ export function GameOrganizersModal({ game, onClose, onChanged }: Props) {
     }
   };
 
+  const handleToggleActive = async (o: OrganizerUser) => {
+    const next = o.active === false; // suspenso → reativa; ativo → suspende
+    try {
+      setLinked(await apiClient.setGameOrganizerActive(game.code, o.id, next));
+      onChanged();
+      toast.success(next ? 'Organizador reativado neste campeonato' : 'Organizador suspenso neste campeonato');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Falha ao alterar o organizador');
+    }
+  };
+
   const handleRemove = async (userId: string) => {
     try {
       setLinked(await apiClient.removeGameOrganizer(game.code, userId));
@@ -73,17 +84,33 @@ export function GameOrganizersModal({ game, onClose, onChanged }: Props) {
           )}
           {linked.map((o) => (
             <li key={o.id} className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-zinc-950 border border-zinc-800">
-              <div>
-                <div className="text-sm font-bold text-white">{o.name}</div>
+              <div className={o.active === false ? 'opacity-60' : ''}>
+                <div className="text-sm font-bold text-white flex items-center gap-2">
+                  {o.name}
+                  {o.active === false && (
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                      Suspenso
+                    </span>
+                  )}
+                </div>
                 <div className="text-[11px] text-zinc-400 font-mono">{o.email}</div>
               </div>
-              <button
-                onClick={() => handleRemove(o.id)}
-                className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400"
-                title="Desvincular"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleToggleActive(o)}
+                  className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold"
+                  title={o.active === false ? 'Reativar neste campeonato' : 'Suspender neste campeonato (mantém o vínculo)'}
+                >
+                  {o.active === false ? 'Reativar' : 'Suspender'}
+                </button>
+                <button
+                  onClick={() => handleRemove(o.id)}
+                  className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400"
+                  title="Desvincular"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </li>
           ))}
         </ul>

@@ -10,6 +10,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../common/enums/role.enum';
 import { AuthUser } from '../../common/types/auth-user';
 import { AddOrganizerDto } from './dto/add-organizer.dto';
+import { SetOrganizerActiveDto } from './dto/set-organizer-active.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import {
   CreateCategoryDto,
@@ -113,6 +114,17 @@ export class EventsController {
   }
 
   @Roles(UserRole.SUPER_ADMIN)
+  @Patch(':code/organizers/:userId')
+  @ApiOperation({ summary: 'Super Admin: suspender/reativar organizador neste campeonato (mantém o vínculo)' })
+  async setOrganizerActive(
+    @Param('code') code: string,
+    @Param('userId') userId: string,
+    @Body() dto: SetOrganizerActiveDto,
+  ) {
+    return this.eventsService.setOrganizerActive(code, userId, dto.active);
+  }
+
+  @Roles(UserRole.SUPER_ADMIN)
   @Delete(':code/organizers/:userId')
   @ApiOperation({ summary: 'Super Admin: desvincular organizador do campeonato' })
   async removeOrganizer(@Param('code') code: string, @Param('userId') userId: string) {
@@ -179,11 +191,14 @@ export class EventsController {
   }
 
   // 5. Inscrições
-  @Public()
+  // Organizador também pode competir (desde que não esteja ativo neste campeonato: regra no serviço)
+  @Roles(UserRole.ATHLETE, UserRole.ORGANIZER)
   @Post(':code/registrations')
-  @ApiOperation({ summary: 'Inscrição de equipe/atleta (somente em campeonato liberado)' })
-  async registerTeam(@Param('code') code: string, @Body() dto: CreateRegistrationDto) {
-    return this.eventsService.registerTeam({ ...dto, gameCode: code });
+  @ApiOperation({
+    summary: 'Inscrição de equipe/atleta feita pelo capitão logado; todos os integrantes precisam de cadastro (CPF)',
+  })
+  async registerTeam(@Param('code') code: string, @Body() dto: CreateRegistrationDto, @CurrentUser() user: AuthUser) {
+    return this.eventsService.registerTeam({ ...dto, gameCode: code }, user);
   }
 
   @Roles(UserRole.ORGANIZER)

@@ -7,7 +7,7 @@ import { AuthUser } from '../types/auth-user';
 export class GameAccessService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // Super admin gerencia tudo; organizador gerencia apenas campeonatos em que está vinculado.
+  // Super admin gerencia tudo; organizador gerencia apenas campeonatos em que está vinculado e ativo (não suspenso).
   async canManage(user: AuthUser | undefined, gameCode: string): Promise<boolean> {
     if (!user) return false;
     if (user.role === UserRole.SUPER_ADMIN) return true;
@@ -15,7 +15,7 @@ export class GameAccessService {
     const link = await this.prisma.gameOrganizer.findUnique({
       where: { gameCode_userId: { gameCode, userId: user.id } },
     });
-    return !!link;
+    return !!link && link.active;
   }
 
   async assertCanManage(user: AuthUser | undefined, gameCode: string): Promise<void> {

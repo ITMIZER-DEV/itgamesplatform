@@ -30,11 +30,19 @@ describe('Auth (e2e)', () => {
   it('register ignora o role enviado e cria ATHLETE', async () => {
     const res = await http()
       .post('/auth/register')
-      .send({ email: 'novo@x.com', password: DEFAULT_PASSWORD, name: 'Novo', role: 'SUPER_ADMIN' })
+      .send({ email: 'novo@x.com', password: DEFAULT_PASSWORD, name: 'Novo', cpf: '529.982.247-25', role: 'SUPER_ADMIN' })
       .expect(201);
     expect(res.body.user.role).toBe('ATHLETE');
     const db = await ctx.prisma.user.findUnique({ where: { email: 'novo@x.com' } });
     expect(db.role).toBe('ATHLETE');
+    expect(db.cpf).toBe('52998224725');
+  });
+
+  it('register exige CPF válido', async () => {
+    const base = { email: 'cpf@x.com', password: DEFAULT_PASSWORD, name: 'Sem CPF' };
+    await http().post('/auth/register').send(base).expect(400);
+    await http().post('/auth/register').send({ ...base, cpf: '12345678900' }).expect(400);
+    await http().post('/auth/register').send({ ...base, cpf: '111.111.111-11' }).expect(400);
   });
 
   it('register sem e-mail retorna 400', async () => {

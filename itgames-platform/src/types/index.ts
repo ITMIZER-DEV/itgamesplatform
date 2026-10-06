@@ -75,6 +75,9 @@ export interface Category {
   
   spotsTotal: number; // Limite de vagas
   spotsFilled: number;
+  // Limite real de inscrições vindo da API (null/ausente = sem limite) e quantas já ocupam vaga
+  maxRegistrations?: number | null;
+  registrationsCount?: number;
 }
 
 export interface HyroxStation {

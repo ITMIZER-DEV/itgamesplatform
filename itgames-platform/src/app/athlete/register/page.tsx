@@ -23,15 +23,32 @@ import {
 } from 'lucide-react';
 import { storage } from '@/lib/storage';
 import { GameEvent, Category, TeamRegistration, Athlete } from '@/types';
-import { calculateAge, validateTeamAgainstCategoryRules, ValidationResult } from '@/lib/team-validation';
+import { formatCpf, isValidCpf, onlyDigits } from '@/lib/cpf';
+import { getCurrentUserSession } from '@/lib/acl';
 import { LgpdConsentModal } from '@/components/lgpd/LgpdConsentModal';
 import { QRCodeSVG } from 'qrcode.react';
 import { apiClient, ApiError } from '@/lib/api-client';
 import { buildPixPayload } from '@/lib/pix';
 import { toast } from 'sonner';
 
+// Integrante identificado por CPF (e e-mail opcional). Os dados reais vêm do cadastro de atleta, na API.
+interface Member {
+  cpf: string;
+  email: string;
+  status: 'idle' | 'checking' | 'found' | 'missing' | 'invalid';
+  firstName?: string;
+}
+
+// Categoria esgotada: tem limite de inscrições e todas as vagas já estão ocupadas
+function isCategoryFull(cat: Category): boolean {
+  return !!cat.maxRegistrations && (cat.registrationsCount ?? 0) >= cat.maxRegistrations;
+}
+
 export default function AthleteRegistrationWizardPage() {
   const [isMounted, setIsMounted] = useState(false);
+  // 'guest' → vai para o login; 'forbidden' → logado, mas não é atleta; 'ok' → capitão logado
+  const [access, setAccess] = useState<'loading' | 'guest' | 'forbidden' | 'ok'>('loading');
+  const [captain, setCaptain] = useState<{ name: string; cpf: string } | null>(null);
   const [activeGame, setActiveGame] = useState<GameEvent | null>(null);
   const [games, setGames] = useState<GameEvent[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -42,7 +59,7 @@ export default function AthleteRegistrationWizardPage() {
   // Seleções
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [teamName, setTeamName] = useState<string>('');
-  const [athletes, setAthletes] = useState<Athlete[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
 
   // LGPD & Pagamento
   const [isLgpdModalOpen, setIsLgpdModalOpen] = useState(false);
@@ -108,8 +125,10 @@ export default function AthleteRegistrationWizardPage() {
           minIndividualAge: c.minIndividualAge,
           maxIndividualAge: c.maxIndividualAge,
           minSumTeamAge: c.minTeamSumAge,
-          spotsTotal: 30,
-          spotsFilled: 0,
+          spotsTotal: c.maxRegistrations ?? 0,
+          spotsFilled: c.registrationsCount ?? 0,
+          maxRegistrations: c.maxRegistrations ?? null,
+          registrationsCount: c.registrationsCount ?? 0,
         }));
         setCategories(loadedCats);
       } else {
@@ -119,12 +138,34 @@ export default function AthleteRegistrationWizardPage() {
       }
 
 
-      if (loadedCats.length > 0) {
-        setSelectedCategoryId(loadedCats[0].id);
-        initAthletesForCategory(loadedCats[0]);
-      }
+      // pré-seleciona a primeira categoria que ainda tem vaga
+      const firstOpen = loadedCats.find((c) => !isCategoryFull(c));
+      setSelectedCategoryId(firstOpen ? firstOpen.id : '');
     }
   };
+
+  // A inscrição exige capitão logado como atleta; o CPF dele vem do cadastro (GET /auth/me)
+  useEffect(() => {
+    const session = getCurrentUserSession();
+    if (session.role === 'GUEST') {
+      setAccess('guest');
+      window.location.replace('/login?next=/athlete/register');
+      return;
+    }
+    // organizador também compete; a API barra quem ainda é organizador ativo do campeonato
+    if (session.role !== 'ATHLETE' && session.role !== 'ORGANIZER') {
+      setAccess('forbidden');
+      return;
+    }
+    apiClient
+      .getMe()
+      .then((me) => {
+        // ownCpf é o CPF do próprio usuário sem máscara (o campo cpf vem mascarado pela API)
+        setCaptain({ name: me.name, cpf: onlyDigits(me.ownCpf || '') });
+        setAccess('ok');
+      })
+      .catch(() => setAccess('guest'));
+  }, []);
 
   useEffect(() => {
     setIsMounted(true);
@@ -136,58 +177,54 @@ export default function AthleteRegistrationWizardPage() {
 
   const currentCategory: Category | undefined = categories.find(c => c.id === selectedCategoryId) || categories[0];
 
-  // Inicializar lista de atletas de acordo com a categoria
-  const initAthletesForCategory = (cat?: Category) => {
-    if (!cat) return;
-    const maxCount = cat.maxAthletesPerTeam || 1;
-    const list: Athlete[] = [];
-    for (let i = 0; i < maxCount; i++) {
-      list.push({
-        id: `ath_${Date.now()}_${i}`,
-        name: '',
-        cpf: '',
-        email: '',
-        phone: '',
-        birthDate: '1990-01-01',
-        age: 36,
-        gender: cat.genderComposition === 'female' ? 'F' : 'M',
-        tshirtSize: 'M',
-        boxOrAffiliate: '',
-        checkIn: false
-      });
-    }
-    setAthletes(list);
-  };
+  // Lista de integrantes: o capitão (logado) é sempre o #1; os demais são preenchidos por CPF
+  useEffect(() => {
+    if (!currentCategory || !captain) return;
+    const count = currentCategory.maxAthletesPerTeam || 1;
+    const list: Member[] = [{ cpf: captain.cpf, email: '', status: 'found', firstName: captain.name.split(' ')[0] }];
+    for (let i = 1; i < count; i++) list.push({ cpf: '', email: '', status: 'idle' });
+    setMembers(list);
+  }, [currentCategory?.id, currentCategory?.maxAthletesPerTeam, captain]);
 
   const handleSelectCategory = (catId: string) => {
+    const cat = categories.find((c) => c.id === catId);
+    if (cat && isCategoryFull(cat)) {
+      toast.error(`Categoria esgotada: ${cat.name} atingiu o limite de ${cat.maxRegistrations} inscrições.`);
+      return;
+    }
     setSelectedCategoryId(catId);
-    const cat = categories.find(c => c.id === catId);
-    if (cat) {
-      initAthletesForCategory(cat);
-    }
   };
 
-  // Atualizar dados de 1 atleta
-  const handleUpdateAthlete = (index: number, field: keyof Athlete, value: any) => {
-    const updated = [...athletes];
-    if (!updated[index]) return;
-    
-    updated[index] = {
-      ...updated[index],
-      [field]: value
-    };
+  const patchMember = (index: number, patch: Partial<Member>) =>
+    setMembers((prev) => prev.map((m, i) => (i === index ? { ...m, ...patch } : m)));
 
-    if (field === 'birthDate') {
-      updated[index].age = calculateAge(value);
+  // Digitou o CPF do parceiro: valida o formato e confere na API se ele tem cadastro de atleta
+  const handleMemberCpf = async (index: number, raw: string) => {
+    const cpf = formatCpf(raw);
+    if (onlyDigits(cpf).length < 11) {
+      patchMember(index, { cpf, status: 'idle', firstName: undefined });
+      return;
     }
-
-    setAthletes(updated);
+    if (!isValidCpf(cpf)) {
+      patchMember(index, { cpf, status: 'invalid', firstName: undefined });
+      return;
+    }
+    patchMember(index, { cpf, status: 'checking', firstName: undefined });
+    try {
+      const res = await apiClient.lookupAthlete(onlyDigits(cpf));
+      // ignora a resposta se o campo mudou enquanto a consulta rodava
+      setMembers((prev) =>
+        prev.map((m, i) =>
+          i === index && m.cpf === cpf
+            ? { ...m, status: res.found ? 'found' : 'missing', firstName: res.firstName }
+            : m,
+        ),
+      );
+    } catch (err) {
+      patchMember(index, { status: 'idle' });
+      toast.error(err instanceof ApiError ? err.message : 'Não foi possível consultar o CPF.');
+    }
   };
-
-  // Validar regras da equipe
-  const validation: ValidationResult = currentCategory 
-    ? validateTeamAgainstCategoryRules(currentCategory, athletes)
-    : { isValid: false, message: 'Selecione uma categoria válida', calculatedAgeSum: 0, athleteAges: [] };
 
   // Avançar para pagamento
   const handleProceedToPayment = () => {
@@ -196,14 +233,19 @@ export default function AthleteRegistrationWizardPage() {
       return;
     }
 
-    const hasEmptyNames = athletes.some(a => !a.name.trim());
-    if (hasEmptyNames) {
-      toast.error('Preencha o nome completo de todos os integrantes');
+    const problem = members.find((m) => m.status !== 'found');
+    if (problem) {
+      toast.error(
+        problem.status === 'missing'
+          ? 'Todos os integrantes precisam ter cadastro de atleta. Peça ao parceiro para se cadastrar.'
+          : 'Informe o CPF válido de todos os integrantes.',
+      );
       return;
     }
 
-    if (!validation.isValid) {
-      toast.error(validation.message);
+    const cpfs = members.map((m) => onlyDigits(m.cpf));
+    if (new Set(cpfs).size !== cpfs.length) {
+      toast.error('Há CPF repetido entre os integrantes.');
       return;
     }
 
@@ -227,17 +269,18 @@ export default function AthleteRegistrationWizardPage() {
         gameCode: activeGame.code || activeGame.id,
         categoryId: catCodeNumber,
         teamName,
-        athletes: athletes.map((a) => ({
-          name: a.name,
-          cpf: a.cpf,
-          phonenumber: a.phone,
-          birthDate: a.birthDate,
-          gender: a.gender,
-          tshirtSize: a.tshirtSize || 'M',
+        athletes: members.map((m) => ({
+          cpf: onlyDigits(m.cpf),
+          ...(m.email.trim() ? { email: m.email.trim() } : {}),
         })),
       });
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Não foi possível concluir a inscrição. Tente novamente.');
+      if (err instanceof ApiError && err.status === 409) {
+        // alguém ocupou a última vaga enquanto você preenchia: volta para a escolha com as vagas atualizadas
+        setStep(1);
+        await loadData();
+      }
       return;
     }
 
@@ -255,11 +298,14 @@ export default function AthleteRegistrationWizardPage() {
       paymentMethod: 'pix',
       registeredAt: new Date().toISOString(),
       checkedIn: false,
-      teamAgeSum: validation.calculatedAgeSum,
+      teamAgeSum: 0,
       validationStatus: 'valid',
-      validationMessage: validation.message,
-      athletes: athletes.map((a) => ({
-        ...a,
+      validationMessage: '',
+      // dados oficiais, como a API gravou a partir do cadastro de cada atleta
+      athletes: (saved?.athletes ?? []).map((a: any) => ({
+        id: `ath_${saved?.code}_${a.code}`,
+        name: a.name,
+        gender: a.gender === 'F' ? 'F' : 'M',
         tshirtSize: a.tshirtSize || 'M',
         checkIn: false,
         lgpdConsent: true,
@@ -289,9 +335,41 @@ export default function AthleteRegistrationWizardPage() {
     );
   }
 
+  if (access !== 'ok' || !captain?.cpf) {
+    const notice =
+      access === 'forbidden'
+        ? 'A inscrição em competições é feita por atletas e organizadores. Entre com a sua conta.'
+        : access === 'ok'
+          ? 'Seu cadastro não possui CPF. Complete o cadastro em "Meu Perfil" para se inscrever.'
+          : null;
+    return (
+      <div className="max-w-md mx-auto px-4 py-16 text-center text-zinc-400 space-y-4">
+        {notice ? (
+          <>
+            <AlertCircle className="w-8 h-8 text-amber-400 mx-auto" />
+            <p className="text-sm">{notice}</p>
+            <Link
+              href={access === 'ok' ? '/perfil?next=/athlete/register' : '/login?next=/athlete/register'}
+              className="inline-block text-xs font-bold text-amber-400 underline"
+            >
+              {access === 'ok' ? 'Completar cadastro' : 'Ir para o login / cadastro de atleta'}
+            </Link>
+          </>
+        ) : (
+          <>
+            <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto" />
+            <span className="text-sm">
+              {access === 'guest' ? 'Redirecionando para o login...' : 'Verificando seu cadastro de atleta...'}
+            </span>
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-      
+
       {/* CABEÇALHO DO WIZARD DE INSCRIÇÃO */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800 pb-6">
         <div>
@@ -330,21 +408,32 @@ export default function AthleteRegistrationWizardPage() {
               1. Selecione a sua Categoria:
             </h3>
 
+            {categories.length > 0 && categories.every(isCategoryFull) && (
+              <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/40 text-sm text-red-300">
+                Todas as categorias deste campeonato atingiram o limite de inscrições. Não há vagas disponíveis no momento.
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {categories.map((cat) => {
                 const isSelected = cat.id === selectedCategoryId;
                 const formatLabel = (cat.teamFormat || 'individual').toUpperCase();
                 const maxAthletes = cat.maxAthletesPerTeam || 1;
                 const priceVal = cat.price || 0;
+                const isFull = isCategoryFull(cat);
 
                 return (
                   <button
                     key={cat.id}
                     onClick={() => handleSelectCategory(cat.id)}
+                    disabled={isFull}
+                    aria-disabled={isFull}
                     className={`p-5 rounded-2xl text-left transition-all flex flex-col justify-between gap-4 ${
-                      isSelected
-                        ? 'bg-amber-500/15 border-2 border-amber-500 shadow-xl shadow-amber-500/10 scale-[1.01]'
-                        : 'bg-zinc-950/80 hover:bg-zinc-900 border border-zinc-800'
+                      isFull
+                        ? 'bg-zinc-950/60 border border-red-500/30 opacity-60 cursor-not-allowed'
+                        : isSelected
+                          ? 'bg-amber-500/15 border-2 border-amber-500 shadow-xl shadow-amber-500/10 scale-[1.01]'
+                          : 'bg-zinc-950/80 hover:bg-zinc-900 border border-zinc-800'
                     }`}
                   >
                     <div>
@@ -357,7 +446,19 @@ export default function AthleteRegistrationWizardPage() {
                         </span>
                       </div>
 
-                      <h4 className="text-base font-black text-white mt-2">{cat.name}</h4>
+                      <h4 className="text-base font-black text-white mt-2 flex items-center gap-2 flex-wrap">
+                        <span>{cat.name}</span>
+                        {isFull && (
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40">
+                            Esgotado
+                          </span>
+                        )}
+                      </h4>
+                      {isFull && (
+                        <p className="text-[11px] text-red-300 mt-1">
+                          Limite de {cat.maxRegistrations} inscrições atingido. Não é possível se inscrever nesta categoria.
+                        </p>
+                      )}
                       <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{cat.description || ''}</p>
                     </div>
 
@@ -378,9 +479,11 @@ export default function AthleteRegistrationWizardPage() {
                           Idade Máxima: Até {cat.maxIndividualAge} anos
                         </span>
                       )}
-                      <span className="text-zinc-500 font-semibold">
-                        {cat.spotsFilled || 0}/{cat.spotsTotal || 20} vagas
-                      </span>
+                      {cat.maxRegistrations ? (
+                        <span className={isFull ? 'text-red-300 font-bold' : 'text-zinc-500 font-semibold'}>
+                          {cat.registrationsCount ?? 0}/{cat.maxRegistrations} vagas
+                        </span>
+                      ) : null}
                     </div>
                   </button>
                 );
@@ -390,7 +493,7 @@ export default function AthleteRegistrationWizardPage() {
             <div className="flex items-center justify-end pt-4 border-t border-zinc-800">
               <button
                 onClick={() => setStep(2)}
-                disabled={!selectedCategoryId}
+                disabled={!selectedCategoryId || (!!currentCategory && isCategoryFull(currentCategory))}
                 className="px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
               >
                 <span>Avançar para Cadastro da Equipe</span>
@@ -424,142 +527,88 @@ export default function AthleteRegistrationWizardPage() {
             />
           </div>
 
-          {/* LISTA DE ATLETAS */}
+          {/* INTEGRANTES: o capitão é o atleta logado; os demais são identificados pelo CPF do cadastro de atleta */}
           <div className="glass-panel rounded-3xl p-6 border border-zinc-800 space-y-6">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <UserCheck className="w-5 h-5 text-purple-400" />
-                Integrantes da Equipe ({athletes.length}/{currentCategory.maxAthletesPerTeam || 1})
+                Integrantes da Equipe ({members.length}/{currentCategory.maxAthletesPerTeam || 1})
               </h3>
-
-              {/* SOMA DE IDADES ATUAL */}
-              {currentCategory.ageRule === 'sum_team_age' && (
-                <div className="px-3 py-1 rounded-xl bg-blue-500/20 border border-blue-500/40 text-blue-400 text-xs font-bold">
-                  Soma Atual: <strong>{validation.calculatedAgeSum} anos</strong> (Mínimo: {currentCategory.minSumTeamAge || 110})
-                </div>
-              )}
             </div>
+
+            <p className="text-xs text-zinc-400">
+              Todos os integrantes precisam ter cadastro de atleta. Informe o CPF de cada parceiro; os dados (nome, idade,
+              camiseta) vêm do cadastro dele. Quem ainda não tem conta deve se cadastrar em{' '}
+              <Link href="/login" className="text-amber-400 underline">
+                Cadastro de Atleta
+              </Link>
+              .
+            </p>
 
             <div className="space-y-4">
-              {athletes.map((athlete, idx) => (
-                <div key={athlete.id} className="p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">
-                      Atleta #{idx + 1}
-                    </span>
-                    <div className="text-[11px] text-zinc-400 font-semibold">
-                      Idade Calculada: <strong className="text-white">{athlete.age || 0} anos</strong>
+              {members.map((member, idx) => {
+                const isCaptain = idx === 0;
+                return (
+                  <div key={idx} className="p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">
+                        {isCaptain ? 'Atleta #1 • Capitão (você)' : `Atleta #${idx + 1}`}
+                      </span>
+                      {member.status === 'checking' && <span className="text-[11px] text-zinc-400">Consultando...</span>}
+                      {member.status === 'found' && (
+                        <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Cadastro encontrado{member.firstName ? `: ${member.firstName}` : ''}
+                        </span>
+                      )}
+                      {member.status === 'missing' && (
+                        <span className="text-[11px] font-bold text-red-400 flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5" /> Sem cadastro de atleta
+                        </span>
+                      )}
+                      {member.status === 'invalid' && (
+                        <span className="text-[11px] font-bold text-red-400 flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5" /> CPF inválido
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-zinc-400 block mb-1">CPF *</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          required
+                          disabled={isCaptain}
+                          value={formatCpf(member.cpf)}
+                          onChange={(e) => handleMemberCpf(idx, e.target.value)}
+                          placeholder="000.000.000-00"
+                          className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 disabled:opacity-70"
+                        />
+                      </div>
+
+                      {!isCaptain && (
+                        <div>
+                          <label className="text-[11px] font-bold text-zinc-400 block mb-1">E-mail do atleta (opcional)</label>
+                          <input
+                            type="email"
+                            value={member.email}
+                            onChange={(e) => patchMember(idx, { email: e.target.value })}
+                            placeholder="parceiro@exemplo.com"
+                            className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className="text-[11px] font-bold text-zinc-400 block mb-1">Nome Completo</label>
-                      <input
-                        type="text"
-                        required
-                        value={athlete.name}
-                        onChange={(e) => handleUpdateAthlete(idx, 'name', e.target.value)}
-                        placeholder="Nome do atleta"
-                        className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-bold text-zinc-400 block mb-1">Data de Nascimento</label>
-                      <input
-                        type="date"
-                        required
-                        value={athlete.birthDate || '1990-01-01'}
-                        onChange={(e) => handleUpdateAthlete(idx, 'birthDate', e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-bold text-zinc-400 block mb-1">Gênero</label>
-                      <select
-                        value={athlete.gender}
-                        onChange={(e) => handleUpdateAthlete(idx, 'gender', e.target.value as 'M' | 'F')}
-                        className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
-                      >
-                        <option value="M">Masculino (M)</option>
-                        <option value="F">Feminino (F)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-1">
-                    <div>
-                      <label className="text-[11px] font-bold text-zinc-400 block mb-1">Tamanho Camiseta</label>
-                      <select
-                        value={athlete.tshirtSize || 'M'}
-                        onChange={(e) => handleUpdateAthlete(idx, 'tshirtSize', e.target.value as any)}
-                        className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-amber-500/40 text-xs text-amber-300 font-bold focus:outline-none focus:border-amber-500"
-                      >
-                        <option value="PP">PP (Extra Pequeno)</option>
-                        <option value="P">P (Pequeno)</option>
-                        <option value="M">M (Médio)</option>
-                        <option value="G">G (Grande)</option>
-                        <option value="GG">GG (Extra Grande)</option>
-                        <option value="XG">XG (Super Grande)</option>
-                        <option value="XGG">XGG (Plus)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-bold text-zinc-400 block mb-1">CPF (Opcional p/ LGPD)</label>
-                      <input
-                        type="text"
-                        value={athlete.cpf || ''}
-                        onChange={(e) => handleUpdateAthlete(idx, 'cpf', e.target.value)}
-                        placeholder="000.000.000-00"
-                        className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-bold text-zinc-400 block mb-1">WhatsApp / Telefone</label>
-                      <input
-                        type="text"
-                        value={athlete.phone || ''}
-                        onChange={(e) => handleUpdateAthlete(idx, 'phone', e.target.value)}
-                        placeholder="(11) 99999-9999"
-                        className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-bold text-zinc-400 block mb-1">Box / Academia</label>
-                      <input
-                        type="text"
-                        value={athlete.boxOrAffiliate || ''}
-                        onChange={(e) => handleUpdateAthlete(idx, 'boxOrAffiliate', e.target.value)}
-                        placeholder="Ex: CrossFit Imperial"
-                        className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
-            {/* STATUS DO MOTOR DE VALIDAÇÃO DE REGRAS */}
-            <div className={`p-4 rounded-2xl border flex items-start gap-3 ${
-              validation.isValid ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' : 'bg-red-500/10 border-red-500/40 text-red-300'
-            }`}>
-              {validation.isValid ? (
-                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-              ) : (
-                <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-              )}
-              <div className="text-xs">
-                <div className="font-bold">
-                  {validation.isValid ? 'Equipe Elegível para a Categoria' : 'Inconformidade com as Regras da Categoria'}
-                </div>
-                <div className="text-zinc-300 mt-0.5">{validation.message}</div>
-              </div>
-            </div>
+            <p className="text-[11px] text-zinc-500">
+              As regras da categoria (idade e gênero) são conferidas pela organização com os dados cadastrados de cada atleta ao
+              concluir a inscrição.
+            </p>
 
             {/* BOTÕES DE NAVEGAÇÃO */}
             <div className="flex items-center justify-between pt-4 border-t border-zinc-800">

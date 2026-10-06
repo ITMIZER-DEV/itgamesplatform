@@ -22,6 +22,7 @@ model User {
 
   organizedGames GameOrganizer[]
   athleteProfile AthleteProfile?
+  passwordResetTokens PasswordResetToken[]
 
   @@map("users")
 }
@@ -81,6 +82,7 @@ model Category {
   foto            String?
   gamesId         String
   maxAthlete      Int?           @default(1)
+  maxRegistrations Int?          // limite de inscrições (não canceladas) na categoria; nulo = sem limite
   
   // Regras avançadas de Categoria e Equipe
   teamType        String?        @default("individual") // "individual" | "duo" | "trio" | "team_4"
@@ -259,6 +261,7 @@ model AuditLog {
 model GameOrganizer {
   gameCode  String
   userId    String
+  active    Boolean  @default(true) // false = suspenso neste campeonato (vínculo mantido, sem acesso de gestão)
   createdAt DateTime @default(now())
 
   game      Game     @relation(fields: [gameCode], references: [code], onDelete: Cascade)
@@ -266,4 +269,62 @@ model GameOrganizer {
 
   @@id([gameCode, userId])
   @@map("games_organizers")
+}
+
+// ─── E-mails ────────────────────────────────────────────────────────────────
+
+// Linha única (id = 1): servidor SMTP. A senha é guardada criptografada.
+model MailSettings {
+  id          Int      @id @default(1)
+  enabled     Boolean  @default(false)
+  host        String   @default("smtp.gmail.com")
+  port        Int      @default(587)
+  secure      String   @default("starttls") // starttls | ssl
+  username    String   @default("")
+  passwordEnc String?
+  fromName    String   @default("ITGames")
+  fromAddress String   @default("")
+  appBaseUrl  String   @default("")
+  updatedAt   DateTime @updatedAt
+
+  @@map("mail_settings")
+}
+
+// Só existe linha para templates editados; sem linha vale o padrão do código.
+model MailTemplate {
+  type      String   @id
+  enabled   Boolean  @default(true)
+  subject   String
+  body      String
+  updatedAt DateTime @updatedAt
+
+  @@map("mail_templates")
+}
+
+model EmailLog {
+  id        String   @id @default(uuid())
+  type      String
+  toAddress String
+  subject   String
+  status    String // sent | failed | skipped
+  error     String?
+  payload   Json? // variáveis usadas, para reenviar (nulo em password_reset e test)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("email_logs")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }

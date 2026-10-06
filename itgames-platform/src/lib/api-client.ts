@@ -33,6 +33,52 @@ export interface OrganizerUser {
   mustChangePassword?: boolean;
   createdAt?: string;
   _count?: { organizedGames: number };
+  // vínculo com um campeonato: false = suspenso naquele campeonato (só vem nas listas por campeonato)
+  active?: boolean;
+}
+
+export interface AthleteAdminRow {
+  id: string;
+  name: string;
+  email: string;
+  phoneNumber: string | null;
+  cpfMasked: string | null;
+  mustChangePassword: boolean;
+  createdAt: string;
+}
+
+export interface MailSettings {
+  enabled: boolean;
+  host: string;
+  port: number;
+  secure: 'starttls' | 'ssl';
+  username: string;
+  fromName: string;
+  fromAddress: string;
+  appBaseUrl: string;
+  passwordSet: boolean;
+}
+
+export interface MailTemplateInfo {
+  type: string;
+  label: string;
+  variables: string[];
+  enabled: boolean;
+  subject: string;
+  body: string;
+  custom: boolean;
+  defaultSubject: string;
+  defaultBody: string;
+}
+
+export interface MailLogEntry {
+  id: string;
+  type: string;
+  toAddress: string;
+  subject: string;
+  status: 'sent' | 'failed' | 'skipped';
+  error: string | null;
+  createdAt: string;
 }
 
 // Imagens enviadas ficam na própria API (/uploads/...); URLs externas passam como estão.
@@ -121,7 +167,7 @@ export class ApiClient {
     email: string;
     password: string;
     name: string;
-    cpf?: string;
+    cpf: string;
     phoneNumber?: string;
     birthDate?: string;
     gender?: string;
@@ -133,6 +179,11 @@ export class ApiClient {
       { method: 'POST', body: JSON.stringify(userData) },
       false,
     );
+  }
+
+  // Confere se um CPF tem cadastro de atleta (só primeiro nome e CPF mascarado)
+  async lookupAthlete(cpf: string): Promise<{ found: boolean; firstName?: string; cpfMasked: string }> {
+    return this.strict(`/athletes/lookup?cpf=${encodeURIComponent(cpf)}`);
   }
 
   async getMe(): Promise<any> {
@@ -149,6 +200,84 @@ export class ApiClient {
   // Organizadores (Super Admin)
   async listOrganizers(): Promise<OrganizerUser[]> {
     return this.strict<OrganizerUser[]>('/users/organizers');
+  }
+
+  // Meu perfil: completa nome, telefone, CPF (uma vez) e dados de atleta
+  async updateProfile(data: {
+    name?: string;
+    phoneNumber?: string;
+    cpf?: string;
+    birthDate?: string;
+    gender?: string;
+    tshirtSize?: string;
+    boxOrGym?: string;
+  }): Promise<any> {
+    return this.strict<any>('/auth/profile', { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  // Super admin: atletas (busca e senha temporária)
+  async listAthletes(q?: string): Promise<AthleteAdminRow[]> {
+    return this.strict<AthleteAdminRow[]>(`/users/athletes${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+  }
+
+  async resetAthletePassword(id: string): Promise<{ user: AthleteAdminRow; temporaryPassword: string }> {
+    return this.strict(`/users/athletes/${id}/reset-password`, { method: 'POST' });
+  }
+
+  // Recuperação de senha (público)
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    return this.strict('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }, false);
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+    return this.strict(
+      '/auth/reset-password',
+      { method: 'POST', body: JSON.stringify({ token, newPassword }) },
+      false,
+    );
+  }
+
+  // E-mails (super admin)
+  async getMailSettings(): Promise<MailSettings> {
+    return this.strict<MailSettings>('/mail/settings');
+  }
+
+  async saveMailSettings(data: Partial<MailSettings> & { password?: string }): Promise<MailSettings> {
+    return this.strict<MailSettings>('/mail/settings', { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  async testMailSettings(): Promise<{ ok: boolean; error?: string }> {
+    return this.strict('/mail/settings/test', { method: 'POST' });
+  }
+
+  async listMailTemplates(): Promise<MailTemplateInfo[]> {
+    return this.strict<MailTemplateInfo[]>('/mail/templates');
+  }
+
+  async saveMailTemplate(
+    type: string,
+    data: { enabled: boolean; subject: string; body: string },
+  ): Promise<MailTemplateInfo> {
+    return this.strict<MailTemplateInfo>(`/mail/templates/${type}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  async resetMailTemplate(type: string): Promise<MailTemplateInfo> {
+    return this.strict<MailTemplateInfo>(`/mail/templates/${type}`, { method: 'DELETE' });
+  }
+
+  async previewMailTemplate(
+    type: string,
+    draft: { subject: string; body: string },
+  ): Promise<{ subject: string; text: string; html: string }> {
+    return this.strict(`/mail/templates/${type}/preview`, { method: 'POST', body: JSON.stringify(draft) });
+  }
+
+  async listMailLogs(status?: string): Promise<MailLogEntry[]> {
+    return this.strict<MailLogEntry[]>(`/mail/logs${status ? `?status=${status}` : ''}`);
+  }
+
+  async resendMailLog(id: string): Promise<{ status: string; error?: string }> {
+    return this.strict(`/mail/logs/${id}/resend`, { method: 'POST' });
   }
 
   async createOrganizer(data: {
@@ -238,6 +367,14 @@ export class ApiClient {
     return this.strict<OrganizerUser[]>(`/events/${code}/organizers`, {
       method: 'POST',
       body: JSON.stringify({ userId }),
+    });
+  }
+
+  // Suspende/reativa o organizador só neste campeonato (mantém o vínculo)
+  async setGameOrganizerActive(code: string, userId: string, active: boolean): Promise<OrganizerUser[]> {
+    return this.strict<OrganizerUser[]>(`/events/${code}/organizers/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ active }),
     });
   }
 

@@ -42,6 +42,8 @@ import { apiClient, ApiError, assetUrl } from '@/lib/api-client';
 import { BANNER_MAX_ORIGINAL_BYTES, prepareBanner } from '@/lib/banner-image';
 import { getCurrentUserSession } from '@/lib/acl';
 import { OrganizersPanel } from '@/components/admin/OrganizersPanel';
+import { MailSettingsPanel } from '@/components/admin/MailSettingsPanel';
+import { AthletesPanel } from '@/components/admin/AthletesPanel';
 import { GameOrganizersModal } from '@/components/admin/GameOrganizersModal';
 import { BackupRestoreModal } from '@/components/admin/BackupRestoreModal';
 import { toast } from 'sonner';
@@ -68,7 +70,7 @@ export default function AdminDashboardPage() {
   const [organizersGame, setOrganizersGame] = useState<{ code: string; name: string } | null>(null);
 
   // Abas do Painel: championships (Gestão de Campeonatos & Liberações), organizer (WODs & Categorias), registrations_financial (Inscrições, Pagamentos & Kits), judges_staff (Escala de Juízes), audit_center (Homologação de Súmulas), saas_owner (Monetização)
-  const [adminTab, setAdminTab] = useState<'championships' | 'organizer' | 'registrations_financial' | 'judges_staff' | 'audit_center' | 'saas_owner' | 'organizers_mgmt'>('championships');
+  const [adminTab, setAdminTab] = useState<'championships' | 'organizer' | 'registrations_financial' | 'judges_staff' | 'audit_center' | 'saas_owner' | 'organizers_mgmt' | 'email' | 'athletes_mgmt'>('championships');
 
   // Modal de Criação / Edição de Campeonato Completo
   const [isNewGameModalOpen, setIsNewGameModalOpen] = useState(false);
@@ -102,6 +104,7 @@ export default function AdminDashboardPage() {
   const [catMinAge, setCatMinAge] = useState('');
   const [catMaxAge, setCatMaxAge] = useState('');
   const [catMinSumAge, setCatMinSumAge] = useState('');
+  const [catMaxRegs, setCatMaxRegs] = useState(''); // limite de inscrições; vazio = sem limite
   const [catStandards, setCatStandards] = useState('');
   const [catDesc, setCatDesc] = useState('');
 
@@ -141,7 +144,7 @@ export default function AdminDashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (userRole !== 'SUPER_ADMIN' && (adminTab === 'organizers_mgmt' || adminTab === 'saas_owner')) {
+    if (userRole !== 'SUPER_ADMIN' && (adminTab === 'organizers_mgmt' || adminTab === 'saas_owner' || adminTab === 'email' || adminTab === 'athletes_mgmt')) {
       setAdminTab('championships');
     }
   }, [userRole, adminTab]);
@@ -206,7 +209,9 @@ export default function AdminDashboardPage() {
               minAge: c.minIndividualAge,
               maxAge: c.maxIndividualAge,
               sumAge: c.minTeamSumAge
-            }
+            },
+            maxRegistrations: c.maxRegistrations ?? null,
+            registrationsCount: c.registrationsCount ?? 0
           }));
           setCategories(mappedCats as any);
         } else {
@@ -292,7 +297,9 @@ export default function AdminDashboardPage() {
               minAge: c.minIndividualAge,
               maxAge: c.maxIndividualAge,
               sumAge: c.minTeamSumAge
-            }
+            },
+            maxRegistrations: c.maxRegistrations ?? null,
+            registrationsCount: c.registrationsCount ?? 0
           }));
           setCategories(mappedCats as any);
         } else {
@@ -318,6 +325,7 @@ export default function AdminDashboardPage() {
     setCatMinAge('');
     setCatMaxAge('');
     setCatMinSumAge('');
+    setCatMaxRegs('');
     setCatStandards('');
     setCatDesc('');
     setIsCategoryModalOpen(true);
@@ -332,6 +340,7 @@ export default function AdminDashboardPage() {
     setCatMinAge(cat.ageRule?.minAge || cat.minIndividualAge ? String(cat.ageRule?.minAge || cat.minIndividualAge) : '');
     setCatMaxAge(cat.ageRule?.maxAge || cat.maxIndividualAge ? String(cat.ageRule?.maxAge || cat.maxIndividualAge) : '');
     setCatMinSumAge(cat.ageRule?.sumAge || cat.minTeamSumAge ? String(cat.ageRule?.sumAge || cat.minTeamSumAge) : '');
+    setCatMaxRegs(cat.maxRegistrations ? String(cat.maxRegistrations) : '');
     setCatStandards(cat.standards || '');
     setCatDesc(cat.description || '');
     setIsCategoryModalOpen(true);
@@ -357,6 +366,7 @@ export default function AdminDashboardPage() {
       minIndividualAge: catMinAge ? Number(catMinAge) : undefined,
       maxIndividualAge: catMaxAge ? Number(catMaxAge) : undefined,
       minTeamSumAge: catMinSumAge ? Number(catMinSumAge) : undefined,
+      maxRegistrations: catMaxRegs.trim() ? Number(catMaxRegs) : null,
       description: catDesc || 'Regulamento oficial da categoria',
       standards: catStandards || undefined,
     };
@@ -432,6 +442,7 @@ export default function AdminDashboardPage() {
     setCatMinAge('');
     setCatMaxAge('');
     setCatMinSumAge('');
+    setCatMaxRegs('');
     await loadData();
   };
 
@@ -1052,6 +1063,26 @@ export default function AdminDashboardPage() {
                 Organizadores
               </button>
               <button
+                onClick={() => setAdminTab('email')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  adminTab === 'email'
+                    ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                E-mails
+              </button>
+              <button
+                onClick={() => setAdminTab('athletes_mgmt')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  adminTab === 'athletes_mgmt'
+                    ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                Atletas
+              </button>
+              <button
                 onClick={() => setAdminTab('saas_owner')}
                 className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
                   adminTab === 'saas_owner'
@@ -1070,6 +1101,8 @@ export default function AdminDashboardPage() {
       {/* 0. ABA DE GESTÃO DE CAMPEONATOS & LIBERAÇÕES DO SUPER ADMIN */}
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {adminTab === 'organizers_mgmt' && userRole === 'SUPER_ADMIN' && <OrganizersPanel />}
+      {adminTab === 'email' && userRole === 'SUPER_ADMIN' && <MailSettingsPanel />}
+      {adminTab === 'athletes_mgmt' && userRole === 'SUPER_ADMIN' && <AthletesPanel />}
 
       {adminTab === 'championships' && (
         <div className="space-y-6">
@@ -1303,7 +1336,14 @@ export default function AdminDashboardPage() {
                       </span>
                     </div>
 
-                    <h4 className="font-bold text-white text-sm mt-2">{cat.name}</h4>
+                    <h4 className="font-bold text-white text-sm mt-2 flex items-center gap-2 flex-wrap">
+                      <span>{cat.name}</span>
+                      {cat.maxRegistrations && (cat.registrationsCount ?? 0) >= cat.maxRegistrations && (
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40">
+                          Esgotado
+                        </span>
+                      )}
+                    </h4>
                     <p className="text-xs text-zinc-400 line-clamp-2 mt-0.5">{cat.description || 'Regulamento oficial da categoria'}</p>
                   </div>
 
@@ -1314,6 +1354,15 @@ export default function AdminDashboardPage() {
                         {cat.gender === 'male' ? 'Masculino' : cat.gender === 'female' ? 'Feminino' : cat.gender === 'mixed_1m_1f' ? '1H + 1M' : cat.gender === 'mixed_2m_2f' ? '2H + 2M' : 'Aberto'}
                       </strong>
                     </div>
+
+                    {cat.maxRegistrations ? (
+                      <div className="flex items-center justify-between text-zinc-400">
+                        <span>Vagas:</span>
+                        <strong className="text-zinc-200 font-mono">
+                          {cat.registrationsCount ?? 0}/{cat.maxRegistrations}
+                        </strong>
+                      </div>
+                    ) : null}
 
                     {(cat.ageRule?.minAge || cat.ageRule?.maxAge || cat.ageRule?.sumAge || cat.minIndividualAge || cat.minTeamSumAge) && (
                       <div className="flex items-center justify-between text-amber-400/90 font-mono">
@@ -2723,6 +2772,22 @@ export default function AdminDashboardPage() {
                     />
                   </div>
                 </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-zinc-300 block mb-1">Limite de inscrições</label>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  placeholder="Vazio = sem limite"
+                  value={catMaxRegs}
+                  onChange={(e) => setCatMaxRegs(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white focus:outline-none focus:border-amber-500"
+                />
+                <p className="text-[10px] text-zinc-500 mt-1">
+                  Inscrições pendentes e pagas ocupam vaga; canceladas não. Ao atingir o limite, a categoria fica esgotada.
+                </p>
               </div>
 
               <div>

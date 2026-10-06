@@ -16,8 +16,22 @@ import {
 import { toast } from 'sonner';
 import { apiClient, ApiError } from '@/lib/api-client';
 import { homeForRole, saveSession } from '@/lib/acl';
+import { formatCpf, isValidCpf, onlyDigits } from '@/lib/cpf';
+
+// Destino pós-login (?next=/athlete/register). Só caminhos internos, para não virar redirecionamento aberto.
+function nextPath(): string | null {
+  const next = new URLSearchParams(window.location.search).get('next');
+  if (!next || next.includes('\\')) return null;
+  try {
+    const url = new URL(next, window.location.origin);
+    return url.origin === window.location.origin ? url.pathname + url.search + url.hash : null;
+  } catch {
+    return null;
+  }
+}
 
 import { BrandLogo } from '@/components/brand/BrandLogo';
+import { ForgotPasswordModal } from '@/components/auth/ForgotPasswordModal';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -28,6 +42,7 @@ export default function LoginPage() {
   // Estado de Login
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [showForgot, setShowForgot] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   // Estado de Cadastro de Atleta
@@ -61,7 +76,7 @@ export default function LoginPage() {
       }
 
       toast.success(`Bem-vindo de volta, ${res.user.name}!`);
-      router.push(homeForRole(res.user.role));
+      router.push(nextPath() ?? homeForRole(res.user.role));
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Falha ao entrar. Tente novamente.');
     } finally {
@@ -76,6 +91,10 @@ export default function LoginPage() {
       toast.error('Preencha os campos obrigatórios (Nome, E-mail e Senha)');
       return;
     }
+    if (!isValidCpf(athCpf)) {
+      toast.error('Informe um CPF válido. Ele identifica você nas inscrições de equipe.');
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -83,7 +102,7 @@ export default function LoginPage() {
         name: athName,
         email: athEmail,
         password: athPassword,
-        cpf: athCpf ? athCpf.replace(/\D/g, '') : undefined,
+        cpf: onlyDigits(athCpf),
         phoneNumber: athPhone,
         birthDate: athBirthDate,
         gender: athGender,
@@ -92,7 +111,7 @@ export default function LoginPage() {
       });
       saveSession(res);
       toast.success(`Conta de Atleta criada com sucesso! Bem-vindo, ${athName}!`);
-      router.push('/athlete');
+      router.push(nextPath() ?? '/athlete');
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Falha ao criar a conta. Tente novamente.');
     } finally {
@@ -185,6 +204,15 @@ export default function LoginPage() {
                     className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-white focus:outline-none focus:border-amber-500 text-xs"
                   />
                 </div>
+                <div className="text-right mt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowForgot(true)}
+                    className="text-[11px] font-bold text-amber-400 hover:text-amber-300 underline"
+                  >
+                    Esqueci minha senha
+                  </button>
+                </div>
               </div>
 
               <button
@@ -257,12 +285,14 @@ export default function LoginPage() {
                 </div>
 
                 <div>
-                  <label className="font-bold text-zinc-300 block mb-1">CPF (Opcional p/ Validação)</label>
+                  <label className="font-bold text-zinc-300 block mb-1">CPF *</label>
                   <input
                     type="text"
+                    required
+                    inputMode="numeric"
                     placeholder="000.000.000-00"
                     value={athCpf}
-                    onChange={(e) => setAthCpf(e.target.value)}
+                    onChange={(e) => setAthCpf(formatCpf(e.target.value))}
                     className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white focus:outline-none focus:border-purple-500"
                   />
                 </div>
@@ -350,6 +380,7 @@ export default function LoginPage() {
         </div>
       )}
 
+      {showForgot && <ForgotPasswordModal initialEmail={loginEmail} onClose={() => setShowForgot(false)} />}
     </div>
   );
 }

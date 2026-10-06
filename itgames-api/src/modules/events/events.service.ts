@@ -1,11 +1,14 @@
 import { promises as fs } from 'fs';
 import { basename, join } from 'path';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { GameAccessService } from '../../common/access/game-access.service';
 import { UserRole } from '../../common/enums/role.enum';
+import { isValidCpf, maskCpf, normalizeCpf } from '../../common/utils/cpf';
 import { AuthUser } from '../../common/types/auth-user';
 import { detectImageExtension, getUploadsDir } from '../../common/utils/uploads';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MailNotifier } from '../mail/mail-notifier.service';
 
 export interface CreateGameDto {
   code: string;
@@ -40,6 +43,8 @@ export interface CreateCategoryDto {
   maxIndividualAge?: number;
   minTeamSumAge?: number;
   maxTeamSumAge?: number;
+  // limite de inscrições (não canceladas); null/ausente = sem limite
+  maxRegistrations?: number | null;
 }
 
 export interface CreateWorkoutDto {
@@ -52,19 +57,25 @@ export interface CreateWorkoutDto {
   description?: string;
 }
 
+// Cada integrante é identificado só pelo CPF (e e-mail opcional): os dados vêm do cadastro de atleta
 export interface CreateRegistrationDto {
   gameCode: string;
   categoryId: number;
   teamName: string;
   status?: string;
   athletes: {
-    name: string;
-    cpf?: string;
-    phonenumber?: string;
-    birthDate?: string;
-    gender?: 'M' | 'F';
-    tshirtSize?: string;
+    cpf: string;
+    email?: string;
   }[];
+}
+
+interface RosterAthlete {
+  name: string;
+  cpf: string;
+  phonenumber: string | null;
+  birthDate: Date | null;
+  gender: string;
+  tshirtSize: string;
 }
 
 @Injectable()
@@ -72,17 +83,25 @@ export class EventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: GameAccessService,
+    private readonly notifier: MailNotifier,
   ) {}
 
   private readonly organizerPublicSelect = { user: { select: { id: true, name: true } } };
   private readonly organizerPrivateSelect = {
+    active: true,
     user: { select: { id: true, name: true, email: true, phoneNumber: true } },
   };
+  // Visão pública: só organizadores ativos (suspensos ficam de fora)
+  private readonly organizersPublic = { where: { active: true }, select: this.organizerPublicSelect };
 
-  // Troca [{ user }] por [user] para o cliente
+  // Troca [{ user, active? }] por [{ ...user, active? }] para o cliente
+  private presentOrganizer(o: any) {
+    return o.active === undefined ? o.user : { ...o.user, active: o.active };
+  }
+
   private presentGame<T>(game: T) {
     const { organizers, ...rest } = game as any;
-    return { ...rest, organizers: (organizers || []).map((o: any) => o.user) };
+    return { ...rest, organizers: (organizers || []).map((o: any) => this.presentOrganizer(o)) };
   }
 
   // 1. Organização de Campeonatos (Games)
@@ -93,7 +112,7 @@ export class EventsService {
       where: { status: 'live' },
       include: {
         categories: true,
-        organizers: { select: this.organizerPublicSelect },
+        organizers: this.organizersPublic,
         _count: { select: { registrations: true, heats: true } },
       },
       orderBy: { code: 'asc' },
@@ -101,9 +120,10 @@ export class EventsService {
     return games.map((g) => this.presentGame(g));
   }
 
-  // Área restrita: organizador vê os seus (qualquer status); super admin vê todos
+  // Área restrita: organizador vê os seus ativos (qualquer status); super admin vê todos
   async listMyGames(user: AuthUser) {
-    const where = user.role === UserRole.SUPER_ADMIN ? {} : { organizers: { some: { userId: user.id } } };
+    const where =
+      user.role === UserRole.SUPER_ADMIN ? {} : { organizers: { some: { userId: user.id, active: true } } };
     const games = await this.prisma.game.findMany({
       where,
       include: {
@@ -123,7 +143,7 @@ export class EventsService {
     const game = await this.prisma.game.findUnique({
       where: { code },
       include: {
-        organizers: { select: canManage ? this.organizerPrivateSelect : this.organizerPublicSelect },
+        organizers: canManage ? { select: this.organizerPrivateSelect } : this.organizersPublic,
         categories: {
           include: {
             workouts: true,
@@ -207,10 +227,12 @@ export class EventsService {
     const existing = await this.prisma.game.findUnique({ where: { code } });
     if (!existing) throw new NotFoundException('Campeonato não encontrado');
 
-    return this.prisma.game.update({
+    const updated = await this.prisma.game.update({
       where: { code },
       data: { status },
     });
+    if (existing.status !== status) this.notifier.gameStatusChanged(code, status);
+    return updated;
   }
 
   // Super Admin: vínculo de organizadores
@@ -239,12 +261,29 @@ export class EventsService {
     return this.listGameOrganizers(code);
   }
 
+  // Suspende/reativa o organizador só neste campeonato; o vínculo (e o histórico) é mantido
+  async setOrganizerActive(code: string, userId: string, active: boolean) {
+    const game = await this.prisma.game.findUnique({ where: { code } });
+    if (!game) throw new NotFoundException('Campeonato não encontrado');
+
+    const link = await this.prisma.gameOrganizer.findUnique({
+      where: { gameCode_userId: { gameCode: code, userId } },
+    });
+    if (!link) throw new NotFoundException('Este organizador não está vinculado ao campeonato');
+
+    await this.prisma.gameOrganizer.update({
+      where: { gameCode_userId: { gameCode: code, userId } },
+      data: { active },
+    });
+    return this.listGameOrganizers(code);
+  }
+
   private async listGameOrganizers(code: string) {
     const links = await this.prisma.gameOrganizer.findMany({
       where: { gameCode: code },
       select: this.organizerPrivateSelect,
     });
-    return links.map((l) => l.user);
+    return links.map((l) => this.presentOrganizer(l));
   }
 
   // Upload da imagem (banner) do campeonato: valida o conteúdo, grava em disco e guarda o caminho
@@ -381,8 +420,44 @@ export class EventsService {
     };
   }
 
+  // Inscrições que ocupam vaga: todas menos as canceladas
+  private readonly activeRegistrationFilter = { OR: [{ status: null }, { status: { not: 'cancelled' } }] };
+
+  // Aceita inteiro positivo ou null (sem limite); qualquer outra coisa é 400
+  private parseMaxRegistrations(value: unknown): number | null {
+    if (value === null || value === undefined || value === '') return null;
+    const n = typeof value === 'number' ? value : Number(value);
+    if (typeof value === 'boolean' || !Number.isInteger(n) || n < 1) {
+      throw new BadRequestException('O limite de inscrições deve ser um número inteiro maior que zero (ou vazio, para sem limite).');
+    }
+    return n;
+  }
+
+  // Trava a linha da categoria até o fim da transação: inscrições simultâneas passam uma de cada vez pela conferência
+  private async lockCategory(tx: Prisma.TransactionClient, gameCode: string, categoryCode: number) {
+    await tx.$queryRaw`SELECT 1 FROM games_category WHERE code = ${categoryCode} AND "gamesId" = ${gameCode} FOR UPDATE`;
+  }
+
+  // Lança 409 se a categoria já atingiu o limite. Chamar dentro da transação, depois de lockCategory.
+  private async assertCategoryHasRoom(tx: Prisma.TransactionClient, gameCode: string, categoryCode: number) {
+    const category = await tx.category.findUnique({
+      where: { code_gamesId: { code: categoryCode, gamesId: gameCode } },
+      select: { name: true, maxRegistrations: true },
+    });
+    if (!category?.maxRegistrations) return;
+    const taken = await tx.registration.count({
+      where: { gameCode, categoryId: categoryCode, ...this.activeRegistrationFilter },
+    });
+    if (taken >= category.maxRegistrations) {
+      throw new ConflictException(
+        `Categoria esgotada: ${category.name} atingiu o limite de ${category.maxRegistrations} inscrições.`,
+      );
+    }
+  }
+
   // 2. Categorias com Regras Avançadas
   async createCategory(dto: CreateCategoryDto) {
+    const maxRegistrations = this.parseMaxRegistrations(dto.maxRegistrations);
     let nextCode = dto.code;
     if (!nextCode) {
       const lastCat = await this.prisma.category.findFirst({
@@ -407,6 +482,7 @@ export class EventsService {
         maxIndividualAge: dto.maxIndividualAge ? Number(dto.maxIndividualAge) : null,
         minTeamSumAge: dto.minTeamSumAge ? Number(dto.minTeamSumAge) : null,
         maxTeamSumAge: dto.maxTeamSumAge ? Number(dto.maxTeamSumAge) : null,
+        maxRegistrations,
       },
     });
   }
@@ -437,6 +513,20 @@ export class EventsService {
     if (dto.maxIndividualAge !== undefined) data.maxIndividualAge = dto.maxIndividualAge ? Number(dto.maxIndividualAge) : null;
     if (dto.minTeamSumAge !== undefined) data.minTeamSumAge = dto.minTeamSumAge ? Number(dto.minTeamSumAge) : null;
     if (dto.maxTeamSumAge !== undefined) data.maxTeamSumAge = dto.maxTeamSumAge ? Number(dto.maxTeamSumAge) : null;
+    if (dto.maxRegistrations !== undefined) {
+      const max = this.parseMaxRegistrations(dto.maxRegistrations);
+      if (max !== null) {
+        const taken = await this.prisma.registration.count({
+          where: { gameCode: gamesId, categoryId: categoryCode, ...this.activeRegistrationFilter },
+        });
+        if (max < taken) {
+          throw new BadRequestException(
+            `O limite não pode ser menor que as inscrições já ocupadas (${taken}). Cancele inscrições ou use um limite maior.`,
+          );
+        }
+      }
+      data.maxRegistrations = max;
+    }
 
     return this.prisma.category.update({
       where: {
@@ -461,13 +551,29 @@ export class EventsService {
   }
 
   async listCategories(gamesId: string) {
-    return this.prisma.category.findMany({
-      where: { gamesId },
-      include: {
-        workouts: true,
-        _count: { select: { registrations: true } },
-      },
-      orderBy: { code: 'asc' },
+    const [categories, active] = await Promise.all([
+      this.prisma.category.findMany({
+        where: { gamesId },
+        include: {
+          workouts: true,
+          _count: { select: { registrations: true } },
+        },
+        orderBy: { code: 'asc' },
+      }),
+      this.prisma.registration.groupBy({
+        by: ['categoryId'],
+        where: { gameCode: gamesId, ...this.activeRegistrationFilter },
+        _count: { _all: true },
+      }),
+    ]);
+    const taken = new Map(active.map((a) => [a.categoryId, a._count._all]));
+    return categories.map((c) => {
+      const registrationsCount = taken.get(c.code) ?? 0;
+      return {
+        ...c,
+        registrationsCount,
+        spotsLeft: c.maxRegistrations ? Math.max(c.maxRegistrations - registrationsCount, 0) : null,
+      };
     });
   }
 
@@ -521,7 +627,82 @@ export class EventsService {
   }
 
   // 4. Inscrições com Validação Rigorosa de Regras de Time e Faixa Etária
-  async registerTeam(dto: CreateRegistrationDto) {
+  // Resolve cada CPF informado para um atleta cadastrado (User ATHLETE + perfil). Qualquer falha é 400 com o motivo.
+  private async resolveRoster(
+    gameCode: string,
+    captain: AuthUser,
+    athletes: CreateRegistrationDto['athletes'],
+  ): Promise<RosterAthlete[]> {
+    const captainUser = await this.prisma.user.findUnique({ where: { id: captain.id } });
+    const captainCpf = normalizeCpf(captainUser?.cpf);
+    if (!captainCpf) {
+      throw new BadRequestException('Seu cadastro de atleta não possui CPF. Atualize seu cadastro antes de se inscrever.');
+    }
+
+    const requested = (athletes ?? []).map((a) => ({ cpf: normalizeCpf(a?.cpf), email: a?.email?.toLowerCase().trim() }));
+    const invalid = requested.filter((a) => !isValidCpf(a.cpf));
+    if (invalid.length > 0) {
+      throw new BadRequestException(
+        `CPF inválido: ${invalid.map((a) => (a.cpf ? maskCpf(a.cpf) : '(vazio)')).join(', ')}`,
+      );
+    }
+
+    const cpfs = requested.map((a) => a.cpf);
+    const repeated = cpfs.find((cpf, i) => cpfs.indexOf(cpf) !== i);
+    if (repeated) {
+      throw new BadRequestException(`CPF repetido na inscrição: ${maskCpf(repeated)}`);
+    }
+    if (!cpfs.includes(captainCpf)) {
+      throw new BadRequestException('O capitão (você) precisa estar entre os integrantes da inscrição.');
+    }
+
+    const users = await this.prisma.user.findMany({
+      // organizador também compete (conta única por CPF), exceto neste campeonato enquanto estiver ativo
+      where: { cpf: { in: cpfs }, role: { in: [UserRole.ATHLETE, UserRole.ORGANIZER] } },
+      include: { athleteProfile: true },
+    });
+    const byCpf = new Map(users.map((u) => [u.cpf as string, u]));
+
+    const missing = requested.filter((a) => !byCpf.has(a.cpf));
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        missing.map((a) => `O CPF ${maskCpf(a.cpf)} não possui cadastro de atleta`).join('; ') +
+          '. Peça para o integrante se cadastrar antes de concluir a inscrição.',
+      );
+    }
+
+    // Conflito de interesse: organizador ativo deste campeonato não compete nele (suspenso/removido pode)
+    const activeOrganizers = await this.prisma.gameOrganizer.findMany({
+      where: { gameCode, active: true, userId: { in: users.map((u) => u.id) } },
+      select: { userId: true },
+    });
+    if (activeOrganizers.length > 0) {
+      const blocked = users.filter((u) => activeOrganizers.some((o) => o.userId === u.id));
+      throw new BadRequestException(
+        `Organizador ativo deste campeonato não pode competir nele (${blocked.map((u) => maskCpf(u.cpf)).join(', ')}). ` +
+          'Suspenda ou remova o vínculo antes.',
+      );
+    }
+
+    const mismatch = requested.find((a) => a.email && a.email !== byCpf.get(a.cpf)!.email.toLowerCase());
+    if (mismatch) {
+      throw new BadRequestException(`O e-mail informado não corresponde ao cadastro do CPF ${maskCpf(mismatch.cpf)}`);
+    }
+
+    return requested.map((a) => {
+      const u = byCpf.get(a.cpf)!;
+      return {
+        name: u.name,
+        cpf: a.cpf,
+        phonenumber: u.phoneNumber,
+        birthDate: u.athleteProfile?.birthDate ?? null,
+        gender: u.athleteProfile?.gender || 'M',
+        tshirtSize: u.athleteProfile?.tshirtSize || 'M',
+      };
+    });
+  }
+
+  async registerTeam(dto: CreateRegistrationDto, captain: AuthUser) {
     const game = await this.prisma.game.findUnique({
       where: { code: dto.gameCode },
       select: { status: true },
@@ -547,17 +728,35 @@ export class EventsService {
     }
 
     // Validação de contagem de atletas
-    if (category.maxAthlete && dto.athletes.length !== category.maxAthlete) {
+    if (category.maxAthlete && dto.athletes?.length !== category.maxAthlete) {
       throw new BadRequestException(
-        `Esta categoria exige exatamente ${category.maxAthlete} atleta(s). Você enviou ${dto.athletes.length}.`,
+        `Esta categoria exige exatamente ${category.maxAthlete} atleta(s). Você enviou ${dto.athletes?.length ?? 0}.`,
+      );
+    }
+
+    // Todos os integrantes precisam ter cadastro de atleta validado por CPF; os dados vêm do cadastro
+    const roster = await this.resolveRoster(dto.gameCode, captain, dto.athletes);
+
+    const alreadyIn = await this.prisma.athlete.findMany({
+      where: {
+        game: dto.gameCode,
+        category: dto.categoryId,
+        cpf: { in: roster.map((r) => r.cpf) },
+        registration: { OR: [{ status: null }, { status: { not: 'cancelled' } }] },
+      },
+      select: { cpf: true },
+    });
+    if (alreadyIn.length > 0) {
+      throw new ConflictException(
+        `Atleta já inscrito nesta categoria: ${alreadyIn.map((a) => maskCpf(a.cpf)).join(', ')}`,
       );
     }
 
     // Cálculo das idades
     const currentYear = new Date().getFullYear();
-    const athleteAges = dto.athletes.map((a) => {
+    const athleteAges = roster.map((a) => {
       if (!a.birthDate) return 25; // fallback se não preenchido
-      const birth = new Date(a.birthDate);
+      const birth = a.birthDate;
       let age = currentYear - birth.getFullYear();
       return age;
     });
@@ -594,24 +793,24 @@ export class EventsService {
 
     // 4. Validação de Gênero da Equipe
     if (category.genderRule === 'mixed_1m_1f') {
-      const males = dto.athletes.filter((a) => a.gender === 'M').length;
-      const females = dto.athletes.filter((a) => a.gender === 'F').length;
+      const males = roster.filter((a) => a.gender === 'M').length;
+      const females = roster.filter((a) => a.gender === 'F').length;
       if (males !== 1 || females !== 1) {
         throw new BadRequestException('A categoria exige exatamente 1 atleta masculino e 1 atleta feminino.');
       }
     } else if (category.genderRule === 'mixed_2m_2f') {
-      const males = dto.athletes.filter((a) => a.gender === 'M').length;
-      const females = dto.athletes.filter((a) => a.gender === 'F').length;
+      const males = roster.filter((a) => a.gender === 'M').length;
+      const females = roster.filter((a) => a.gender === 'F').length;
       if (males !== 2 || females !== 2) {
         throw new BadRequestException('A categoria exige exatamente 2 atletas masculinos e 2 femininos.');
       }
     } else if (category.genderRule === 'male') {
-      const hasFemale = dto.athletes.some((a) => a.gender === 'F');
+      const hasFemale = roster.some((a) => a.gender === 'F');
       if (hasFemale) {
         throw new BadRequestException('Esta categoria é exclusiva para atletas masculinos.');
       }
     } else if (category.genderRule === 'female') {
-      const hasMale = dto.athletes.some((a) => a.gender === 'M');
+      const hasMale = roster.some((a) => a.gender === 'M');
       if (hasMale) {
         throw new BadRequestException('Esta categoria é exclusiva para atletas femininos.');
       }
@@ -637,7 +836,11 @@ export class EventsService {
       }
     }
 
-    const registration = await this.prisma.registration.create({
+    // conferência do limite e criação na mesma transação, com a categoria travada
+    const registration = await this.prisma.$transaction(async (tx) => {
+      await this.lockCategory(tx, dto.gameCode, dto.categoryId);
+      await this.assertCategoryHasRoom(tx, dto.gameCode, dto.categoryId);
+      return tx.registration.create({
       data: {
         code: uniqueCode,
         gameCode: dto.gameCode,
@@ -647,23 +850,28 @@ export class EventsService {
         status: 'pending', // pagamento só é confirmado pelo organizador (PATCH .../registrations/:regCode/status)
         number: `#${uniqueCode}`,
         athletes: {
-          create: dto.athletes.map((a, idx) => ({
+          create: roster.map((a, idx) => ({
             code: idx + 1,
             name: a.name,
-            cpf: a.cpf ? a.cpf.replace(/\D/g, '') : null,
+            cpf: a.cpf,
             phonenumber: a.phonenumber,
             category: dto.categoryId,
-            tshirtSize: a.tshirtSize || 'M',
-            gender: a.gender || 'M',
-            birthDate: a.birthDate ? new Date(a.birthDate) : null,
+            tshirtSize: a.tshirtSize,
+            gender: a.gender,
+            birthDate: a.birthDate,
           })),
         },
       },
       include: {
-        athletes: true,
+        // o capitão não recebe CPF, telefone nem nascimento dos parceiros: só o necessário para o comprovante
+        athletes: { select: { code: true, name: true, gender: true, tshirtSize: true } },
         category: true,
       },
+      });
     });
+
+    this.notifier.registrationCreated(dto.gameCode, uniqueCode);
+    this.notifier.categoryFullIfReached(dto.gameCode, dto.categoryId);
 
     return {
       success: true,
@@ -707,8 +915,14 @@ export class EventsService {
     if (dto.amount !== undefined) data.amount = Number(dto.amount);
 
     const cancelling = dto.status === 'cancelled' && existing.status !== 'cancelled';
+    // sair de cancelada volta a ocupar vaga: precisa caber no limite da categoria
+    const reactivating = existing.status === 'cancelled' && dto.status !== undefined && dto.status !== 'cancelled';
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
+      if (reactivating) {
+        await this.lockCategory(tx, gameCode, existing.categoryId);
+        await this.assertCategoryHasRoom(tx, gameCode, existing.categoryId);
+      }
       if (cancelling) {
         // sai das baterias e as súmulas são anuladas (mantidas como histórico, com auditoria)
         await tx.laneSlot.deleteMany({ where: { gameCode, teamCode: registrationCode } });
@@ -743,6 +957,15 @@ export class EventsService {
         include: { athletes: true, category: true },
       });
     });
+
+    // e-mails só quando o status realmente muda (repetir a mesma ação não reenvia)
+    if (reactivating) this.notifier.categoryFullIfReached(gameCode, existing.categoryId);
+    if (cancelling) {
+      this.notifier.registrationCancelled(gameCode, registrationCode);
+    } else if (dto.status === 'paid' && existing.status !== 'paid') {
+      this.notifier.paymentConfirmed(gameCode, registrationCode);
+    }
+    return result;
   }
 
   // Organizador só exclui inscrição sem scores nem baterias; o super admin pode excluir sempre.
