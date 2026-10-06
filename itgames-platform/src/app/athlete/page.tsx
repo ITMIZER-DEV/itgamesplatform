@@ -310,7 +310,7 @@ export default function AthletePortalPage() {
     activeGame?.eventType === 'hyrox'
   );
 
-  const myRank = categoryLeaderboard.find(r => r.teamId === selectedTeam?.id);
+  const myRank = categoryLeaderboard.find(r => r.registrationId === selectedTeam?.id);
 
   const handleSendContest = () => {
     if (!contestReason.trim()) {
@@ -956,7 +956,7 @@ export default function AthletePortalPage() {
                       <div className="text-right">
                         <div className="text-[10px] text-zinc-400 uppercase font-bold">Horário de Entrada</div>
                         <div className="text-base font-black text-amber-400 font-mono">
-                          {item.heat.estimatedStartTime || '09:00'}
+                          {item.heat.startTime || '09:00'}
                         </div>
                       </div>
 
@@ -1007,32 +1007,38 @@ export default function AthletePortalPage() {
             {/* LISTA DE SCORES LANÇADOS */}
             <div className="space-y-3">
               {athleteScores.length > 0 ? (
-                athleteScores.map((sc, idx) => (
-                  <div key={sc.id || idx} className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-white">{sc.workoutTitle || `WOD ${idx + 1}`}</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
-                          Homologado
-                        </span>
-                      </div>
-                      <div className="text-xs text-zinc-400">
-                        Árbitro: <strong>{sc.judgeName || 'Juiz Oficial'}</strong> • Tie-Break: <strong>{sc.tieBreakTimeFormatted || '00:00'}</strong>
-                      </div>
-                    </div>
+                athleteScores.map((sc, idx) => {
+                  const wod = workouts.find(w => w.id === sc.workoutId);
+                  const wodTitle = wod?.title || `WOD ${idx + 1}`;
+                  const scoreDisplay = sc.timeFormatted || (sc.repsCount ? `${sc.repsCount} Reps` : (sc.weightLoadedKg ? `${sc.weightLoadedKg} kg` : 'Concluído'));
 
-                    <div className="flex items-center gap-6 bg-zinc-950 p-3 rounded-xl border border-zinc-800">
-                      <div className="text-right">
-                        <div className="text-[10px] text-zinc-400 uppercase font-bold">Resultado</div>
-                        <div className="text-base font-black text-white font-mono">{sc.scoreResultFormatted || '06:14.2'}</div>
+                  return (
+                    <div key={sc.id || idx} className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-white">{wodTitle}</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
+                            Homologado
+                          </span>
+                        </div>
+                        <div className="text-xs text-zinc-400">
+                          Árbitro: <strong>{sc.judgeName || 'Juiz Oficial'}</strong> • Tie-Break: <strong>{sc.tieBreakTimeFormatted || '00:00'}</strong>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-[10px] text-zinc-400 uppercase font-bold">Pontos</div>
-                        <div className="text-base font-black text-amber-400">{sc.pointsAwarded || 100} pts</div>
+
+                      <div className="flex items-center gap-6 bg-zinc-950 p-3 rounded-xl border border-zinc-800">
+                        <div className="text-right">
+                          <div className="text-[10px] text-zinc-400 uppercase font-bold">Resultado</div>
+                          <div className="text-base font-black text-white font-mono">{scoreDisplay}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[10px] text-zinc-400 uppercase font-bold">Pontos</div>
+                          <div className="text-base font-black text-amber-400">{sc.finalPoints !== undefined ? `${sc.finalPoints} pts` : '-'}</div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="p-8 rounded-3xl bg-zinc-900 border border-zinc-800 text-center space-y-2">
                   <Flame className="w-10 h-10 text-amber-500/40 mx-auto" />
@@ -1071,10 +1077,10 @@ export default function AthletePortalPage() {
                   </thead>
                   <tbody className="divide-y divide-zinc-800/60">
                     {categoryLeaderboard.map((row) => {
-                      const isMe = row.teamId === selectedTeam?.id;
+                      const isMe = row.registrationId === selectedTeam?.id;
                       return (
                         <tr 
-                          key={row.teamId} 
+                          key={row.registrationId} 
                           className={`transition-colors ${
                             isMe 
                               ? 'bg-purple-950/40 font-bold border-l-4 border-l-purple-500 text-white' 
@@ -1106,12 +1112,12 @@ export default function AthletePortalPage() {
                             {row.boxOrAffiliate || 'Box Filiada'}
                           </td>
                           {categoryWorkouts.map((w) => {
-                            const wScore = row.workoutScores[w.id];
+                            const wScore = row.workoutScores.find(ws => ws.workoutId === w.id);
                             return (
                               <td key={w.id} className="p-3 text-center font-mono">
                                 {wScore ? (
                                   <div>
-                                    <div className="text-white text-xs font-bold">{wScore.scoreFormatted}</div>
+                                    <div className="text-white text-xs font-bold">{wScore.scoreDisplay}</div>
                                     <div className="text-[10px] text-amber-400/90">{wScore.points} pts</div>
                                   </div>
                                 ) : (

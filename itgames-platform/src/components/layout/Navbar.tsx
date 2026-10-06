@@ -69,8 +69,16 @@ export function Navbar() {
     router.push('/login');
   };
 
+  interface NavLinkItem {
+    href: string;
+    label: string;
+    icon: React.ElementType;
+    badge?: string;
+    highlight?: boolean;
+  }
+
   // Definição estrita de rotas permitidas por perfil (ACL)
-  const getNavLinks = () => {
+  const getNavLinks = (): NavLinkItem[] => {
     switch (session.role) {
       case 'SUPER_ADMIN':
         return [

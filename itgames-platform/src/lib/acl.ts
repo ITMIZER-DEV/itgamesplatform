@@ -111,16 +111,17 @@ export function hasPermission(role: UserRoleType, resource: 'admin' | 'judge' | 
     case 'public':
       return true;
     case 'athlete':
-      return role === 'ATHLETE' || role === 'SUPER_ADMIN' || role === 'ORGANIZER';
+      return role === 'ATHLETE' || role === 'ORGANIZER';
     case 'judge':
-      return role === 'JUDGE' || role === 'ORGANIZER' || role === 'SUPER_ADMIN';
+      return role === 'JUDGE' || role === 'ORGANIZER';
     case 'heats':
     case 'sumulas':
     case 'admin':
-      return role === 'ORGANIZER' || role === 'SUPER_ADMIN';
+      return role === 'ORGANIZER';
     case 'superadmin':
-      return role === 'SUPER_ADMIN';
+      return false;
     default:
       return false;
   }
 }
+

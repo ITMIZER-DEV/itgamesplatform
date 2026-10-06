@@ -38,6 +38,7 @@ import {
 import { storage } from '@/lib/storage';
 import { GameEvent, Category, WorkoutRule, TeamRegistration, ScoreEntry, OrganizationTenant, AuditLogEntry, ContestTicket, JudgeStaff } from '@/types';
 import { apiClient, ApiError, assetUrl } from '@/lib/api-client';
+import { BANNER_MAX_ORIGINAL_BYTES, prepareBanner } from '@/lib/banner-image';
 import { getCurrentUserSession } from '@/lib/acl';
 import { OrganizersPanel } from '@/components/admin/OrganizersPanel';
 import { GameOrganizersModal } from '@/components/admin/GameOrganizersModal';
@@ -86,6 +87,7 @@ export default function AdminDashboardPage() {
   const [newGamePixBeneficiary, setNewGamePixBeneficiary] = useState('');
   const [newGameFile, setNewGameFile] = useState<File | null>(null);
   const [newGamePreview, setNewGamePreview] = useState('');
+  const [newGameBannerInfo, setNewGameBannerInfo] = useState<{ summary: string; warning?: string } | null>(null);
 
   // Modal de Criação / Edição de Categoria Real
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -495,6 +497,7 @@ export default function AdminDashboardPage() {
     setNewGamePixBeneficiary('');
     setNewGameFile(null);
     setNewGamePreview('');
+    setNewGameBannerInfo(null);
     setIsNewGameModalOpen(true);
   };
 
@@ -517,10 +520,12 @@ export default function AdminDashboardPage() {
     setNewGamePixBeneficiary(g.pixBeneficiary || '');
     setNewGameFile(null);
     setNewGamePreview('');
+    setNewGameBannerInfo(null);
     setIsNewGameModalOpen(true);
   };
 
-  const handleBannerFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Adequa a imagem escolhida (recorte 3:1, até 1920 px, JPG otimizado) e mostra a prévia do que será enviado
+  const handleBannerFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
@@ -528,13 +533,19 @@ export default function AdminDashboardPage() {
       toast.error('Formato inválido. Envie uma imagem JPG, PNG ou WebP.');
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('A imagem deve ter no máximo 5 MB.');
+    if (file.size > BANNER_MAX_ORIGINAL_BYTES) {
+      toast.error('A imagem original deve ter no máximo 25 MB.');
       return;
     }
-    if (newGamePreview) URL.revokeObjectURL(newGamePreview);
-    setNewGameFile(file);
-    setNewGamePreview(URL.createObjectURL(file));
+    try {
+      const prepared = await prepareBanner(file);
+      if (newGamePreview) URL.revokeObjectURL(newGamePreview);
+      setNewGameFile(prepared.file);
+      setNewGamePreview(prepared.previewUrl);
+      setNewGameBannerInfo({ summary: prepared.summary, warning: prepared.warning });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Não foi possível processar a imagem.');
+    }
   };
 
   // Envia a imagem escolhida depois que o campeonato foi salvo
@@ -2359,14 +2370,33 @@ export default function AdminDashboardPage() {
 
               <div className="space-y-2">
                 <label className="text-xs font-bold text-zinc-300 block">Imagem / Banner do Evento</label>
+
+                <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 text-[11px] text-zinc-400 space-y-1">
+                  <div className="font-bold text-zinc-200">Especificação da imagem</div>
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    <li>
+                      Formato: <strong className="text-zinc-200">JPG</strong> (também aceita PNG e WebP), original de até 25 MB.
+                    </li>
+                    <li>
+                      Proporção <strong className="text-zinc-200">3:1</strong> (faixa larga). Ideal:{' '}
+                      <strong className="text-zinc-200">1920 × 640 px</strong>; mínimo recomendado: 1200 px de largura.
+                    </li>
+                    <li>
+                      Deixe logo e textos importantes no <strong className="text-zinc-200">centro</strong>: o corte é centralizado.
+                    </li>
+                    <li>Ao enviar, o sistema recorta, reduz para no máximo 1920 px e converte para JPG otimizado (cerca de 500 KB).</li>
+                  </ul>
+                </div>
+
                 {(newGamePreview || newGameFoto) && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={newGamePreview || assetUrl(newGameFoto)}
                     alt="Pré-visualização do banner do campeonato"
-                    className="w-full h-32 object-cover rounded-xl border border-zinc-700"
+                    className="w-full aspect-[3/1] object-cover rounded-xl border border-zinc-700"
                   />
                 )}
+
                 <div className="flex items-center gap-2">
                   <label className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white cursor-pointer focus-within:outline focus-within:outline-2 focus-within:outline-amber-500">
                     Enviar imagem do computador
@@ -2377,8 +2407,15 @@ export default function AdminDashboardPage() {
                       onChange={handleBannerFile}
                     />
                   </label>
-                  {newGameFile && <span className="text-[11px] text-zinc-400 truncate">{newGameFile.name}</span>}
                 </div>
+
+                {newGameBannerInfo && (
+                  <div className="text-[11px] space-y-1" role="status">
+                    <p className="text-emerald-400">{newGameBannerInfo.summary}</p>
+                    {newGameBannerInfo.warning && <p className="text-amber-400">{newGameBannerInfo.warning}</p>}
+                  </div>
+                )}
+
                 <input
                   type="text"
                   aria-label="URL da imagem hospedada"
@@ -2387,7 +2424,7 @@ export default function AdminDashboardPage() {
                   onChange={(e) => setNewGameFoto(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
                 />
-                <p className="text-[10px] text-zinc-500">JPG, PNG ou WebP de até 5 MB. A imagem enviada substitui a URL.</p>
+                <p className="text-[10px] text-zinc-500">A imagem enviada substitui a URL.</p>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-2.5">
