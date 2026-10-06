@@ -3,14 +3,15 @@ import { storage } from './storage';
 import { getAuthToken, logoutUser } from './acl';
 
 export function getApiBaseUrl(): string {
-  if (typeof window !== 'undefined') {
-    if (process.env.NEXT_PUBLIC_API_URL) {
-      return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
-    }
-    // Mesma stack: acessa a porta 3334 no mesmo hostname/IP do navegador
-    return `${window.location.protocol}//${window.location.hostname}:3334`;
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
   }
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3334';
+  if (typeof window !== 'undefined') {
+    // No navegador, usa o proxy reverso interno do Next.js (/api-proxy)
+    // Isso evita expor a porta 3334, elimina problemas de CORS e funciona com qualquer domínio/HTTPS.
+    return '/api-proxy';
+  }
+  return process.env.API_INTERNAL_URL || 'http://127.0.0.1:3334';
 }
 
 export class ApiError extends Error {

@@ -33,8 +33,6 @@ services:
       -c min_wal_size=1GB
       -c max_wal_size=4GB
       -c checkpoint_completion_target=0.9
-    ports:
-      - "${POSTGRES_PORT:-5433}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-itgames_user} -d ${POSTGRES_DB:-itgames_db} || exit 1"]
       interval: 5s
@@ -45,7 +43,7 @@ services:
       - itgames-network
 
   # ────────────────────────────────────────────────────────────────────────────
-  # 2. BACKEND API (NestJS 10 + Prisma 5)
+  # 2. BACKEND API (NestJS 10 + Prisma 5 - Internal Network Only)
   # ────────────────────────────────────────────────────────────────────────────
   api:
     build:
@@ -59,8 +57,6 @@ services:
       DIRECT_URL: "postgresql://${POSTGRES_USER:-itgames_user}:${POSTGRES_PASSWORD:-itgames_password}@postgres:5432/${POSTGRES_DB:-itgames_db}?schema=public"
       CORS_ORIGIN: "${CORS_ORIGIN:-*}"
       JWT_SECRET: "${JWT_SECRET:-itgames_jwt_super_secret_production_key_2026}"
-    ports:
-      - "${API_PORT:-3334}:3333"
     depends_on:
       postgres:
         condition: service_healthy
