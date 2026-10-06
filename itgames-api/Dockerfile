@@ -30,7 +30,7 @@ ENV PORT=3333
 COPY package*.json ./
 COPY prisma ./prisma/
 
-RUN npm install --omit=dev && npm install -g prisma
+RUN npm install --omit=dev && npm install -g prisma ts-node typescript
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
