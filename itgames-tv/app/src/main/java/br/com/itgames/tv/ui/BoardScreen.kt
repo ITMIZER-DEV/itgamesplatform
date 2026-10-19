@@ -26,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -123,7 +124,7 @@ fun BoardScreen(state: BoardState, modifier: Modifier = Modifier) {
             val rows = category.rows.drop(page.page * ROWS_PER_PAGE).take(ROWS_PER_PAGE)
             // cada linha ocupa uma fração igual da altura, então 6 equipes sempre cabem na tela
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                rows.forEach { ScoreRow(it, category.wodTitles.size, Modifier.weight(1f)) }
+                rows.forEach { ScoreRow(it, category.wodTitles.size, board.totalUnit, Modifier.weight(1f)) }
                 repeat(ROWS_PER_PAGE - rows.size) { Spacer(Modifier.weight(1f)) }
             }
         }
@@ -226,20 +227,24 @@ private fun Clock() {
 }
 
 @Composable
-private fun ScoreRow(row: BoardRow, wodCount: Int, modifier: Modifier = Modifier) {
+private fun ScoreRow(row: BoardRow, wodCount: Int, totalUnit: String, modifier: Modifier = Modifier) {
     val (badgeBg, badgeFg, rowBorder) = when (row.rank) {
         1 -> Triple(Palette.Amber, Color.Black, Palette.Amber)
         2 -> Triple(Palette.Silver, Color.Black, Palette.Silver.copy(alpha = 0.5f))
         3 -> Triple(Palette.Bronze, Color.White, Palette.Bronze.copy(alpha = 0.6f))
         else -> Triple(Palette.SurfaceHigh, Palette.TextMuted, Palette.SurfaceHigh)
     }
+    val cancelled = row.status == "cancelled"
+    val nameColor = if (cancelled) Palette.TextMuted else Palette.Text
+    val totalColor = if (cancelled) Palette.TextMuted else Palette.Amber
     val shape = RoundedCornerShape(14.dp)
     Row(
         modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(if (row.rank == 1) Palette.Amber.copy(alpha = 0.10f) else Palette.Surface)
-            .border(if (row.rank == 1) 2.dp else 1.dp, rowBorder, shape)
+            .alpha(if (cancelled) 0.55f else 1f)
+            .background(if (row.rank == 1 && !cancelled) Palette.Amber.copy(alpha = 0.10f) else Palette.Surface)
+            .border(if (row.rank == 1 && !cancelled) 2.dp else 1.dp, if (cancelled) Palette.SurfaceHigh else rowBorder, shape)
             .padding(horizontal = 12.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -249,7 +254,21 @@ private fun ScoreRow(row: BoardRow, wodCount: Int, modifier: Modifier = Modifier
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(row.team, color = Palette.Text, fontSize = 21.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Text(row.team, color = nameColor, fontSize = 21.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (cancelled) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "CANCELADA",
+                        color = Palette.Offline,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Palette.Offline.copy(alpha = 0.16f))
+                            .padding(horizontal = 6.dp, vertical = 1.dp),
+                    )
+                }
                 Spacer(Modifier.width(8.dp))
                 Text(row.number, color = Palette.Amber, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
@@ -285,7 +304,17 @@ private fun ScoreRow(row: BoardRow, wodCount: Int, modifier: Modifier = Modifier
             horizontalAlignment = Alignment.End,
         ) {
             Text("TOTAL", color = Palette.TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-            Text("${row.totalPoints} PTS", color = Palette.Amber, fontSize = 22.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+            // PTS e SOMA levam a unidade; TEMPO mostra só o horário. Valores longos (1:02:10) encolhem para caber.
+            val text = if (totalUnit == "TEMPO") row.totalDisplay else "${row.totalDisplay} $totalUnit"
+            Text(
+                text,
+                color = totalColor,
+                fontSize = if (text.length > 9) 16.sp else if (text.length > 7) 19.sp else 22.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                softWrap = false,
+            )
         }
     }
 }

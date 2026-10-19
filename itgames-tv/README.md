@@ -53,5 +53,7 @@ O websocket vive na API (`itgames-api/src/modules/leaderboard`). Ele usa a mesma
 `GET /events/:code/leaderboard`: só campeonatos `live`. Se a API estiver atrás de proxy reverso (Nginx, Traefik,
 Cloudflare), habilite *upgrade* de websocket para o caminho `/ws/leaderboard`.
 
-O cálculo de pontos fica em `itgames-api/src/modules/leaderboard/board.ts` e espelha
-`itgames-platform/src/lib/scoring.ts`; ao mudar uma regra de pontuação, atualize os dois.
+O websocket envia o mesmo placar de `GET /events/:code/board`, calculado pela regra de cada campeonato: `points_table`
+(PTS), `rank_sum` (SOMA das posições) ou `total_time` (TEMPO total, como no HYROX). O total na TV mostra a unidade da
+regra (sem sufixo no tempo) e equipes canceladas aparecem esmaecidas com o selo CANCELADA. O cálculo fica em
+`itgames-api/src/modules/scoring`.
