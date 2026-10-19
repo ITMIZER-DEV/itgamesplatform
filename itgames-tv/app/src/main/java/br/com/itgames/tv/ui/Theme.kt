@@ -5,14 +5,14 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-// Mesma paleta do telão web (zinc + âmbar)
+// Mesmos tokens do tema escuro da plataforma (globals.css): fundo, card, muted, borda, âmbar da arena
 object Palette {
-    val Background = Color(0xFF09090B)
-    val Surface = Color(0xFF18181B)
-    val SurfaceHigh = Color(0xFF27272A)
-    val Border = Color(0xFF3F3F46)
-    val Text = Color(0xFFFAFAFA)
-    val TextMuted = Color(0xFFA1A1AA)
+    val Background = Color(0xFF090A0F)
+    val Surface = Color(0xFF11131A)
+    val SurfaceHigh = Color(0xFF1E2230)
+    val Border = Color(0xFF232838)
+    val Text = Color(0xFFF3F4F6)
+    val TextMuted = Color(0xFF9CA3AF)
     val Amber = Color(0xFFF59E0B)
     val Silver = Color(0xFFD4D4D8)
     val Bronze = Color(0xFFB45309)

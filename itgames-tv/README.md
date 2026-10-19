@@ -57,3 +57,14 @@ O websocket envia o mesmo placar de `GET /events/:code/board`, calculado pela re
 (PTS), `rank_sum` (SOMA das posições) ou `total_time` (TEMPO total, como no HYROX). O total na TV mostra a unidade da
 regra (sem sufixo no tempo) e equipes canceladas aparecem esmaecidas com o selo CANCELADA. O cálculo fica em
 `itgames-api/src/modules/scoring`.
+
+## Identidade visual
+
+Segue o tema escuro da plataforma (`itgames-platform/src/app/globals.css`): fundo `#090a0f`, card `#11131a`, muted `#1e2230`,
+borda `#232838`, texto `#f3f4f6`, âmbar `#f59e0b`. Os tokens ficam em `ui/Theme.kt` (`Palette`).
+
+- `res/drawable-nodpi/logo_itgames.png`: logo (720 px, sem a frase) usada no cabeçalho, na espera e na configuração.
+- `res/drawable-xhdpi/banner.png`: banner da TV (640x360) com a logo completa.
+- `res/drawable-nodpi/ic_launcher.png`: ícone (256x256) com o monograma "IT".
+
+Os PNGs vêm de `itgames-platform/public/brand/logo-itgames-dark.png` (recortados e reduzidos).

@@ -2,6 +2,7 @@ package br.com.itgames.tv.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,6 +32,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -45,6 +48,7 @@ import br.com.itgames.tv.Board
 import br.com.itgames.tv.BoardRow
 import br.com.itgames.tv.BoardState
 import br.com.itgames.tv.Link
+import br.com.itgames.tv.R
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -137,8 +141,8 @@ fun BoardScreen(state: BoardState, modifier: Modifier = Modifier) {
 private fun Waiting(state: BoardState) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("ITGAMES", color = Palette.Amber, fontSize = 48.sp, fontWeight = FontWeight.Black)
-            Spacer(Modifier.height(12.dp))
+            Image(painterResource(R.drawable.logo_itgames), contentDescription = "ITGames", modifier = Modifier.height(160.dp), contentScale = ContentScale.Fit)
+            Spacer(Modifier.height(24.dp))
             Text(
                 state.error ?: "Conectando ao servidor…",
                 color = if (state.error != null) Palette.Offline else Palette.TextMuted,
@@ -153,10 +157,11 @@ private fun Waiting(state: BoardState) {
 @Composable
 private fun Header(board: Board, link: Link, categoryName: String, page: BoardPage?, paused: Boolean) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        // logo oficial no lugar do texto; altura fixa preserva o layout (proporção mantida)
+        Image(painterResource(R.drawable.logo_itgames), contentDescription = "ITGames", modifier = Modifier.height(60.dp), contentScale = ContentScale.Fit)
+        Spacer(Modifier.width(20.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("ITGAMES", color = Palette.Amber, fontSize = 20.sp, fontWeight = FontWeight.Black)
-                Spacer(Modifier.width(12.dp))
                 LiveBadge(link)
                 Spacer(Modifier.width(12.dp))
                 Text(

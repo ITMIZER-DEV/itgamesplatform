@@ -2,6 +2,7 @@ package br.com.itgames.tv.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,6 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -37,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.KeyboardOptions
 import br.com.itgames.tv.Api
 import br.com.itgames.tv.GameOption
+import br.com.itgames.tv.R
 import kotlinx.coroutines.launch
 
 // Escolha do servidor e do campeonato. Navegável só com o controle remoto: a lista de campeonatos
@@ -68,7 +72,11 @@ fun SetupScreen(
     LaunchedEffect(Unit) { load() }
 
     Column(Modifier.fillMaxSize().background(Palette.Background).padding(horizontal = 64.dp, vertical = 32.dp)) {
-        Text("ITGAMES • Configurar telão", color = Palette.Amber, fontSize = 30.sp, fontWeight = FontWeight.Black)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Image(painterResource(R.drawable.logo_itgames), contentDescription = "ITGames", modifier = Modifier.height(56.dp), contentScale = ContentScale.Fit)
+            Spacer(Modifier.width(24.dp))
+            Text("Configurar telão", color = Palette.Amber, fontSize = 30.sp, fontWeight = FontWeight.Black)
+        }
         Spacer(Modifier.height(16.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
