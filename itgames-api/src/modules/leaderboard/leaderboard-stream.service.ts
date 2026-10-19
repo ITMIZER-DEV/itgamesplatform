@@ -1,8 +1,8 @@
 import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { WebSocket, WebSocketServer } from 'ws';
-import { EventsService } from '../events/events.service';
-import { Board, buildBoard } from './board';
+import { BoardService } from '../scoring/board.service';
+import { Board } from '../scoring/types';
 import { LeaderboardNotifier } from './leaderboard-notifier.service';
 
 const PATH = '/ws/leaderboard';
@@ -21,7 +21,7 @@ export class LeaderboardStreamService implements OnApplicationBootstrap, OnAppli
 
   constructor(
     private readonly httpAdapterHost: HttpAdapterHost,
-    private readonly events: EventsService,
+    private readonly boards: BoardService,
     notifier: LeaderboardNotifier,
   ) {
     notifier.onChange((game) => this.notify(game));
@@ -58,7 +58,7 @@ export class LeaderboardStreamService implements OnApplicationBootstrap, OnAppli
 
   private async board(game: string): Promise<Board> {
     // Mesma regra de visibilidade do REST público: campeonato fora do ar vira 404
-    return buildBoard(await this.events.getLeaderboardData(game, undefined));
+    return this.boards.getBoard(game, undefined);
   }
 
   private async attach(socket: WebSocket, game: string) {

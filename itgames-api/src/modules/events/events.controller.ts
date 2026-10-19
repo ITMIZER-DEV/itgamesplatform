@@ -9,6 +9,7 @@ import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../common/enums/role.enum';
 import { AuthUser } from '../../common/types/auth-user';
+import { BoardService } from '../scoring/board.service';
 import { AddOrganizerDto } from './dto/add-organizer.dto';
 import { SetOrganizerActiveDto } from './dto/set-organizer-active.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
@@ -27,6 +28,7 @@ export class EventsController {
   constructor(
     private readonly eventsService: EventsService,
     private readonly access: GameAccessService,
+    private readonly boards: BoardService,
   ) {}
 
   // 1. Campeonatos
@@ -89,6 +91,13 @@ export class EventsController {
   @ApiOperation({ summary: 'Dados públicos do leaderboard (equipes ativas e scores homologados, sem dados pessoais)' })
   async getLeaderboard(@Param('code') code: string, @CurrentUser() user?: AuthUser) {
     return this.eventsService.getLeaderboardData(code, user);
+  }
+
+  @Public()
+  @Get(':code/board')
+  @ApiOperation({ summary: 'Placar calculado pela regra de pontuação do campeonato (público, sem dados pessoais)' })
+  async getBoard(@Param('code') code: string, @CurrentUser() user?: AuthUser) {
+    return this.boards.getBoard(code, user);
   }
 
   @Roles(UserRole.SUPER_ADMIN)
