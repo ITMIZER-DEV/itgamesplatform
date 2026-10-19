@@ -323,6 +323,9 @@ export class ApiClient {
     location?: string;
     foto?: string;
     isLowestPointsBetter?: boolean;
+    scoringMode?: 'points_table' | 'rank_sum' | 'total_time' | null;
+    tiebreak?: string | null;
+    pointsTable?: number[] | null;
     showTime?: boolean;
     showWeight?: boolean;
     showReps?: boolean;

@@ -38,6 +38,10 @@ import {
 } from 'lucide-react';
 import { storage } from '@/lib/storage';
 import { GameEvent, Category, WorkoutRule, TeamRegistration, ScoreEntry, OrganizationTenant, AuditLogEntry, ContestTicket, JudgeStaff } from '@/types';
+import {
+  DEFAULT_POINTS_TABLE, MAX_POINTS_TABLE_ITEMS, parsePointsInput, formatPointsInput, tiebreakToForm, formToTiebreak,
+  type ScoringMode, type TiebreakKind,
+} from '@/lib/scoring-form';
 import { apiClient, ApiError, assetUrl } from '@/lib/api-client';
 import { BANNER_MAX_ORIGINAL_BYTES, prepareBanner } from '@/lib/banner-image';
 import { getCurrentUserSession } from '@/lib/acl';
@@ -82,7 +86,11 @@ export default function AdminDashboardPage() {
   const [newGameLanes, setNewGameLanes] = useState(8);
   const [newGameType, setNewGameType] = useState('crossfit');
   const [newGameDesc, setNewGameDesc] = useState('');
-  const [newGameLowestPoints, setNewGameLowestPoints] = useState(false);
+  const [newGameScoringMode, setNewGameScoringMode] = useState<ScoringMode>('points_table');
+  const [newGamePointsText, setNewGamePointsText] = useState(formatPointsInput(DEFAULT_POINTS_TABLE));
+  const [newGameTiebreakKind, setNewGameTiebreakKind] = useState<TiebreakKind>('last_workout');
+  const [newGameTiebreakSplit, setNewGameTiebreakSplit] = useState('');
+  const [scoringErrors, setScoringErrors] = useState<{ points?: string; split?: string }>({});
   const [newGameShowTime, setNewGameShowTime] = useState(true);
   const [newGameShowWeight, setNewGameShowWeight] = useState(true);
   const [newGameShowReps, setNewGameShowReps] = useState(true);
@@ -176,6 +184,9 @@ export default function AdminDashboardPage() {
       lanesCount: g.lanesCount || 8,
       scoringRules: {
         isLowestPointsBetter: g.isLowestPointsBetter || false,
+        mode: g.scoring?.mode,
+        tiebreak: g.scoring?.tiebreak,
+        pointsTable: g.scoring?.pointsTable,
         showTime: g.showTime !== false,
         showWeight: g.showWeight !== false,
         showReps: g.showReps !== false,
@@ -502,7 +513,11 @@ export default function AdminDashboardPage() {
     setNewGameLanes(8);
     setNewGameType('crossfit');
     setNewGameDesc('');
-    setNewGameLowestPoints(false);
+    setNewGameScoringMode('points_table');
+    setNewGamePointsText(formatPointsInput(DEFAULT_POINTS_TABLE));
+    setNewGameTiebreakKind('last_workout');
+    setNewGameTiebreakSplit('');
+    setScoringErrors({});
     setNewGameShowTime(true);
     setNewGameShowWeight(true);
     setNewGameShowReps(true);
@@ -525,7 +540,15 @@ export default function AdminDashboardPage() {
     setNewGameLanes(g.lanesCount || 8);
     setNewGameType(g.eventType || 'crossfit');
     setNewGameDesc(g.description || '');
-    setNewGameLowestPoints(!!g.scoringRules?.isLowestPointsBetter);
+    // Usa a regra resolvida pela API; só cai no flag legado se a resposta não trouxer `scoring`
+    setNewGameScoringMode(
+      g.scoringRules?.mode ?? (g.scoringRules?.isLowestPointsBetter ? 'rank_sum' : 'points_table'),
+    );
+    setNewGamePointsText(formatPointsInput(g.scoringRules?.pointsTable?.length ? g.scoringRules.pointsTable : DEFAULT_POINTS_TABLE));
+    const tb = tiebreakToForm(g.scoringRules?.tiebreak);
+    setNewGameTiebreakKind(tb.kind);
+    setNewGameTiebreakSplit(tb.split);
+    setScoringErrors({});
     setNewGameShowTime(g.scoringRules?.showTime !== false);
     setNewGameShowWeight(g.scoringRules?.showWeight !== false);
     setNewGameShowReps(g.scoringRules?.showReps !== false);
@@ -581,6 +604,23 @@ export default function AdminDashboardPage() {
 
     const cleanCode = newGameCode.toUpperCase().replace(/\s+/g, '-').trim();
 
+    // Valida a regra de pontuação antes de chamar a API
+    const errors: { points?: string; split?: string } = {};
+    const parsedPoints = newGameScoringMode === 'points_table' ? parsePointsInput(newGamePointsText) : null;
+    if (newGameScoringMode === 'points_table' && !parsedPoints) {
+      errors.points = `Tabela de pontos inválida. Informe de 1 a ${MAX_POINTS_TABLE_ITEMS} números maiores ou iguais a zero, separados por vírgula.`;
+    }
+    const tiebreakValue = formToTiebreak(newGameTiebreakKind, newGameTiebreakSplit);
+    if (!tiebreakValue) errors.split = 'Informe o nome do exercício usado no desempate.';
+    setScoringErrors(errors);
+    if (errors.points || errors.split) return;
+    const scoringPayload = {
+      scoringMode: newGameScoringMode,
+      tiebreak: tiebreakValue,
+      pointsTable: parsedPoints,
+      isLowestPointsBetter: newGameScoringMode === 'rank_sum',
+    };
+
     // Edição de campeonato existente (o código e o status não mudam)
     if (editingGameCode) {
       try {
@@ -591,7 +631,7 @@ export default function AdminDashboardPage() {
           foto: newGameFoto,
           lanesCount: newGameLanes,
           eventType: newGameType,
-          isLowestPointsBetter: newGameLowestPoints,
+          ...scoringPayload,
           showTime: newGameShowTime,
           showWeight: newGameShowWeight,
           showReps: newGameShowReps,
@@ -621,7 +661,7 @@ export default function AdminDashboardPage() {
         foto: newGameFoto || undefined,
         lanesCount: newGameLanes,
         eventType: newGameType,
-        isLowestPointsBetter: newGameLowestPoints,
+        ...scoringPayload,
         showTime: newGameShowTime,
         showWeight: newGameShowWeight,
         showReps: newGameShowReps,
@@ -651,7 +691,10 @@ export default function AdminDashboardPage() {
       status: 'draft',
       lanesCount: newGameLanes,
       scoringRules: {
-        isLowestPointsBetter: newGameLowestPoints,
+        isLowestPointsBetter: newGameScoringMode === 'rank_sum',
+        mode: newGameScoringMode,
+        tiebreak: tiebreakValue ?? undefined,
+        pointsTable: parsedPoints ?? undefined,
         hyroxChipTimingEnabled: newGameType === 'hyrox'
       }
     };
@@ -2523,17 +2566,62 @@ export default function AdminDashboardPage() {
               <div className="p-3.5 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-2.5">
                 <span className="text-[11px] font-black uppercase text-amber-400 block">Regras de Pontuação & Exibição</span>
                 
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-zinc-300 font-medium">Critério de Vitória no Leaderboard:</span>
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="text-zinc-300 font-medium">Regra de pontuação:</span>
                   <select
-                    value={newGameLowestPoints ? 'lowest' : 'highest'}
-                    onChange={(e) => setNewGameLowestPoints(e.target.value === 'lowest')}
+                    value={newGameScoringMode}
+                    onChange={(e) => setNewGameScoringMode(e.target.value as ScoringMode)}
                     className="bg-zinc-900 border border-zinc-700 text-xs text-white rounded-lg px-2 py-1"
                   >
-                    <option value="highest">Maior Pontuação Ganha (Padrão Pontos)</option>
-                    <option value="lowest">Menor Pontuação Ganha (Padrão CrossFit Games)</option>
+                    <option value="points_table">Pontos por posição (maior soma vence)</option>
+                    <option value="rank_sum">Soma de posições (menor soma vence)</option>
+                    <option value="total_time">Tempo total (menor tempo vence — HYROX)</option>
                   </select>
                 </div>
+
+                {newGameScoringMode === 'points_table' && (
+                  <div className="text-xs">
+                    <label className="text-zinc-300 font-medium block mb-1">Tabela de pontos (1º, 2º, 3º...)</label>
+                    <textarea
+                      rows={3}
+                      value={newGamePointsText}
+                      onChange={(e) => setNewGamePointsText(e.target.value)}
+                      placeholder="100, 95, 90, 85..."
+                      className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                    />
+                    {scoringErrors.points ? (
+                      <p className="text-[11px] text-red-400 mt-1">{scoringErrors.points}</p>
+                    ) : (
+                      <p className="text-[10px] text-zinc-500 mt-1">Separe os valores por vírgula, espaço ou quebra de linha.</p>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="text-zinc-300 font-medium">Critério de desempate:</span>
+                  <select
+                    value={newGameTiebreakKind}
+                    onChange={(e) => setNewGameTiebreakKind(e.target.value as TiebreakKind)}
+                    className="bg-zinc-900 border border-zinc-700 text-xs text-white rounded-lg px-2 py-1"
+                  >
+                    <option value="last_workout">Melhor posição no último WOD</option>
+                    <option value="most_wins">Mais vitórias em WODs</option>
+                    <option value="split">Melhor parcial de um exercício</option>
+                  </select>
+                </div>
+
+                {newGameTiebreakKind === 'split' && (
+                  <div className="text-xs">
+                    <input
+                      type="text"
+                      value={newGameTiebreakSplit}
+                      onChange={(e) => setNewGameTiebreakSplit(e.target.value)}
+                      placeholder="Wall Balls"
+                      className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                    />
+                    {scoringErrors.split && <p className="text-[11px] text-red-400 mt-1">{scoringErrors.split}</p>}
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-2 text-xs pt-1">
                   <label className="flex items-center gap-2 text-zinc-300 cursor-pointer">

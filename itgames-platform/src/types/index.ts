@@ -250,6 +250,10 @@ export interface GameEvent {
   scoringRules: {
     isLowestPointsBetter: boolean;
     hyroxChipTimingEnabled: boolean;
+    // Regra resolvida pela API (campeonatos antigos recebem o equivalente derivado)
+    mode?: 'points_table' | 'rank_sum' | 'total_time';
+    tiebreak?: string;
+    pointsTable?: number[];
   };
 }
 
