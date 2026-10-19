@@ -8,6 +8,7 @@ import { isValidCpf, maskCpf, normalizeCpf } from '../../common/utils/cpf';
 import { AuthUser } from '../../common/types/auth-user';
 import { detectImageExtension, getUploadsDir } from '../../common/utils/uploads';
 import { PrismaService } from '../../prisma/prisma.service';
+import { LeaderboardNotifier } from '../leaderboard/leaderboard-notifier.service';
 import { MailNotifier } from '../mail/mail-notifier.service';
 
 export interface CreateGameDto {
@@ -84,6 +85,7 @@ export class EventsService {
     private readonly prisma: PrismaService,
     private readonly access: GameAccessService,
     private readonly notifier: MailNotifier,
+    private readonly leaderboard: LeaderboardNotifier,
   ) {}
 
   private readonly organizerPublicSelect = { user: { select: { id: true, name: true } } };
@@ -957,6 +959,9 @@ export class EventsService {
         include: { athletes: true, category: true },
       });
     });
+
+    // cancelar ou reativar equipe muda o ranking exibido nos telões
+    if (cancelling || reactivating) this.leaderboard.changed(gameCode);
 
     // e-mails só quando o status realmente muda (repetir a mesma ação não reenvia)
     if (reactivating) this.notifier.categoryFullIfReached(gameCode, existing.categoryId);

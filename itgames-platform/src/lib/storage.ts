@@ -94,11 +94,17 @@ class DataStorage {
       games.push(game);
     }
     this.setItem(STORAGE_KEYS.GAMES, games);
+    this.notifyGamesChanged();
+  }
+
+  private notifyGamesChanged(): void {
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('itgames_games_changed'));
   }
 
   public deleteGame(gameId: string): void {
     const games = this.getGames().filter(g => g.id !== gameId && g.code !== gameId);
     this.setItem(STORAGE_KEYS.GAMES, games);
+    this.notifyGamesChanged();
   }
 
   public getActiveGameId(): string {

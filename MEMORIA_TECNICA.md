@@ -1,7 +1,7 @@
 # 🧠 Memória Técnica Contínua — ITGAMES Arena Platform
 
-**Data de Atualização:** 05/10/2026 22:45  
-**Versão:** 1.4.0 (SemVer)  
+**Data de Atualização:** 19/10/2026 19:40  
+**Versão:** 1.5.0 (SemVer)  
 **Ambiente:** Docker Desktop Multi-Container (`itgames-postgres`, `itgames-api`, `itgames-platform`)  
 **Deploy Remoto:** Portainer Stack CE com Auto-Sync Prisma (`docker-compose.portainer.yml`, `PORTAINER_DEPLOY_GUIDE.md`)  
 **Banco de Dados:** PostgreSQL 18 (Alpine) na porta `5433:5432`  

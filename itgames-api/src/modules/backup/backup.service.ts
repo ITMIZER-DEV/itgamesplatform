@@ -18,7 +18,7 @@ export class BackupService {
 
     return {
       exportedAt: new Date().toISOString(),
-      version: '1.4.0',
+      version: '1.5.0',
       users,
       games,
       categories,

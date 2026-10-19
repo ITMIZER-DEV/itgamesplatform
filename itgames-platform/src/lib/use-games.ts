@@ -64,9 +64,12 @@ export function useGames() {
     // outra tela trocou o campeonato ativo
     const onStorageUpdated = () => setActiveCode(storage.getActiveGameId());
     window.addEventListener('itgames_auth_changed', onAuthChanged);
+    // campeonato criado ou excluído (Admin): recarrega a lista do seletor
+    window.addEventListener('itgames_games_changed', onAuthChanged);
     window.addEventListener('itgames_storage_updated', onStorageUpdated);
     return () => {
       window.removeEventListener('itgames_auth_changed', onAuthChanged);
+    window.removeEventListener('itgames_games_changed', onAuthChanged);
       window.removeEventListener('itgames_storage_updated', onStorageUpdated);
     };
   }, []);

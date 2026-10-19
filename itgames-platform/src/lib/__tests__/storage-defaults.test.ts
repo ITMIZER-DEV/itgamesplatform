@@ -8,10 +8,14 @@ const fakeLocalStorage = {
   removeItem: (k: string) => void data.delete(k),
   clear: () => data.clear(),
 };
+const dispatched: string[] = [];
 Object.assign(globalThis, {
   window: globalThis,
   localStorage: fakeLocalStorage,
-  dispatchEvent: () => true,
+  dispatchEvent: (e: Event) => {
+    dispatched.push(e.type);
+    return true;
+  },
 });
 
 describe('storage sem dados fictícios', () => {
@@ -35,5 +39,29 @@ describe('storage sem dados fictícios', () => {
     const { storage } = await import('../storage');
     storage.initDefaultsIfEmpty();
     expect(storage.getGames().map((g) => g.id)).toEqual(['SUMMER2026']);
+  });
+});
+
+describe('evento itgames_games_changed', () => {
+  beforeEach(() => {
+    data.clear();
+    dispatched.length = 0;
+  });
+
+  it('saveGame e deleteGame disparam itgames_games_changed', async () => {
+    const { storage } = await import('../storage');
+    storage.saveGame({ id: 'ABC', name: 'X' } as any);
+    expect(dispatched).toContain('itgames_games_changed');
+    dispatched.length = 0;
+    storage.deleteGame('ABC');
+    expect(dispatched).toContain('itgames_games_changed');
+  });
+
+  it('ler ou trocar o campeonato ativo não dispara itgames_games_changed', async () => {
+    const { storage } = await import('../storage');
+    storage.getGames();
+    storage.setActiveGameId('ABC');
+    expect(dispatched).toContain('itgames_storage_updated');
+    expect(dispatched).not.toContain('itgames_games_changed');
   });
 });

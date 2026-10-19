@@ -14,7 +14,7 @@ export class AthletesService {
       throw new BadRequestException('CPF inválido');
     }
     const user = await this.prisma.user.findFirst({
-      where: { cpf, role: UserRole.ATHLETE },
+      where: { cpf, role: { in: [UserRole.ATHLETE, UserRole.ORGANIZER] } },
       select: { name: true },
     });
     if (!user) {

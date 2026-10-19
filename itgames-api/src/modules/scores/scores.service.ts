@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { LeaderboardNotifier } from '../leaderboard/leaderboard-notifier.service';
 import { CreateScoreDto } from './dto/create-score.dto';
 
 @Injectable()
 export class ScoresService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly leaderboard: LeaderboardNotifier,
+  ) {}
 
   async createOrUpdateScore(dto: CreateScoreDto, actorName: string, actorRole: string, ipAddress?: string) {
     // Garantir que o Event correspondente exista
@@ -93,6 +97,8 @@ export class ScoresService {
         ipAddress,
       },
     });
+
+    this.leaderboard.changed(dto.game);
 
     return {
       success: true,

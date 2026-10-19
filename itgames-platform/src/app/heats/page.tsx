@@ -42,10 +42,14 @@ export default function HeatsPage() {
     workouts: WorkoutRule[];
     teams: TeamRegistration[];
   } | null>(null);
-  const [dataError, setDataError] = useState<string | null>(null);
+  // erro amarrado ao campeonato em que ocorreu, para não aparecer após trocar de campeonato
+  const [dataErrorState, setDataErrorState] = useState<{ game: string; message: string } | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [heatsData, setHeatsData] = useState<{ key: string; heats: Heat[] } | null>(null);
 
   const fresh = data && data.game === gameCode ? data : null;
+  const dataError = dataErrorState && dataErrorState.game === gameCode ? dataErrorState.message : null;
+  const isLoadingData = gamesLoading || (!!gameCode && !fresh && !dataError);
   const categories = fresh?.categories ?? [];
   const allWorkouts = fresh?.workouts ?? [];
   const teams = fresh?.teams ?? [];
@@ -87,10 +91,13 @@ export default function HeatsPage() {
       .then(([cats, wods, regs]) => {
         if (cancelled) return;
         if (!cats || !wods || !regs) {
-          setDataError('Não foi possível carregar as categorias, os WODs e as inscrições deste campeonato.');
+          setDataErrorState({
+            game: gameCode,
+            message: 'Não foi possível carregar as categorias, os WODs e as inscrições deste campeonato.',
+          });
           return;
         }
-        setDataError(null);
+        setDataErrorState(null);
         const categoryList = cats.map((c) => mapCategory(c, gameCode, eventType));
         const nameById = new Map(categoryList.map((c) => [c.id, c.name]));
         setData({
@@ -103,7 +110,7 @@ export default function HeatsPage() {
         });
       })
       .catch(() => {
-        if (!cancelled) setDataError('Não foi possível carregar os dados deste campeonato.');
+        if (!cancelled) setDataErrorState({ game: gameCode, message: 'Não foi possível carregar os dados deste campeonato.' });
       });
     return () => {
       cancelled = true;
@@ -151,7 +158,8 @@ export default function HeatsPage() {
   };
 
   const handleGenerateHeats = async () => {
-    if (!activeGame || !currentWorkout || !currentCategory) return;
+    if (isGenerating || !activeGame || !currentWorkout || !currentCategory) return;
+    setIsGenerating(true);
     try {
       const res = await apiClient.generateHeats({
         gameCode: activeGame.code,
@@ -172,6 +180,8 @@ export default function HeatsPage() {
       toast.success(`${res.totalHeats} baterias geradas com sucesso para ${categoryTeams.length} atletas!`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Não foi possível gerar as baterias.');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -339,7 +349,9 @@ export default function HeatsPage() {
       </div>
 
       {/* LISTAGEM DAS BATERIAS E GRID DE RAIAS */}
-      {isLoadingHeats ? (
+      {isLoadingData ? (
+        <div className="text-center py-16 text-sm text-zinc-400">Carregando...</div>
+      ) : !currentWorkout ? null : isLoadingHeats ? (
         <div className="text-center py-16 text-sm text-zinc-400">Carregando baterias...</div>
       ) : filteredHeats.length === 0 ? (
         <div className="text-center py-16 glass-panel rounded-3xl border border-zinc-800 space-y-4">
@@ -564,9 +576,10 @@ export default function HeatsPage() {
               </button>
               <button
                 onClick={handleGenerateHeats}
-                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-500/20"
+                disabled={isGenerating}
+                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Confirmar e Gerar Baterias
+                {isGenerating ? 'Gerando...' : 'Confirmar e Gerar Baterias'}
               </button>
             </div>
           </div>

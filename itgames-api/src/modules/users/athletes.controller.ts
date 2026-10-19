@@ -6,7 +6,7 @@ import { AthletesService } from './athletes.service';
 
 @ApiTags('athletes')
 @ApiBearerAuth()
-@Roles(UserRole.ATHLETE)
+@Roles(UserRole.ATHLETE, UserRole.ORGANIZER)
 @Controller('athletes')
 export class AthletesController {
   constructor(private readonly athletesService: AthletesService) {}

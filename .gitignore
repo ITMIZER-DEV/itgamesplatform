@@ -37,6 +37,7 @@ Thumbs.db
 *.swo
 .agents/
 .gemini/
+.kiro/
 
 # Docker
 docker-data/
