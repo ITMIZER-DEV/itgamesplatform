@@ -36,7 +36,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { storage } from '@/lib/storage';
 import { GameEvent, Category, WorkoutRule, TeamRegistration, ScoreEntry, Heat, LeaderboardRank } from '@/types';
 import { useBoard } from '@/lib/use-board';
-import { toLeaderboardRanks, formatTotal } from '@/lib/board';
+import { toLeaderboardRanks, formatTotal, registrationCodeFromTeamId } from '@/lib/board';
 import { getCurrentUserSession, UserSession } from '@/lib/acl';
 import { apiClient } from '@/lib/api-client';
 import { toast } from 'sonner';
@@ -305,16 +305,17 @@ export default function AthletePortalPage() {
   const categoryTeams = teams.filter(t => t.categoryId === currentCategory?.id);
 
   // Ranking calculado pelo servidor: usa a categoria do placar que contém a inscrição selecionada
-  const boardCategory =
-    board?.categories.find(c => c.rows.some(r => String(r.teamCode) === selectedTeam?.id)) ||
-    board?.categories.find(c => c.name === currentCategory?.name) ||
-    board?.categories[0];
+  // O id local é "reg_<código>"; sem inscrição da API na equipe selecionada, não mostra outra categoria.
+  const myCode = registrationCodeFromTeamId(selectedTeam?.id);
+  const boardCategory = selectedTeam
+    ? board?.categories.find(c => c.rows.some(r => String(r.teamCode) === myCode))
+    : board?.categories[0];
   const categoryWodTitles = boardCategory?.wodTitles ?? [];
   const categoryLeaderboard: LeaderboardRank[] = boardCategory
     ? toLeaderboardRanks(boardCategory, board?.game.totalUnit ?? 'PTS')
     : [];
 
-  const myRank = categoryLeaderboard.find(r => r.registrationId === selectedTeam?.id);
+  const myRank = categoryLeaderboard.find(r => r.registrationId === myCode);
 
   const handleSendContest = () => {
     if (!contestReason.trim()) {
@@ -1081,7 +1082,7 @@ export default function AthletePortalPage() {
                   </thead>
                   <tbody className="divide-y divide-zinc-800/60">
                     {categoryLeaderboard.map((row) => {
-                      const isMe = row.registrationId === selectedTeam?.id;
+                      const isMe = myCode !== null && row.registrationId === myCode;
                       return (
                         <tr 
                           key={row.registrationId} 
@@ -1118,7 +1119,7 @@ export default function AthletePortalPage() {
                             <div className="text-[10px] text-zinc-500 font-mono">BIB: #{row.registerNumber}</div>
                           </td>
                           <td className="p-3 hidden sm:table-cell text-zinc-400">
-                            {row.boxOrAffiliate || 'Box Filiada'}
+                            {row.boxOrAffiliate || '-'}
                           </td>
                           {categoryWodTitles.map((title, wi) => {
                             const wScore = row.workoutScores[wi];

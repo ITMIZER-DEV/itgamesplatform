@@ -66,3 +66,9 @@ export function formatTotal(rank: Pick<LeaderboardRank, 'totalDisplay' | 'totalP
   if (rank.totalUnit === 'TEMPO') return value;
   return `${value} ${rank.totalUnit === 'SOMA' ? 'soma' : 'pts'}`;
 }
+
+// Código da inscrição na API a partir do id local da equipe ("reg_12" -> "12"); null se não for da API.
+export function registrationCodeFromTeamId(id?: string | null): string | null {
+  const m = /^reg_(\d+)$/.exec(id ?? '');
+  return m ? m[1] : null;
+}

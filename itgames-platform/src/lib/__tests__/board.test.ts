@@ -77,3 +77,17 @@ describe('toLeaderboardRanks', () => {
     expect(toLeaderboardRanks({ ...category, rows: [] }, 'PTS')).toEqual([]);
   });
 });
+
+import { registrationCodeFromTeamId } from '../board';
+
+describe('registrationCodeFromTeamId', () => {
+  it('extrai o código de inscrições da API', () => {
+    expect(registrationCodeFromTeamId('reg_12')).toBe('12');
+  });
+  it('retorna null para ids que não são inscrições da API', () => {
+    expect(registrationCodeFromTeamId('team_abc')).toBeNull();
+    expect(registrationCodeFromTeamId('reg_')).toBeNull();
+    expect(registrationCodeFromTeamId('reg_x1')).toBeNull();
+    expect(registrationCodeFromTeamId(undefined)).toBeNull();
+  });
+});

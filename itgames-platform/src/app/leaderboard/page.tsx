@@ -207,7 +207,7 @@ export default function LeaderboardPage() {
                 <th className="py-4 px-4">Atleta / Equipe</th>
                 <th className="py-4 px-4">Box / Box Affiliate</th>
                 {categoryWodTitles.map((title, i) => (
-                  <th key={i} className="py-3 px-3 text-center">
+                  <th key={i} className="py-4 px-3 text-center">
                     {title.split('-')[0] || `WOD ${i + 1}`}
                   </th>
                 ))}
