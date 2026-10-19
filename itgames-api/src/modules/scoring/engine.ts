@@ -5,6 +5,9 @@ import { compareWithinWorkout, formatTime, parseTime, WorkoutResult } from './wo
 
 type Workout = EngineInput['workouts'][number];
 type Team = EngineInput['teams'][number];
+type Split = { name: string; seconds: number };
+/** Resultado de um WOD por equipe, com dados extras usados só no modo total_time. */
+type WodEntry = BoardWod & { seconds?: number; splits?: Split[] };
 
 const TOTAL_UNIT = { points_table: 'PTS', rank_sum: 'SOMA', total_time: 'TEMPO' } as const;
 
@@ -40,12 +43,12 @@ function rankWorkout(
   teams: Team[],
   scores: EngineScore[],
   rule: ScoringRule,
-): Map<number, BoardWod> | null {
+): Map<number, WodEntry> | null {
   const type = workout.type || 'for_time';
   const cap = parseTime(workout.timeCap);
   const title = titleOf(workout);
 
-  const valid: { teamCode: number; result: WorkoutResult }[] = [];
+  const valid: { teamCode: number; result: WorkoutResult; splits: Split[] }[] = [];
   const others: { teamCode: number; status: BoardWod['status']; display: string }[] = [];
   for (const team of teams) {
     const mine = scores.filter((s) => s.teamCode === team.code);
@@ -58,7 +61,7 @@ function rankWorkout(
     } else if (s.isWO) {
       others.push({ teamCode: team.code, status: 'wo', display: 'W.O.' });
     } else {
-      valid.push({ teamCode: team.code, result: toResult(s, cap) });
+      valid.push({ teamCode: team.code, result: toResult(s, cap), splits: s.splits ?? [] });
     }
   }
   // sem nenhum resultado válido, o WOD não conta (ninguém ganha 1º por falta de concorrente)
@@ -67,12 +70,22 @@ function rankWorkout(
   const pointsOf = (rank: number) => (rule.mode === 'points_table' ? pointsForPosition(rule.pointsTable, rank) : rank);
   valid.sort((a, b) => compareWithinWorkout(type, a.result, b.result));
 
-  const out = new Map<number, BoardWod>();
+  const out = new Map<number, WodEntry>();
   let rank = 1;
   valid.forEach((e, i) => {
     // posição densa: empate repete a posição e a seguinte não pula
     if (i > 0 && compareWithinWorkout(type, valid[i - 1].result, e.result) !== 0) rank++;
-    out.set(e.teamCode, { title, display: display(type, e.result), rank, points: pointsOf(rank), status: 'scored' });
+    // tempo válido: terminou dentro do cap (quando houver)
+    const seconds = e.result.completed ? e.result.time + e.result.penalty : undefined;
+    out.set(e.teamCode, {
+      title,
+      display: display(type, e.result),
+      rank,
+      points: pointsOf(rank),
+      status: 'scored',
+      seconds,
+      splits: e.splits,
+    });
   });
   const lastPlus1 = rank + 1;
   for (const o of others) {
@@ -83,8 +96,8 @@ function rankWorkout(
 
 export function computeBoard(input: EngineInput, now: Date = new Date()): Board {
   const rule = resolveRule(input.game);
-  // total_time (HYROX) entra na Task 3
-  if (rule.mode === 'total_time') throw new Error('modo não suportado');
+  const timeMode = rule.mode === 'total_time';
+  const splitName = rule.tiebreak.startsWith('split:') ? rule.tiebreak.slice('split:'.length) : null;
   const higherWins = rule.mode === 'points_table';
 
   const categories = input.categories.map((category) => {
@@ -105,22 +118,53 @@ export function computeBoard(input: EngineInput, now: Date = new Date()): Board 
     const rows = teams.map((team) => {
       let total = 0;
       let wins = 0;
+      let seconds = 0;
+      let validCount = 0;
+      let splitSum = 0;
+      let hasSplit = false;
       const wods: BoardWod[] = workouts.map((workout, i) => {
         const wod = perWorkout[i]?.get(team.code);
         if (!wod) return { title: titleOf(workout), display: 'Sem Score', rank: 0, points: 0, status: 'none' };
         total += wod.points;
         if (wod.rank === 1) wins++;
-        return wod;
+        if (wod.seconds !== undefined) {
+          seconds += wod.seconds;
+          validCount++;
+          const found = (wod.splits ?? []).filter((sp) => sp.name === splitName);
+          if (found.length > 0) {
+            hasSplit = true;
+            splitSum += found.reduce((acc, sp) => acc + sp.seconds, 0);
+          }
+        }
+        // só título, texto, posição, pontos e status vão para o placar
+        return { title: wod.title, display: wod.display, rank: wod.rank, points: wod.points, status: wod.status };
       });
-      return { team, total, wins, lastRank: lastCounting >= 0 ? wods[lastCounting].rank : 0, wods };
+      // terminou = tem tempo válido em todos os WODs que contam
+      const countingWods = perWorkout.filter(Boolean).length;
+      const finished = timeMode && countingWods > 0 && validCount === countingWods;
+      return {
+        team, total, wins, seconds, validCount, finished, splitSum, hasSplit,
+        lastRank: lastCounting >= 0 ? wods[lastCounting].rank : 0,
+        wods,
+      };
     });
 
     type Row = (typeof rows)[number];
     const compare = (a: Row, b: Row): number => {
+      if (timeMode) {
+        // quem terminou vem primeiro; as demais por WODs válidos (mais primeiro)
+        if (a.finished !== b.finished) return a.finished ? -1 : 1;
+        if (!a.finished) return b.validCount - a.validCount;
+        if (a.seconds !== b.seconds) return a.seconds - b.seconds;
+        if (splitName === null) return 0;
+        // parcial menor vence; quem não tem o parcial perde; ninguém tem => empate
+        if (a.hasSplit !== b.hasSplit) return a.hasSplit ? -1 : 1;
+        return a.splitSum - b.splitSum;
+      }
       if (a.total !== b.total) return higherWins ? b.total - a.total : a.total - b.total;
       if (rule.tiebreak === 'last_workout') return a.lastRank - b.lastRank;
       if (rule.tiebreak === 'most_wins') return b.wins - a.wins;
-      // split:<nome> entra na Task 3; por ora, empate
+      // split:<nome> só se aplica ao modo total_time; nos demais, empate
       return 0;
     };
     rows.sort(compare);
@@ -136,8 +180,8 @@ export function computeBoard(input: EngineInput, now: Date = new Date()): Board 
         number: (r.team.number || '').trim() || `#${r.team.code}`,
         athletes: r.team.athletes.map((a) => a.trim()).filter(Boolean),
         status: r.team.status,
-        totalPoints: r.total,
-        totalDisplay: String(r.total),
+        totalPoints: timeMode ? (r.finished ? r.seconds : 0) : r.total,
+        totalDisplay: timeMode ? (r.finished ? formatTime(r.seconds) : '—') : String(r.total),
         wods: r.wods,
       };
     });

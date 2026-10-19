@@ -179,7 +179,53 @@ describe('computeBoard — casos de borda', () => {
     expect([1, 2, 3, 4].map((c) => t(c).totalPoints)).toEqual([95, 100, 100, 90]);
   });
 
-  it('total_time ainda não é suportado', () => {
-    expect(() => computeBoard(fixtureA({}, { eventType: 'hyrox' }), NOW)).toThrow('modo não suportado');
+});
+
+// Fixture B: HYROX, um WOD 20 hyrox_standard; t1 60:00 + 30s, t2 e t6 60:10, t3 W.O., t4 sem score, t5 cancelada
+function fixtureB(tiebreak?: string, withSplits: 'ambos' | 'so_t6' = 'ambos'): EngineInput {
+  const wb = (code: number, extra: Partial<EngineScore>) => score(20, code, extra);
+  return {
+    game: { code: 'H1', name: 'HYROX', location: 'Arena', eventType: 'hyrox', tiebreak },
+    categories: [{ code: 1, name: 'Open' }],
+    workouts: [{ code: 20, category: 1, title: 'Corrida', type: 'hyrox_standard' }],
+    teams: [team(1), team(2), team(3), team(4), team(5, 'cancelled'), team(6)],
+    scores: [
+      wb(1, { time: '60:00', penaltySeconds: 30 }),
+      wb(2, { time: '60:10', splits: withSplits === 'ambos' ? [{ name: 'Wall Balls', seconds: 270 }] : null }),
+      wb(3, { isWO: true }),
+      wb(6, { time: '60:10', splits: [{ name: 'Wall Balls', seconds: 240 }] }),
+    ],
+  };
+}
+
+describe('computeBoard — total_time (HYROX)', () => {
+  it('ordena por tempo total e manda W.O., sem score e canceladas para o fim', () => {
+    const board = computeBoard(fixtureB('split:Wall Balls'), NOW);
+    const rows = board.categories[0].rows;
+    expect(rows.map((r) => r.teamCode)).toEqual([6, 2, 1, 3, 4, 5]);
+    expect(rows.map((r) => r.totalDisplay)).toEqual(['60:10', '60:10', '60:30', '—', '—', '—']);
+    expect(board.game.rule.mode).toBe('total_time');
+    expect(board.game.totalUnit).toBe('TEMPO');
+  });
+
+  it('desempate padrão deixa t2 e t6 empatados na mesma posição', () => {
+    const rows = rowsOf(fixtureB());
+    const t = (c: number) => rows.find((r) => r.teamCode === c)!;
+    expect(t(2).rank).toBe(t(6).rank);
+    expect(rows.map((r) => r.teamCode).slice(0, 2)).toEqual([2, 6]);
+    expect(t(1).rank).toBe(t(2).rank + 1);
+  });
+
+  it('parcial inexistente empata', () => {
+    const rows = rowsOf(fixtureB('split:Inexistente'));
+    const t = (c: number) => rows.find((r) => r.teamCode === c)!;
+    expect(t(2).rank).toBe(t(6).rank);
+  });
+
+  it('só t6 com o parcial: t6 vence', () => {
+    const rows = rowsOf(fixtureB('split:Wall Balls', 'so_t6'));
+    expect(rows.map((r) => r.teamCode).slice(0, 2)).toEqual([6, 2]);
+    expect(rows[0].rank).toBe(1);
+    expect(rows[1].rank).toBe(2);
   });
 });
