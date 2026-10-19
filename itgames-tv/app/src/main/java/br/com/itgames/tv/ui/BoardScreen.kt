@@ -289,7 +289,7 @@ private fun ScoreRow(row: BoardRow, wodCount: Int, totalUnit: String, modifier: 
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text("WOD ${index + 1}", color = Palette.TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                        Text(wod.display, color = Palette.Text, fontSize = 12.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(wod.display, color = Palette.Text, fontSize = chipFontSize(wod.display).sp, fontWeight = FontWeight.Black, maxLines = 1, softWrap = false)
                     }
                 }
             }
@@ -317,6 +317,12 @@ private fun ScoreRow(row: BoardRow, wodCount: Int, totalUnit: String, modifier: 
             )
         }
     }
+}
+
+// Tamanho (sp) do texto do chip de WOD: valores longos ("CANCELADA", "Sem Score") encolhem para caber nos 80dp sem truncar.
+fun chipFontSize(display: String): Int = when {
+    display.length <= 8 -> 12
+    else -> 9
 }
 
 private const val MAX_WOD_CHIPS = 5
