@@ -1,4 +1,4 @@
-import { buildBoard, BoardSource, formatTime } from '../src/modules/leaderboard/board';
+import { buildBoard, BoardSource, formatTime } from '../../src/modules/leaderboard/board';
 
 const source = (): BoardSource => ({
   game: { code: 'G1', name: 'Arena', eventType: 'crossfit', location: 'SP' },
