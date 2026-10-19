@@ -1,5 +1,6 @@
 import { ScoreEntry, Heat, AuditLogEntry, GameEvent, Category, WorkoutRule, TeamRegistration } from '@/types';
 import { storage } from './storage';
+import type { BoardResponse } from './board';
 import { getAuthToken, logoutUser } from './acl';
 
 export function getApiBaseUrl(): string {
@@ -363,6 +364,11 @@ export class ApiClient {
 
   async getLeaderboard(code: string): Promise<any | null> {
     return this.request<any>(`/events/${code}/leaderboard`);
+  }
+
+  // Placar calculado pelo servidor (pontos, soma de posições ou tempo, conforme a regra)
+  async getBoard(code: string): Promise<BoardResponse | null> {
+    return this.request<BoardResponse>(`/events/${code}/board`);
   }
 
   async addGameOrganizer(code: string, userId: string): Promise<OrganizerUser[]> {

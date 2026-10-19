@@ -199,6 +199,9 @@ export interface LeaderboardRank {
   athletes: string[];
   totalPoints: number;
   totalTimeSeconds?: number;
+  totalDisplay?: string;
+  status?: 'active' | 'cancelled';
+  totalUnit?: string;
   workoutScores: {
     workoutId: string;
     workoutTitle: string;
@@ -208,6 +211,7 @@ export interface LeaderboardRank {
     timeSeconds?: number;
     photoSumulaUrl?: string;
     isApproved: boolean;
+    status?: string;
   }[];
 }
 

@@ -15,34 +15,28 @@ import {
   Filter,
   Sparkles
 } from 'lucide-react';
-import { useLeaderboard } from '@/lib/use-leaderboard';
-import { GameEvent, Category, WorkoutRule, TeamRegistration, ScoreEntry, LeaderboardRank } from '@/types';
-import { calculateOverallLeaderboard } from '@/lib/scoring';
+import { useBoard } from '@/lib/use-board';
+import { toLeaderboardRanks, formatTotal } from '@/lib/board';
+import { LeaderboardRank } from '@/types';
 import { getCurrentUserSession } from '@/lib/acl';
 
 export default function LeaderboardPage() {
-  const { view, status } = useLeaderboard(30000);
-  const activeGame = view?.game ?? null;
-  const categories = view?.categories ?? [];
-  const workouts = view?.workouts ?? [];
-  const teams = view?.teams ?? [];
-  const scores = view?.scores ?? [];
+  const { board, status } = useBoard(30000);
+  const activeGame = board?.game ?? null;
+  const categories = board?.categories ?? [];
 
   const [pickedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const selectedCategoryId = pickedCategoryId || categories[0]?.id || '';
+  const selectedCategoryId = pickedCategoryId || String(categories[0]?.id ?? '');
 
-  const currentCategory = categories.find(c => c.id === selectedCategoryId) || categories[0];
-  const categoryWorkouts = workouts.filter(w => w.categoryId === currentCategory?.id);
-  const categoryTeams = teams.filter(t => t.categoryId === currentCategory?.id);
+  const currentCategory = categories.find(c => String(c.id) === selectedCategoryId) || categories[0];
+  const categoryWodTitles = currentCategory?.wodTitles ?? [];
 
-  // Calcular ranking oficial acumulado
-  const leaderboard: LeaderboardRank[] = calculateOverallLeaderboard(
-    categoryTeams,
-    categoryWorkouts,
-    scores,
-    activeGame?.eventType === 'hyrox'
-  );
+  // Classificação oficial calculada pelo servidor
+  const leaderboard: LeaderboardRank[] = currentCategory
+    ? toLeaderboardRanks(currentCategory, activeGame?.totalUnit ?? 'PTS')
+    : [];
+  const hasResults = categories.some(c => c.rows.some(r => r.wods.some(w => w.status !== 'none')));
 
   // Filtrar busca por nome ou número
   const filteredRanks = leaderboard.filter(item => {
@@ -96,7 +90,7 @@ export default function LeaderboardPage() {
           Não foi possível carregar a classificação agora. Tente novamente em instantes.
         </div>
       )}
-      {status === 'ok' && scores.length === 0 && (
+      {status === 'ok' && !hasResults && (
         <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-400">
           Ainda não há resultados homologados neste campeonato. A classificação aparece aqui assim que os juízes lançarem e homologarem os scores.
         </div>
@@ -109,7 +103,7 @@ export default function LeaderboardPage() {
           return (
             <button
               key={cat.id}
-              onClick={() => setSelectedCategoryId(cat.id)}
+              onClick={() => setSelectedCategoryId(String(cat.id))}
               className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
                 isSelected
                   ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20 scale-105'
@@ -158,7 +152,7 @@ export default function LeaderboardPage() {
             </div>
             <div className="pt-3 border-t border-zinc-800 flex items-center justify-between">
               <span className="text-xs text-zinc-400">Pontuação Total:</span>
-              <span className="text-lg font-black text-zinc-200">{filteredRanks[1].totalPoints} pts</span>
+              <span className="text-lg font-black text-zinc-200">{formatTotal(filteredRanks[1])}</span>
             </div>
           </div>
 
@@ -177,7 +171,7 @@ export default function LeaderboardPage() {
             </div>
             <div className="pt-4 border-t border-amber-500/30 flex items-center justify-between">
               <span className="text-xs text-zinc-300 font-bold uppercase">Pontuação Acumulada:</span>
-              <span className="text-2xl font-black text-amber-400">{filteredRanks[0].totalPoints} pts</span>
+              <span className="text-2xl font-black text-amber-400">{formatTotal(filteredRanks[0])}</span>
             </div>
           </div>
 
@@ -196,7 +190,7 @@ export default function LeaderboardPage() {
             </div>
             <div className="pt-3 border-t border-zinc-800 flex items-center justify-between">
               <span className="text-xs text-zinc-400">Pontuação Total:</span>
-              <span className="text-lg font-black text-amber-600">{filteredRanks[2].totalPoints} pts</span>
+              <span className="text-lg font-black text-amber-600">{formatTotal(filteredRanks[2])}</span>
             </div>
           </div>
 
@@ -212,19 +206,19 @@ export default function LeaderboardPage() {
                 <th className="py-4 px-4 text-center w-16">Rank</th>
                 <th className="py-4 px-4">Atleta / Equipe</th>
                 <th className="py-4 px-4">Box / Box Affiliate</th>
-                {categoryWorkouts.map((wod, i) => (
-                  <th key={wod.id} className="py-4 px-3 text-center">
-                    {wod.title.split('-')[0] || `WOD ${i + 1}`}
+                {categoryWodTitles.map((title, i) => (
+                  <th key={i} className="py-3 px-3 text-center">
+                    {title.split('-')[0] || `WOD ${i + 1}`}
                   </th>
                 ))}
-                <th className="py-4 px-4 text-right font-black text-amber-400">Pontos Totais</th>
+                <th className="py-4 px-4 text-right font-black text-amber-400">Total</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/60">
               {filteredRanks.map((rankItem) => (
                 <tr 
                   key={rankItem.registrationId}
-                  className="hover:bg-zinc-800/40 transition-colors"
+                  className={`hover:bg-zinc-800/40 transition-colors ${rankItem.status === 'cancelled' ? 'opacity-60' : ''}`}
                 >
                   <td className="py-3.5 px-4 text-center">
                     <span className={`inline-flex items-center justify-center w-7 h-7 rounded-xl font-black text-xs ${
@@ -241,6 +235,11 @@ export default function LeaderboardPage() {
                     <div className="font-bold text-white flex items-center gap-1.5">
                       <span>{rankItem.teamName}</span>
                       <span className="text-[10px] text-amber-400">({rankItem.registerNumber})</span>
+                      {rankItem.status === 'cancelled' && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 font-black uppercase">
+                          CANCELADA
+                        </span>
+                      )}
                     </div>
                     <div className="text-[10px] text-zinc-400">
                       {rankItem.athletes.join(', ')}
@@ -264,7 +263,7 @@ export default function LeaderboardPage() {
                   ))}
 
                   <td className="py-3.5 px-4 text-right font-black text-sm text-amber-400">
-                    {rankItem.totalPoints} pts
+                    {formatTotal(rankItem)}
                   </td>
                 </tr>
               ))}

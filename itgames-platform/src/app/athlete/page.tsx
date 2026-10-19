@@ -35,7 +35,8 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import { storage } from '@/lib/storage';
 import { GameEvent, Category, WorkoutRule, TeamRegistration, ScoreEntry, Heat, LeaderboardRank } from '@/types';
-import { calculateOverallLeaderboard } from '@/lib/scoring';
+import { useBoard } from '@/lib/use-board';
+import { toLeaderboardRanks, formatTotal } from '@/lib/board';
 import { getCurrentUserSession, UserSession } from '@/lib/acl';
 import { apiClient } from '@/lib/api-client';
 import { toast } from 'sonner';
@@ -50,6 +51,7 @@ export default function AthletePortalPage() {
   const [heats, setHeats] = useState<Heat[]>([]);
   const [scores, setScores] = useState<ScoreEntry[]>([]);
   const [teams, setTeams] = useState<TeamRegistration[]>([]);
+  const { board } = useBoard(30000);
 
   // Comprovante de Pagamento do Atleta
   const [proofInput, setProofInput] = useState<string>('');
@@ -301,14 +303,16 @@ export default function AthletePortalPage() {
   // Calcular ranking da categoria do atleta
   const currentCategory = categories.find(c => c.id === selectedTeam?.categoryId) || categories[0];
   const categoryTeams = teams.filter(t => t.categoryId === currentCategory?.id);
-  const categoryWorkouts = workouts.filter(w => w.categoryId === currentCategory?.id || w.gameId === activeGame?.id);
 
-  const categoryLeaderboard: LeaderboardRank[] = calculateOverallLeaderboard(
-    categoryTeams,
-    categoryWorkouts,
-    scores,
-    activeGame?.eventType === 'hyrox'
-  );
+  // Ranking calculado pelo servidor: usa a categoria do placar que contém a inscrição selecionada
+  const boardCategory =
+    board?.categories.find(c => c.rows.some(r => String(r.teamCode) === selectedTeam?.id)) ||
+    board?.categories.find(c => c.name === currentCategory?.name) ||
+    board?.categories[0];
+  const categoryWodTitles = boardCategory?.wodTitles ?? [];
+  const categoryLeaderboard: LeaderboardRank[] = boardCategory
+    ? toLeaderboardRanks(boardCategory, board?.game.totalUnit ?? 'PTS')
+    : [];
 
   const myRank = categoryLeaderboard.find(r => r.registrationId === selectedTeam?.id);
 
@@ -849,7 +853,7 @@ export default function AthletePortalPage() {
                     <div className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-between">
                       <span className="text-xs text-zinc-400">Pontuação Acumulada:</span>
                       <span className="text-sm font-black text-emerald-400">
-                        {myRank ? `${myRank.totalPoints} pts` : `${athleteScores.length * 95} pts`}
+                        {myRank ? formatTotal(myRank) : `${athleteScores.length * 95} pts`}
                       </span>
                     </div>
 
@@ -1067,12 +1071,12 @@ export default function AthletePortalPage() {
                       <th className="p-3 w-14 text-center">Pos</th>
                       <th className="p-3">Atleta / Equipe</th>
                       <th className="p-3 hidden sm:table-cell">Box / Afiliação</th>
-                      {categoryWorkouts.map((w, i) => (
-                        <th key={w.id || i} className="p-3 text-center">
-                          {w.title}
+                      {categoryWodTitles.map((title, i) => (
+                        <th key={i} className="p-3 text-center">
+                          {title}
                         </th>
                       ))}
-                      <th className="p-3 text-right font-black text-amber-400">Total Pts</th>
+                      <th className="p-3 text-right font-black text-amber-400">Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800/60">
@@ -1100,6 +1104,11 @@ export default function AthletePortalPage() {
                           <td className="p-3">
                             <div className="font-bold flex items-center gap-1.5">
                               <span>{row.teamName}</span>
+                              {row.status === 'cancelled' && (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 uppercase">
+                                  CANCELADA
+                                </span>
+                              )}
                               {isMe && (
                                 <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/30 text-purple-300 border border-purple-500/40 uppercase">
                                   Você
@@ -1111,10 +1120,10 @@ export default function AthletePortalPage() {
                           <td className="p-3 hidden sm:table-cell text-zinc-400">
                             {row.boxOrAffiliate || 'Box Filiada'}
                           </td>
-                          {categoryWorkouts.map((w) => {
-                            const wScore = row.workoutScores.find(ws => ws.workoutId === w.id);
+                          {categoryWodTitles.map((title, wi) => {
+                            const wScore = row.workoutScores[wi];
                             return (
-                              <td key={w.id} className="p-3 text-center font-mono">
+                              <td key={wi} className="p-3 text-center font-mono">
                                 {wScore ? (
                                   <div>
                                     <div className="text-white text-xs font-bold">{wScore.scoreDisplay}</div>
@@ -1128,7 +1137,7 @@ export default function AthletePortalPage() {
                           })}
                           <td className="p-3 text-right">
                             <span className="text-sm font-black text-amber-400 font-mono">
-                              {row.totalPoints} pts
+                              {formatTotal(row)}
                             </span>
                           </td>
                         </tr>

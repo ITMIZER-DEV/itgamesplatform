@@ -13,19 +13,16 @@ import {
   Sparkles,
   Medal
 } from 'lucide-react';
-import { useLeaderboard } from '@/lib/use-leaderboard';
-import { GameEvent, Category, WorkoutRule, TeamRegistration, ScoreEntry, LeaderboardRank } from '@/types';
-import { calculateOverallLeaderboard } from '@/lib/scoring';
+import { useBoard } from '@/lib/use-board';
+import { toLeaderboardRanks } from '@/lib/board';
+import { LeaderboardRank } from '@/types';
 import confetti from 'canvas-confetti';
 import { BrandLogo } from '@/components/brand/BrandLogo';
 
 export default function BigScreenLeaderboardPage() {
-  const { view } = useLeaderboard(15000);
-  const activeGame = view?.game ?? null;
-  const categories = view?.categories ?? [];
-  const workouts = view?.workouts ?? [];
-  const teams = view?.teams ?? [];
-  const scores = view?.scores ?? [];
+  const { board } = useBoard(15000);
+  const activeGame = board?.game ?? null;
+  const categories = board?.categories ?? [];
 
   const [currentCategoryIndex, setCurrentCategoryIndex] = useState<number>(0);
   const [isAutoRotating, setIsAutoRotating] = useState<boolean>(true);
@@ -66,15 +63,11 @@ export default function BigScreenLeaderboardPage() {
   }, [currentCategoryIndex]);
 
   const currentCategory = categories[currentCategoryIndex] || categories[0];
-  const categoryWorkouts = workouts.filter(w => w.categoryId === currentCategory?.id);
-  const categoryTeams = teams.filter(t => t.categoryId === currentCategory?.id);
-
-  const leaderboard: LeaderboardRank[] = calculateOverallLeaderboard(
-    categoryTeams,
-    categoryWorkouts,
-    scores,
-    activeGame?.eventType === 'hyrox'
-  );
+  const leaderboard: LeaderboardRank[] = currentCategory
+    ? toLeaderboardRanks(currentCategory, activeGame?.totalUnit ?? 'PTS')
+    : [];
+  const totalUnit = activeGame?.totalUnit ?? 'PTS';
+  const totalSuffix = totalUnit === 'TEMPO' ? '' : totalUnit;
 
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
@@ -190,9 +183,14 @@ export default function BigScreenLeaderboardPage() {
                       <span className="text-sm sm:text-base font-bold text-amber-400 bg-amber-400/20 px-2.5 py-0.5 rounded-lg border border-amber-400/30">
                         {rankItem.registerNumber}
                       </span>
+                      {rankItem.status === 'cancelled' && (
+                        <span className="text-sm font-black text-rose-300 bg-rose-500/20 px-2.5 py-0.5 rounded-lg border border-rose-500/40 uppercase">
+                          CANCELADA
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs sm:text-sm text-zinc-400 mt-0.5 font-medium">
-                      {rankItem.athletes.join(', ')} • <strong className="text-zinc-300">{rankItem.boxOrAffiliate}</strong>
+                      {rankItem.athletes.join(', ')}{rankItem.boxOrAffiliate && <> • <strong className="text-zinc-300">{rankItem.boxOrAffiliate}</strong></>}
                     </div>
                   </div>
                 </div>
@@ -212,7 +210,8 @@ export default function BigScreenLeaderboardPage() {
                   <div className="bg-black/60 px-6 py-2 rounded-2xl border border-amber-500/40">
                     <div className="text-[10px] uppercase font-bold text-zinc-400">Total Acumulado</div>
                     <div className="text-2xl sm:text-4xl font-black text-amber-400 font-mono">
-                      {rankItem.totalPoints} <span className="text-sm font-bold text-zinc-400">PTS</span>
+                      {rankItem.totalDisplay ?? rankItem.totalPoints}
+                      {totalSuffix && <span className="text-sm font-bold text-zinc-400"> {totalSuffix}</span>}
                     </div>
                   </div>
                 </div>
