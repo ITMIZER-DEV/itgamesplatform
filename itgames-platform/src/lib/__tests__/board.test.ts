@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toLeaderboardRanks, BoardResponse } from '../board';
+import { toLeaderboardRanks, chooseBoardGameCode, BoardResponse } from '../board';
 
 type Category = BoardResponse['categories'][number];
 
@@ -89,5 +89,21 @@ describe('registrationCodeFromTeamId', () => {
     expect(registrationCodeFromTeamId('reg_')).toBeNull();
     expect(registrationCodeFromTeamId('reg_x1')).toBeNull();
     expect(registrationCodeFromTeamId(undefined)).toBeNull();
+  });
+});
+
+describe('chooseBoardGameCode', () => {
+  const games = [{ code: 'A' }, { code: 'B' }, { code: 'C' }];
+  it('o código pedido pela página vence ?game= e o campeonato ativo', () => {
+    expect(chooseBoardGameCode(games, { requested: 'C', fromUrl: 'B', stored: 'A' })).toBe('C');
+  });
+  it('sem código pedido: ?game=, depois o ativo, depois o primeiro', () => {
+    expect(chooseBoardGameCode(games, { fromUrl: 'B', stored: 'C' })).toBe('B');
+    expect(chooseBoardGameCode(games, { stored: 'C' })).toBe('C');
+    expect(chooseBoardGameCode(games, {})).toBe('A');
+  });
+  it('código desconhecido cai para o próximo critério', () => {
+    expect(chooseBoardGameCode(games, { requested: 'X', fromUrl: 'Y', stored: 'B' })).toBe('B');
+    expect(chooseBoardGameCode(games, { requested: 'X' })).toBe('A');
   });
 });

@@ -72,3 +72,15 @@ export function registrationCodeFromTeamId(id?: string | null): string | null {
   const m = /^reg_(\d+)$/.exec(id ?? '');
   return m ? m[1] : null;
 }
+
+// Escolhe o campeonato do placar: o código pedido pela página, ?game= da URL, o último aberto, o primeiro.
+// Códigos que não existem na lista caem para o próximo critério.
+export function chooseBoardGameCode(
+  games: { code: string }[],
+  opts: { requested?: string | null; fromUrl?: string | null; stored?: string | null },
+): string {
+  for (const wanted of [opts.requested, opts.fromUrl, opts.stored]) {
+    if (wanted && games.some((g) => g.code === wanted)) return wanted;
+  }
+  return games[0].code;
+}

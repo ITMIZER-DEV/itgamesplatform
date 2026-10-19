@@ -51,7 +51,9 @@ export default function AthletePortalPage() {
   const [heats, setHeats] = useState<Heat[]>([]);
   const [scores, setScores] = useState<ScoreEntry[]>([]);
   const [teams, setTeams] = useState<TeamRegistration[]>([]);
-  const { board } = useBoard(30000);
+  const { board: fetchedBoard } = useBoard(30000, activeGame?.code);
+  // ignora um placar que ainda é de outro campeonato (troca de torneio em andamento)
+  const board = fetchedBoard && activeGame && fetchedBoard.game.code === activeGame.code ? fetchedBoard : null;
 
   // Comprovante de Pagamento do Atleta
   const [proofInput, setProofInput] = useState<string>('');
@@ -854,7 +856,7 @@ export default function AthletePortalPage() {
                     <div className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-between">
                       <span className="text-xs text-zinc-400">Pontuação Acumulada:</span>
                       <span className="text-sm font-black text-emerald-400">
-                        {myRank ? formatTotal(myRank) : `${athleteScores.length * 95} pts`}
+                        {myRank ? formatTotal(myRank) : '—'}
                       </span>
                     </div>
 

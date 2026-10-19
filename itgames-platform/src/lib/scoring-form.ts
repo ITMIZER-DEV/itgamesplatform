@@ -11,15 +11,16 @@ export const DEFAULT_POINTS_TABLE: number[] = [
 
 export const MAX_POINTS_TABLE_ITEMS = 200;
 
-// Lista separada por vírgula, espaço ou quebra de linha. null se vazia, negativa, não numérica ou longa demais.
+// Lista de inteiros >= 0 separados por vírgula, ponto e vírgula, espaço ou quebra de linha.
+// null se vazia, com valor não inteiro (90.5, 1e3), negativo ou longa demais.
 export function parsePointsInput(text: string): number[] | null {
   const parts = text.split(/[\s,;]+/).filter((p) => p !== '');
   if (parts.length === 0 || parts.length > MAX_POINTS_TABLE_ITEMS) return null;
   const out: number[] = [];
   for (const p of parts) {
-    if (!/^\d*\.?\d+$/.test(p)) return null;
+    if (!/^\d+$/.test(p)) return null;
     const n = Number(p);
-    if (!Number.isFinite(n) || n < 0) return null;
+    if (!Number.isSafeInteger(n)) return null;
     out.push(n);
   }
   return out;
@@ -43,4 +44,14 @@ export function formToTiebreak(kind: TiebreakKind, split: string): string | null
   if (kind !== 'split') return kind;
   const name = split.trim();
   return name ? `split:${name}` : null;
+}
+
+// Regra padrão do formulário conforme o tipo do evento (HYROX é por tempo total)
+export function scoringDefaultsForEventType(eventType: string): {
+  mode: ScoringMode;
+  tiebreakKind: TiebreakKind;
+  tiebreakSplit: string;
+} {
+  if (eventType === 'hyrox') return { mode: 'total_time', tiebreakKind: 'split', tiebreakSplit: 'Wall Balls' };
+  return { mode: 'points_table', tiebreakKind: 'last_workout', tiebreakSplit: '' };
 }

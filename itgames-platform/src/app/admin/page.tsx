@@ -39,7 +39,7 @@ import {
 import { storage } from '@/lib/storage';
 import { GameEvent, Category, WorkoutRule, TeamRegistration, ScoreEntry, OrganizationTenant, AuditLogEntry, ContestTicket, JudgeStaff } from '@/types';
 import {
-  DEFAULT_POINTS_TABLE, MAX_POINTS_TABLE_ITEMS, parsePointsInput, formatPointsInput, tiebreakToForm, formToTiebreak,
+  DEFAULT_POINTS_TABLE, MAX_POINTS_TABLE_ITEMS, parsePointsInput, formatPointsInput, tiebreakToForm, formToTiebreak, scoringDefaultsForEventType,
   type ScoringMode, type TiebreakKind,
 } from '@/lib/scoring-form';
 import { apiClient, ApiError, assetUrl } from '@/lib/api-client';
@@ -90,6 +90,8 @@ export default function AdminDashboardPage() {
   const [newGamePointsText, setNewGamePointsText] = useState(formatPointsInput(DEFAULT_POINTS_TABLE));
   const [newGameTiebreakKind, setNewGameTiebreakKind] = useState<TiebreakKind>('last_workout');
   const [newGameTiebreakSplit, setNewGameTiebreakSplit] = useState('');
+  // true quando o usuário mexeu na regra (ou abriu um campeonato existente): o tipo do evento não sobrescreve mais
+  const [scoringTouched, setScoringTouched] = useState(false);
   const [scoringErrors, setScoringErrors] = useState<{ points?: string; split?: string }>({});
   const [newGameShowTime, setNewGameShowTime] = useState(true);
   const [newGameShowWeight, setNewGameShowWeight] = useState(true);
@@ -517,6 +519,7 @@ export default function AdminDashboardPage() {
     setNewGamePointsText(formatPointsInput(DEFAULT_POINTS_TABLE));
     setNewGameTiebreakKind('last_workout');
     setNewGameTiebreakSplit('');
+    setScoringTouched(false);
     setScoringErrors({});
     setNewGameShowTime(true);
     setNewGameShowWeight(true);
@@ -548,6 +551,7 @@ export default function AdminDashboardPage() {
     const tb = tiebreakToForm(g.scoringRules?.tiebreak);
     setNewGameTiebreakKind(tb.kind);
     setNewGameTiebreakSplit(tb.split);
+    setScoringTouched(true);
     setScoringErrors({});
     setNewGameShowTime(g.scoringRules?.showTime !== false);
     setNewGameShowWeight(g.scoringRules?.showWeight !== false);
@@ -608,7 +612,7 @@ export default function AdminDashboardPage() {
     const errors: { points?: string; split?: string } = {};
     const parsedPoints = newGameScoringMode === 'points_table' ? parsePointsInput(newGamePointsText) : null;
     if (newGameScoringMode === 'points_table' && !parsedPoints) {
-      errors.points = `Tabela de pontos inválida. Informe de 1 a ${MAX_POINTS_TABLE_ITEMS} números maiores ou iguais a zero, separados por vírgula.`;
+      errors.points = `Tabela de pontos inválida. Use números inteiros (zero ou mais) separados por vírgula, de 1 a ${MAX_POINTS_TABLE_ITEMS} valores.`;
     }
     const tiebreakValue = formToTiebreak(newGameTiebreakKind, newGameTiebreakSplit);
     if (!tiebreakValue) errors.split = 'Informe o nome do exercício usado no desempate.';
@@ -2415,7 +2419,18 @@ export default function AdminDashboardPage() {
                   <label className="text-xs font-bold text-zinc-300 block mb-1">Tipo de Evento</label>
                   <select
                     value={newGameType}
-                    onChange={(e) => setNewGameType(e.target.value)}
+                    onChange={(e) => {
+                      const type = e.target.value;
+                      setNewGameType(type);
+                      // sem edição manual da regra, o tipo define o padrão (HYROX = tempo total)
+                      if (!scoringTouched) {
+                        const d = scoringDefaultsForEventType(type);
+                        setNewGameScoringMode(d.mode);
+                        setNewGameTiebreakKind(d.tiebreakKind);
+                        setNewGameTiebreakSplit(d.tiebreakSplit);
+                        setScoringErrors({});
+                      }
+                    }}
                     className="w-full px-3 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
                   >
                     <option value="crossfit">CrossFit / Fitness Games</option>
@@ -2570,7 +2585,10 @@ export default function AdminDashboardPage() {
                   <span className="text-zinc-300 font-medium">Regra de pontuação:</span>
                   <select
                     value={newGameScoringMode}
-                    onChange={(e) => setNewGameScoringMode(e.target.value as ScoringMode)}
+                    onChange={(e) => {
+                      setScoringTouched(true);
+                      setNewGameScoringMode(e.target.value as ScoringMode);
+                    }}
                     className="bg-zinc-900 border border-zinc-700 text-xs text-white rounded-lg px-2 py-1"
                   >
                     <option value="points_table">Pontos por posição (maior soma vence)</option>
@@ -2585,14 +2603,17 @@ export default function AdminDashboardPage() {
                     <textarea
                       rows={3}
                       value={newGamePointsText}
-                      onChange={(e) => setNewGamePointsText(e.target.value)}
+                      onChange={(e) => {
+                        setScoringTouched(true);
+                        setNewGamePointsText(e.target.value);
+                      }}
                       placeholder="100, 95, 90, 85..."
                       className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
                     />
                     {scoringErrors.points ? (
                       <p className="text-[11px] text-red-400 mt-1">{scoringErrors.points}</p>
                     ) : (
-                      <p className="text-[10px] text-zinc-500 mt-1">Separe os valores por vírgula, espaço ou quebra de linha.</p>
+                      <p className="text-[10px] text-zinc-500 mt-1">Use números inteiros separados por vírgula, espaço ou quebra de linha.</p>
                     )}
                   </div>
                 )}
@@ -2601,7 +2622,10 @@ export default function AdminDashboardPage() {
                   <span className="text-zinc-300 font-medium">Critério de desempate:</span>
                   <select
                     value={newGameTiebreakKind}
-                    onChange={(e) => setNewGameTiebreakKind(e.target.value as TiebreakKind)}
+                    onChange={(e) => {
+                      setScoringTouched(true);
+                      setNewGameTiebreakKind(e.target.value as TiebreakKind);
+                    }}
                     className="bg-zinc-900 border border-zinc-700 text-xs text-white rounded-lg px-2 py-1"
                   >
                     <option value="last_workout">Melhor posição no último WOD</option>
@@ -2615,7 +2639,10 @@ export default function AdminDashboardPage() {
                     <input
                       type="text"
                       value={newGameTiebreakSplit}
-                      onChange={(e) => setNewGameTiebreakSplit(e.target.value)}
+                      onChange={(e) => {
+                        setScoringTouched(true);
+                        setNewGameTiebreakSplit(e.target.value);
+                      }}
                       placeholder="Wall Balls"
                       className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
                     />

@@ -5,12 +5,22 @@ import {
   formatPointsInput,
   tiebreakToForm,
   formToTiebreak,
+  scoringDefaultsForEventType,
 } from '../scoring-form';
 
 describe('parsePointsInput', () => {
   it('aceita vírgula, espaço e quebra de linha', () => {
     expect(parsePointsInput('100, 95 90')).toEqual([100, 95, 90]);
-    expect(parsePointsInput('100\n95,\n 90.5')).toEqual([100, 95, 90.5]);
+    expect(parsePointsInput('100\n95,\n 90')).toEqual([100, 95, 90]);
+  });
+  it('só aceita inteiros: decimais e notação científica são inválidos', () => {
+    expect(parsePointsInput('90.5')).toBeNull();
+    expect(parsePointsInput('100, 90.5')).toBeNull();
+    expect(parsePointsInput('1e3')).toBeNull();
+    expect(parsePointsInput('90;80')).toEqual([90, 80]);
+  });
+  it('zero é válido', () => {
+    expect(parsePointsInput('0')).toEqual([0]);
   });
   it('aceita zero', () => {
     expect(parsePointsInput('10, 0')).toEqual([10, 0]);
@@ -18,6 +28,7 @@ describe('parsePointsInput', () => {
   it('retorna null para vazio, não numérico ou negativo', () => {
     expect(parsePointsInput('')).toBeNull();
     expect(parsePointsInput('  , ')).toBeNull();
+    expect(parsePointsInput('  ')).toBeNull();
     expect(parsePointsInput('a,b')).toBeNull();
     expect(parsePointsInput('-1')).toBeNull();
     expect(parsePointsInput('10, x')).toBeNull();
@@ -48,5 +59,20 @@ describe('desempate no formulário', () => {
     expect(formToTiebreak('most_wins', '')).toBe('most_wins');
     expect(formToTiebreak('split', '  Wall Balls ')).toBe('split:Wall Balls');
     expect(formToTiebreak('split', '  ')).toBeNull();
+  });
+});
+
+describe('scoringDefaultsForEventType', () => {
+  it('HYROX usa tempo total e desempate pelo parcial Wall Balls', () => {
+    expect(scoringDefaultsForEventType('hyrox')).toEqual({
+      mode: 'total_time',
+      tiebreakKind: 'split',
+      tiebreakSplit: 'Wall Balls',
+    });
+  });
+  it('CrossFit (e qualquer outro tipo) usa pontos por posição e último WOD', () => {
+    const expected = { mode: 'points_table', tiebreakKind: 'last_workout', tiebreakSplit: '' };
+    expect(scoringDefaultsForEventType('crossfit')).toEqual(expected);
+    expect(scoringDefaultsForEventType('')).toEqual(expected);
   });
 });
