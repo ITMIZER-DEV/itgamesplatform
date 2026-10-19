@@ -10,7 +10,7 @@ import { detectImageExtension, getUploadsDir } from '../../common/utils/uploads'
 import { PrismaService } from '../../prisma/prisma.service';
 import { LeaderboardNotifier } from '../leaderboard/leaderboard-notifier.service';
 import { MailNotifier } from '../mail/mail-notifier.service';
-import { normalizeGameScoring } from '../scoring/game-config';
+import { affectsBoard, normalizeGameScoring } from '../scoring/game-config';
 import { resolveRule } from '../scoring/rules';
 
 export interface CreateGameDto {
@@ -245,6 +245,8 @@ export class EventsService {
         ...(dto.pixBeneficiary !== undefined && { pixBeneficiary: dto.pixBeneficiary }),
       },
     });
+    // mudou a regra: empurra o novo placar para a TV e para o app
+    if (affectsBoard(dto as Record<string, unknown>)) this.leaderboard.changed(code);
     return this.presentGame(updated);
   }
 

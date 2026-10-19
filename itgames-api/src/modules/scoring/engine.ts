@@ -130,6 +130,10 @@ export function computeBoard(input: EngineInput, now: Date = new Date()): Board 
         if (wod.seconds !== undefined) {
           seconds += wod.seconds;
           validCount++;
+        }
+        // parciais só dos WODs que contam para a equipe: com tempo válido (total_time) ou pontuados (demais modos)
+        const countsForSplit = timeMode ? wod.seconds !== undefined : wod.status === 'scored';
+        if (countsForSplit) {
           const found = (wod.splits ?? []).filter((sp) => sp.name === splitName);
           if (found.length > 0) {
             hasSplit = true;
@@ -150,22 +154,27 @@ export function computeBoard(input: EngineInput, now: Date = new Date()): Board 
     });
 
     type Row = (typeof rows)[number];
+    // desempate: vale em todos os modos, só entre equipes com o mesmo total
+    const tiebreakCompare = (a: Row, b: Row): number => {
+      if (splitName !== null) {
+        // parcial menor vence; quem não tem o parcial perde; ninguém tem => empate
+        if (a.hasSplit !== b.hasSplit) return a.hasSplit ? -1 : 1;
+        return a.splitSum - b.splitSum;
+      }
+      if (rule.tiebreak === 'last_workout') return a.lastRank - b.lastRank;
+      if (rule.tiebreak === 'most_wins') return b.wins - a.wins;
+      return 0;
+    };
     const compare = (a: Row, b: Row): number => {
       if (timeMode) {
         // quem terminou vem primeiro; as demais por WODs válidos (mais primeiro)
         if (a.finished !== b.finished) return a.finished ? -1 : 1;
         if (!a.finished) return b.validCount - a.validCount;
         if (a.seconds !== b.seconds) return a.seconds - b.seconds;
-        if (splitName === null) return 0;
-        // parcial menor vence; quem não tem o parcial perde; ninguém tem => empate
-        if (a.hasSplit !== b.hasSplit) return a.hasSplit ? -1 : 1;
-        return a.splitSum - b.splitSum;
+        return tiebreakCompare(a, b);
       }
       if (a.total !== b.total) return higherWins ? b.total - a.total : a.total - b.total;
-      if (rule.tiebreak === 'last_workout') return a.lastRank - b.lastRank;
-      if (rule.tiebreak === 'most_wins') return b.wins - a.wins;
-      // split:<nome> só se aplica ao modo total_time; nos demais, empate
-      return 0;
+      return tiebreakCompare(a, b);
     };
     rows.sort(compare);
 

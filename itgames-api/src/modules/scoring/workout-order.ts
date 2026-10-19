@@ -47,9 +47,12 @@ export function parseTime(value?: string | null): number {
 
 /** Segundos → "mm:ss" (com décimo quando houver). */
 export function formatTime(total: number): string {
-  const mins = Math.floor(total / 60);
-  const secs = Math.floor(total % 60);
-  const tenths = Math.round((total - Math.floor(total)) * 10);
+  // arredonda em décimos antes de separar minutos, segundos e décimo (65.96 => 01:06, nunca 01:05.10)
+  const allTenths = Math.round(total * 10);
+  const whole = Math.floor(allTenths / 10);
+  const tenths = allTenths % 10;
+  const mins = Math.floor(whole / 60);
+  const secs = whole % 60;
   const base = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   return tenths > 0 ? `${base}.${tenths}` : base;
 }

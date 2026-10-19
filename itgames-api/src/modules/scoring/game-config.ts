@@ -68,3 +68,10 @@ export function normalizeGameScoring(input: GameScoringInput): GameScoringPatch 
 
   return patch;
 }
+
+const BOARD_FIELDS = ['scoringMode', 'tiebreak', 'pointsTable', 'eventType', 'isLowestPointsBetter'];
+
+/** O patch do campeonato traz algo que muda a classificação (regra, tabela, desempate ou tipo)? */
+export function affectsBoard(patch: Record<string, unknown>): boolean {
+  return BOARD_FIELDS.some((f) => patch[f] !== undefined);
+}

@@ -1,3 +1,4 @@
+import { formatTime } from '../../src/modules/scoring/workout-order';
 import {
   DEFAULT_POINTS_TABLE,
   parsePointsTable,
@@ -61,5 +62,14 @@ describe('pointsForPosition', () => {
     expect(pointsForPosition(DEFAULT_POINTS_TABLE, 31)).toBe(1);
     expect(pointsForPosition(DEFAULT_POINTS_TABLE, 99)).toBe(1);
     expect(pointsForPosition(DEFAULT_POINTS_TABLE, 0)).toBe(0);
+  });
+});
+
+describe('formatTime', () => {
+  it('arredonda em décimos sem imprimir 01:05.10', () => {
+    expect(formatTime(65.04)).toBe('01:05');
+    expect(formatTime(65.96)).toBe('01:06');
+    expect(formatTime(65.5)).toBe('01:05.5');
+    expect(formatTime(3599.97)).toBe('60:00');
   });
 });

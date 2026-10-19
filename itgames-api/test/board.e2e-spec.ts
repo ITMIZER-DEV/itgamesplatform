@@ -119,7 +119,7 @@ describe('Placar /events/:code/board e websocket (e2e)', () => {
       await http()
         .post('/scores')
         .set(bearer(tA))
-        .send({ idEvent: 2, game: 'G1', category: 1, codeTeam: 101, time: '03:30' })
+        .send({ idEvent: 2, game: 'G1', category: 1, codeTeam: 101, time: '03:30', judge: 'Juiz' })
         .expect(201);
 
       await next(2);

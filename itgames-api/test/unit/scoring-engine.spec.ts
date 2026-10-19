@@ -229,3 +229,63 @@ describe('computeBoard — total_time (HYROX)', () => {
     expect(rows[1].rank).toBe(2);
   });
 });
+
+// Fixture C: três equipes empatadas no total em qualquer modo.
+// WOD 1 (tempo): t1 10:00, t2 11:00, t3 12:00; WOD 2: t1 12:00, t2 11:00, t3 10:00.
+// points_table: 190 cada; rank_sum: 4 cada; total_time: 22:00 cada.
+// vitórias: t1 = 1, t3 = 1, t2 = 0; posição no último WOD: t3 = 1, t2 = 2, t1 = 3.
+function fixtureC(
+  scoringMode: string,
+  tiebreak: string,
+  splits: Record<number, { name: string; seconds: number }[] | null> = {},
+): EngineInput {
+  const sc = (w: number, t: number, time: string) => score(w, t, { time, splits: splits[t] ?? null });
+  return {
+    game: { code: 'C1', name: 'Matriz', location: 'Arena', eventType: 'crossfit', scoringMode, tiebreak },
+    categories: [{ code: 1, name: 'RX' }],
+    workouts: [
+      { code: 10, category: 1, title: 'WOD 1', type: 'for_time' },
+      { code: 11, category: 1, title: 'WOD 2', type: 'for_time' },
+    ],
+    teams: [team(1), team(2), team(3)],
+    scores: [
+      sc(10, 1, '10:00'), sc(10, 2, '11:00'), sc(10, 3, '12:00'),
+      sc(11, 1, '12:00'), sc(11, 2, '11:00'), sc(11, 3, '10:00'),
+    ],
+  };
+}
+
+describe.each(['points_table', 'rank_sum', 'total_time'])('computeBoard — desempate em todos os modos (%s)', (mode) => {
+  const order = (input: EngineInput) => rowsOf(input).map((r) => r.teamCode);
+  const ranks = (input: EngineInput) => rowsOf(input).map((r) => r.rank);
+
+  it('last_workout: vence quem foi melhor no último WOD', () => {
+    const input = fixtureC(mode, 'last_workout');
+    expect(order(input)).toEqual([3, 2, 1]);
+    expect(ranks(input)).toEqual([1, 2, 3]);
+  });
+
+  it('most_wins: mais vitórias vence; empate de vitórias mantém a mesma posição', () => {
+    const input = fixtureC(mode, 'most_wins');
+    expect(order(input)).toEqual([1, 3, 2]);
+    expect(ranks(input)).toEqual([1, 1, 2]);
+  });
+
+  it('split:<nome>: menor soma de parciais vence', () => {
+    const input = fixtureC(mode, 'split:Wall Balls', {
+      1: [{ name: 'Wall Balls', seconds: 100 }],
+      2: [{ name: 'Wall Balls', seconds: 50 }],
+      3: [{ name: 'Wall Balls', seconds: 100 }, { name: 'Wall Balls', seconds: 100 }],
+    });
+    expect(order(input)).toEqual([2, 1, 3]);
+    expect(ranks(input)).toEqual([1, 2, 3]);
+  });
+
+  it('split:<nome>: quem não tem o parcial perde; ninguém tem => empate', () => {
+    const only1 = fixtureC(mode, 'split:Wall Balls', { 1: [{ name: 'Wall Balls', seconds: 100 }] });
+    expect(order(only1)).toEqual([1, 2, 3]);
+    expect(ranks(only1)).toEqual([1, 2, 2]);
+    const none = fixtureC(mode, 'split:Wall Balls');
+    expect(ranks(none)).toEqual([1, 1, 1]);
+  });
+});

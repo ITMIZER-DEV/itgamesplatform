@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { normalizeGameScoring } from '../../src/modules/scoring/game-config';
+import { affectsBoard, normalizeGameScoring } from '../../src/modules/scoring/game-config';
 
 describe('normalizeGameScoring', () => {
   it('rank_sum liga isLowestPointsBetter', () => {
@@ -42,5 +42,21 @@ describe('normalizeGameScoring', () => {
       tiebreak: null,
       pointsTable: null,
     });
+  });
+});
+
+describe('affectsBoard', () => {
+  it('é verdadeiro quando o patch muda algo que entra na classificação', () => {
+    expect(affectsBoard({ scoringMode: 'rank_sum' })).toBe(true);
+    expect(affectsBoard({ tiebreak: 'most_wins' })).toBe(true);
+    expect(affectsBoard({ pointsTable: [10, 5] })).toBe(true);
+    expect(affectsBoard({ eventType: 'hyrox' })).toBe(true);
+    expect(affectsBoard({ isLowestPointsBetter: true })).toBe(true);
+    expect(affectsBoard({ scoringMode: null })).toBe(true);
+  });
+
+  it('é falso para campos que não alteram a classificação', () => {
+    expect(affectsBoard({})).toBe(false);
+    expect(affectsBoard({ name: 'Novo nome', location: 'Arena', lanesCount: 4 })).toBe(false);
   });
 });
