@@ -10,6 +10,8 @@ import { detectImageExtension, getUploadsDir } from '../../common/utils/uploads'
 import { PrismaService } from '../../prisma/prisma.service';
 import { LeaderboardNotifier } from '../leaderboard/leaderboard-notifier.service';
 import { MailNotifier } from '../mail/mail-notifier.service';
+import { normalizeGameScoring } from '../scoring/game-config';
+import { resolveRule } from '../scoring/rules';
 
 export interface CreateGameDto {
   code: string;
@@ -27,6 +29,9 @@ export interface CreateGameDto {
   eventType?: string;
   pixKey?: string;
   pixBeneficiary?: string;
+  scoringMode?: string | null;
+  tiebreak?: string | null;
+  pointsTable?: number[] | null;
 }
 
 
@@ -103,7 +108,12 @@ export class EventsService {
 
   private presentGame<T>(game: T) {
     const { organizers, ...rest } = game as any;
-    return { ...rest, organizers: (organizers || []).map((o: any) => this.presentOrganizer(o)) };
+    const rule = resolveRule(rest);
+    return {
+      ...rest,
+      organizers: (organizers || []).map((o: any) => this.presentOrganizer(o)),
+      scoring: { mode: rule.mode, tiebreak: rule.tiebreak, pointsTable: rule.pointsTable },
+    };
   }
 
   // 1. Organização de Campeonatos (Games)
@@ -167,6 +177,7 @@ export class EventsService {
       throw new BadRequestException('Informe o código e o nome do campeonato');
     }
 
+    const scoring = normalizeGameScoring(dto);
     const code = dto.code.toUpperCase().trim();
     const existing = await this.prisma.game.findUnique({ where: { code } });
     if (existing) {
@@ -182,7 +193,10 @@ export class EventsService {
         location: dto.location,
         foto: dto.foto || null,
         status: 'draft',
-        isLowestPointsBetter: dto.isLowestPointsBetter ?? false,
+        isLowestPointsBetter: scoring.isLowestPointsBetter ?? dto.isLowestPointsBetter ?? false,
+        ...(scoring.scoringMode != null && { scoringMode: scoring.scoringMode }),
+        ...(scoring.tiebreak != null && { tiebreak: scoring.tiebreak }),
+        ...(scoring.pointsTable != null && { pointsTable: scoring.pointsTable }),
         showTime: dto.showTime ?? true,
         showWeight: dto.showWeight ?? true,
         showReps: dto.showReps ?? true,
@@ -203,15 +217,24 @@ export class EventsService {
     const existing = await this.prisma.game.findUnique({ where: { code } });
     if (!existing) throw new NotFoundException('Campeonato não encontrado');
 
-    return this.prisma.game.update({
+    const scoring = normalizeGameScoring(dto);
+    const updated = await this.prisma.game.update({
       where: { code },
+      include: { organizers: { select: this.organizerPrivateSelect } },
       data: {
+        ...(scoring.scoringMode !== undefined && { scoringMode: scoring.scoringMode }),
+        ...(scoring.tiebreak !== undefined && { tiebreak: scoring.tiebreak }),
+        ...(scoring.pointsTable !== undefined && {
+          pointsTable: scoring.pointsTable === null ? Prisma.DbNull : scoring.pointsTable,
+        }),
         ...(dto.name && { name: dto.name }),
         ...(dto.date !== undefined && { date: dto.date }),
         ...(dto.description !== undefined && { description: dto.description }),
         ...(dto.location !== undefined && { location: dto.location }),
         ...(dto.foto !== undefined && { foto: dto.foto }),
-        ...(dto.isLowestPointsBetter !== undefined && { isLowestPointsBetter: dto.isLowestPointsBetter }),
+        ...(scoring.isLowestPointsBetter !== undefined
+          ? { isLowestPointsBetter: scoring.isLowestPointsBetter }
+          : dto.isLowestPointsBetter !== undefined && { isLowestPointsBetter: dto.isLowestPointsBetter }),
         ...(dto.showTime !== undefined && { showTime: dto.showTime }),
         ...(dto.showWeight !== undefined && { showWeight: dto.showWeight }),
         ...(dto.showReps !== undefined && { showReps: dto.showReps }),
@@ -222,6 +245,7 @@ export class EventsService {
         ...(dto.pixBeneficiary !== undefined && { pixBeneficiary: dto.pixBeneficiary }),
       },
     });
+    return this.presentGame(updated);
   }
 
   // Super Admin: Liberar ('live'), Pausar ('draft') ou Bloquear ('blocked')

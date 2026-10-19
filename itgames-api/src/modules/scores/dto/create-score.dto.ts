@@ -1,5 +1,27 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsNumber, IsOptional, IsString, IsBoolean } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsBoolean,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+} from 'class-validator';
+
+export class SplitDto {
+  @ApiProperty({ description: 'Nome do parcial (ex: Wall Balls)' })
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @ApiProperty({ description: 'Tempo do parcial em segundos' })
+  @IsNumber()
+  @Min(0)
+  seconds: number;
+}
 
 export class CreateScoreDto {
   @ApiProperty({ description: 'ID do Evento / WOD' })
@@ -62,4 +84,11 @@ export class CreateScoreDto {
   @IsOptional()
   @IsString()
   auditReason?: string;
+
+  @ApiPropertyOptional({ description: 'Parciais da prova (HYROX)', type: [SplitDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SplitDto)
+  splits?: SplitDto[];
 }

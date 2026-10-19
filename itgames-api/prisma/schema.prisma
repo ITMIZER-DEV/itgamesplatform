@@ -62,6 +62,9 @@ model Game {
   eventType             String?        @default("crossfit") // "crossfit" | "hyrox"
   pixKey                String?        // Chave Pix da competição
   pixBeneficiary        String?        // Favorecido / Titular da conta Pix
+  scoringMode           String?        // "points_table" | "rank_sum" | "total_time"; null = derivado
+  tiebreak              String?        // "last_workout" | "most_wins" | "split:<nome>"
+  pointsTable           Json?          // tabela de pontos por posição
   
 
   registrations         Registration[]
@@ -197,6 +200,7 @@ model Score {
   tieBreakTime    String?
   penaltySeconds  Int?           @default(0)
   scoreStatus     String?        @default("approved_by_head_judge") // draft, submitted, approved, contested
+  splits          Json?          // parciais [{ name, seconds }] (HYROX)
   
   registration    Registration   @relation(fields: [codeTeam, game], references: [code, gameCode], onDelete: Cascade)
   eventRef        Event          @relation(fields: [idEvent, game], references: [idEvent, game], onDelete: Cascade)
