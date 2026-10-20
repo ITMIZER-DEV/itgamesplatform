@@ -1,76 +1,186 @@
-// Compila, mas não é executado neste ambiente (depende do banco real).
-import { INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+// Compila, mas não é executado neste ambiente (depende do banco real itgames_test).
 import { AddressInfo } from 'net';
-import request from 'supertest';
+import * as request from 'supertest';
 import { WebSocket } from 'ws';
-import { AppModule } from '../src/app.module';
+import {
+  bearer,
+  createCategoryFixture,
+  createGameFixture,
+  createTestApp,
+  createUser,
+  login,
+  resetDb,
+  TestCtx,
+} from './helpers';
 
-type Msg = { type: string; screen?: { frozen: boolean; games: { code: string }[] }; board?: unknown };
+interface Msg {
+  type: string;
+  screen: { id: string; frozen: boolean; games: { code: string }[] };
+  boards: { game: { code: string }; categories: { rows: unknown[] }[] }[];
+}
 
-function open(url: string) {
+// Cliente simples: guarda as mensagens e permite aguardar a n-ésima.
+function connect(url: string) {
   const ws = new WebSocket(url);
-  const inbox: Msg[] = [];
-  const waiters: ((m: Msg) => void)[] = [];
-  ws.on('message', (raw) => {
-    const m = JSON.parse(String(raw)) as Msg;
-    const w = waiters.shift();
-    if (w) w(m);
-    else inbox.push(m);
-  });
-  const next = (ms = 3000) =>
-    new Promise<Msg>((resolve, reject) => {
-      const queued = inbox.shift();
-      if (queued) return resolve(queued);
-      const t = setTimeout(() => reject(new Error('timeout')), ms);
-      waiters.push((m) => {
-        clearTimeout(t);
-        resolve(m);
-      });
-    });
+  const messages: Msg[] = [];
   const closed = new Promise<number>((resolve) => ws.on('close', (code) => resolve(code)));
-  return { ws, next, closed };
+  ws.on('message', (data) => messages.push(JSON.parse(data.toString())));
+  const waitFor = (n: number, ms = 8000) =>
+    new Promise<void>((resolve, reject) => {
+      const started = Date.now();
+      const tick = () => {
+        if (messages.length >= n) return resolve();
+        if (Date.now() - started > ms) return reject(new Error(`timeout aguardando mensagem ${n}`));
+        setTimeout(tick, 25);
+      };
+      tick();
+    });
+  return { ws, messages, closed, waitFor };
 }
 
 describe('Websocket dos telões (e2e)', () => {
-  let app: INestApplication;
+  let ctx: TestCtx;
+  let orgA: { id: string };
+  let tA: string;
   let base: string;
+  const http = () => request(ctx.app.getHttpServer());
+
+  // Pareia um telão com G1 e devolve id + credencial do aparelho.
+  async function pairScreen() {
+    const p = await http().post('/screens/pairing').expect(201);
+    const claim = await http()
+      .post('/screens/claim')
+      .set(bearer(tA))
+      .send({ code: p.body.code, name: 'Telão 1', gameCodes: ['G1'] })
+      .expect(201);
+    const poll = await http().get(`/screens/pairing/${p.body.pairingId}`).expect(200);
+    return { id: claim.body.id as string, token: poll.body.deviceToken as string };
+  }
+
+  const lancarScore = (idEvent: number, codeTeam: number, time: string) =>
+    http()
+      .post('/scores')
+      .set(bearer(tA))
+      .send({ idEvent, game: 'G1', category: 1, codeTeam, time, judge: 'Juiz' })
+      .expect(201);
 
   beforeAll(async () => {
-    const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = mod.createNestApplication();
-    await app.listen(0);
-    base = `ws://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`;
+    ctx = await createTestApp();
+    await ctx.app.listen(0);
+    base = `ws://127.0.0.1:${(ctx.app.getHttpServer().address() as AddressInfo).port}`;
+  });
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+  beforeEach(async () => {
+    await resetDb(ctx.prisma);
+    orgA = await createUser(ctx.prisma, { email: 'a@t.com', role: 'ORGANIZER' });
+    tA = await login(ctx.app, 'a@t.com');
+
+    // Campeonato em rascunho: o telão pode exibi-lo, os endpoints públicos não
+    await createGameFixture(ctx.prisma, 'G1', { status: 'draft', organizerIds: [orgA.id] });
+    await createCategoryFixture(ctx.prisma, 'G1', 1);
+    for (const code of [1, 2]) {
+      await ctx.prisma.workout.create({
+        data: { code, game: 'G1', category: 1, title: `WOD ${code}`, type: 'for_time', timeCap: '10:00' },
+      });
+      await ctx.prisma.event.create({ data: { idEvent: code, game: 'G1', category: 1, title: `WOD ${code}`, workout: code } });
+    }
+    for (const code of [101, 102]) {
+      await ctx.prisma.registration.create({
+        data: {
+          code,
+          categoryId: 1,
+          gameCode: 'G1',
+          team: `Time ${code}`,
+          status: 'paid',
+          number: `#${code}`,
+          athletes: {
+            create: [{ code: 1, name: `Atleta ${code}`, cpf: `${code}00000000`, phonenumber: `1198${code}000`, category: 1 }],
+          },
+        },
+      });
+    }
   });
 
-  afterAll(async () => {
-    await app.close();
+  it('token válido recebe o screen ao conectar, inclusive com campeonato em rascunho', async () => {
+    const { id, token } = await pairScreen();
+    const c = connect(`${base}/ws/screen?token=${encodeURIComponent(token)}`);
+    try {
+      await c.waitFor(1);
+      expect(c.messages[0].type).toBe('screen');
+      expect(c.messages[0].screen.id).toBe(id);
+      expect(c.messages[0].screen.frozen).toBe(false);
+      expect(c.messages[0].boards.map((b) => b.game.code)).toEqual(['G1']);
+      // o rascunho não vaza para o endpoint público
+      await http().get('/events/G1/board').expect(404);
+    } finally {
+      c.ws.close();
+    }
   });
 
   it('token inválido fecha com 4401', async () => {
-    const c = open(`${base}/ws/screen?token=inexistente`);
+    const c = connect(`${base}/ws/screen?token=inexistente`);
     expect(await c.closed).toBe(4401);
   });
 
-  it('caminho desconhecido não é aceito', async () => {
-    const status = await new Promise<number>((resolve) => {
-      const ws = new WebSocket(`${base}/ws/outro`);
-      ws.on('unexpected-response', (_r, res) => resolve(res.statusCode ?? 0));
-      ws.on('error', () => resolve(0));
-    });
-    expect(status).toBe(404);
+  it('score novo gera novo screen só quando não congelado; congelado mantém a cópia', async () => {
+    const { id, token } = await pairScreen();
+    const c = connect(`${base}/ws/screen?token=${encodeURIComponent(token)}`);
+    try {
+      await c.waitFor(1);
+      const before = JSON.stringify(c.messages[0].boards);
+
+      await lancarScore(1, 101, '05:00');
+      await c.waitFor(2);
+      expect(c.messages[1].screen.frozen).toBe(false);
+      expect(JSON.stringify(c.messages[1].boards)).not.toBe(before);
+
+      // congela: chega um screen congelado com a cópia atual
+      await http().post(`/screens/${id}/freeze`).set(bearer(tA)).send({}).expect(200);
+      await c.waitFor(3);
+      expect(c.messages[2].screen.frozen).toBe(true);
+      const copia = JSON.stringify(c.messages[2].boards);
+
+      // novo score com o telão congelado: nada novo chega
+      await lancarScore(2, 102, '04:00');
+      await new Promise((r) => setTimeout(r, 1000));
+      expect(c.messages).toHaveLength(3);
+
+      // reconexão também serve só a cópia
+      const c2 = connect(`${base}/ws/screen?token=${encodeURIComponent(token)}`);
+      try {
+        await c2.waitFor(1);
+        expect(c2.messages[0].screen.frozen).toBe(true);
+        expect(JSON.stringify(c2.messages[0].boards)).toBe(copia);
+      } finally {
+        c2.ws.close();
+      }
+    } finally {
+      c.ws.close();
+    }
   });
 
-  it('o websocket antigo /ws/leaderboard?game= continua respondendo', async () => {
-    const c = open(`${base}/ws/leaderboard?game=NAO_EXISTE`);
-    expect(await c.closed).toBe(4404);
+  it('DELETE do telão fecha o websocket com 4410', async () => {
+    const { id, token } = await pairScreen();
+    const c = connect(`${base}/ws/screen?token=${encodeURIComponent(token)}`);
+    await c.waitFor(1);
+    await http().delete(`/screens/${id}`).set(bearer(tA)).expect(200);
+    expect(await c.closed).toBe(4410);
   });
 
-  // Fluxo completo (precisa de dados semeados: telão pareado, lançamento de score, DELETE):
-  // 1. conecta com o token do aparelho e recebe { type: 'screen' };
-  // 2. lança score em campeonato do telão -> novo 'screen' só quando NÃO congelado;
-  // 3. DELETE /screens/:id fecha o websocket com 4410.
-  it('GET /events/:code/board segue público e inalterado', async () => {
-    await request(app.getHttpServer()).get('/events/NAO_EXISTE/board').expect(404);
+  it('o websocket antigo /ws/leaderboard?game= e o board público seguem com o contrato', async () => {
+    await ctx.prisma.game.update({ where: { code: 'G1' }, data: { status: 'live' } });
+    const c = connect(`${base}/ws/leaderboard?game=G1`);
+    try {
+      await c.waitFor(1);
+      expect(c.messages[0].type).toBe('board');
+      const res = await http().get('/events/G1/board').expect(200);
+      expect(res.body.game.code).toBe('G1');
+    } finally {
+      c.ws.close();
+    }
+    const nope = connect(`${base}/ws/leaderboard?game=NAOEXISTE`);
+    expect(await nope.closed).toBe(4404);
   });
 });

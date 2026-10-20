@@ -70,4 +70,12 @@ describe('buildScreenMessage', () => {
     expect(msg.boards).toEqual([]);
     expect(msg.screen.games).toEqual([]);
   });
+
+  it('ordena os campeonatos por código nos dois caminhos', () => {
+    const vivo = buildScreenMessage(screen(), [board('C'), board('A'), board('B')]);
+    expect(vivo.boards.map((b) => b.game.code)).toEqual(['A', 'B', 'C']);
+    expect(vivo.screen.games.map((g) => g.code)).toEqual(['A', 'B', 'C']);
+    const congelado = buildScreenMessage(screen({ frozen: true, frozenBoards: [board('B'), board('A')] }), []);
+    expect(congelado.boards.map((b) => b.game.code)).toEqual(['A', 'B']);
+  });
 });

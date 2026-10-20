@@ -67,7 +67,18 @@ export class ScreenStreamService implements OnApplicationBootstrap, OnApplicatio
 
   private async attach(socket: WebSocket, token: string) {
     socket.on('error', () => socket.terminate());
-    let id: string;
+    // O 'close' é ouvido antes de qualquer await: socket que fecha durante a consulta não vaza
+    let id: string | undefined;
+    let entry: Live | undefined;
+    socket.on('close', () => {
+      if (!id || !entry) return;
+      entry.sockets.delete(socket);
+      if (!entry.sockets.size) {
+        if (entry.timer) clearTimeout(entry.timer);
+        if (this.live.get(id) === entry) this.live.delete(id);
+      }
+      void this.touch(id);
+    });
     try {
       const row = token
         ? await this.prisma.screen.findUnique({
@@ -85,17 +96,10 @@ export class ScreenStreamService implements OnApplicationBootstrap, OnApplicatio
       socket.close(1011, 'Erro interno');
       return;
     }
-    const entry = this.live.get(id) ?? { sockets: new Set(), codes: new Set(), frozen: false, seq: 0 };
+    if (socket.readyState !== WebSocket.OPEN) return; // aparelho já foi embora
+    entry = this.live.get(id) ?? { sockets: new Set(), codes: new Set(), frozen: false, seq: 0 };
     entry.sockets.add(socket);
     this.live.set(id, entry);
-    socket.on('close', () => {
-      entry.sockets.delete(socket);
-      if (!entry.sockets.size) {
-        if (entry.timer) clearTimeout(entry.timer);
-        if (this.live.get(id) === entry) this.live.delete(id);
-      }
-      void this.touch(id);
-    });
     void this.touch(id);
     await this.send(id, socket);
   }
@@ -112,6 +116,8 @@ export class ScreenStreamService implements OnApplicationBootstrap, OnApplicatio
   private schedule(id: string, delay: number) {
     const entry = this.live.get(id);
     if (!entry) return;
+    // Invalida já cálculos em andamento (ex.: um ao vivo iniciado antes de um congelamento)
+    entry.seq++;
     if (entry.timer) clearTimeout(entry.timer);
     entry.timer = setTimeout(() => {
       entry.timer = undefined;
@@ -136,7 +142,10 @@ export class ScreenStreamService implements OnApplicationBootstrap, OnApplicatio
   private async send(id: string, only?: WebSocket) {
     const entry = this.live.get(id);
     if (!entry) return;
-    const seq = ++entry.seq;
+    // Envio a todos invalida cálculos anteriores; o unicast (conexão nova) não derruba um
+    // broadcast em andamento, mas é descartado se um broadcast começar durante o cálculo
+    // (esse broadcast já alcança o socket, que está em entry.sockets).
+    const seq = only ? entry.seq : ++entry.seq;
     try {
       const row = await this.prisma.screen.findUnique({
         where: { id },
@@ -146,7 +155,7 @@ export class ScreenStreamService implements OnApplicationBootstrap, OnApplicatio
         this.remove(id);
         return;
       }
-      const configured = row.games.map((g) => g.gameCode);
+      const configured = row.games.map((g) => g.gameCode).sort();
       const frozen = row.frozen;
       let live: Board[] = [];
       if (!frozen) live = await this.liveBoards(row.ownerId, configured);

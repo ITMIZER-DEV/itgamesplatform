@@ -29,7 +29,9 @@ export type ScreenMessage = {
 
 // Puro. Telão congelado usa SOMENTE a cópia gravada: os placares ao vivo são ignorados.
 export function buildScreenMessage(screen: ScreenRecord, liveBoards: Board[]): ScreenMessage {
-  const boards = screen.frozen ? (screen.frozenBoards ?? []) : liveBoards;
+  const source = screen.frozen ? (screen.frozenBoards ?? []) : liveBoards;
+  // Ordem determinística por código (o jsonb reordena chaves e o banco não garante ordem)
+  const boards = [...source].sort((a, b) => (a.game.code < b.game.code ? -1 : a.game.code > b.game.code ? 1 : 0));
   return {
     type: 'screen',
     screen: {
