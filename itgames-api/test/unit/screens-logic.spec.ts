@@ -1,6 +1,7 @@
 import {
   PAIRING_ALPHABET,
   OVERLAY_DEFAULT,
+  OVERLAY_PRESETS,
   generatePairingCode,
   normalizePairingCode,
   isPairingExpired,
@@ -56,6 +57,10 @@ describe('opções do telão', () => {
     expect(parseOverlayText('a'.repeat(61))).toBeNull();
     expect(parseOverlayText('a'.repeat(60))).toBe('a'.repeat(60));
     expect(parseOverlayText('   ')).toBe(OVERLAY_DEFAULT);
+  });
+
+  it('OVERLAY_PRESETS tem só os dois modelos', () => {
+    expect(OVERLAY_PRESETS).toEqual(['LEADERBOARD CONGELADO', 'LEADERBOARD EM REVISÃO']);
   });
 
   it('parseScreenMode', () => {
