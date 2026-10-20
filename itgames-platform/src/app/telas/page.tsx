@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Tv, Plus, Snowflake, Sun, Trash2, Pencil, RefreshCw, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { AclGuard } from '@/components/auth/AclGuard';
@@ -26,9 +26,14 @@ interface GameOption {
 const OFFICIAL_HINT = 'Disponível após o cálculo oficial do juiz-chefe';
 
 // Traduz erros da API para mensagens amigáveis.
-function friendlyError(err: unknown): string {
+// No pareamento, 404 significa código inválido; nas demais ações, o telão não existe mais.
+function friendlyError(err: unknown, context: 'claim' | 'other' = 'other'): string {
   if (err instanceof ApiError) {
-    if (err.status === 404) return 'Código inválido ou expirado. Confira o código mostrado na TV.';
+    if (err.status === 404) {
+      return context === 'claim'
+        ? 'Código inválido ou expirado. Confira o código mostrado na TV.'
+        : 'Telão não encontrado — ele pode ter sido removido.';
+    }
     if (err.status === 429) return 'Muitas tentativas. Aguarde alguns minutos e tente novamente.';
     if (err.status === 403) return 'Você não tem permissão para esta ação.';
     return err.message;
@@ -58,6 +63,7 @@ export default function TelasPage() {
   const [games, setGames] = useState<GameOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [gamesError, setGamesError] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [now, setNow] = useState(() => new Date());
 
@@ -81,26 +87,38 @@ export default function TelasPage() {
     return () => clearInterval(timer);
   }, [refresh]);
 
-  useEffect(() => {
+  const loadGames = useCallback(() => {
     apiClient
       .listMyGames()
-      .then((list) => setGames(list.map((g) => ({ code: g.code, name: g.name }))))
-      .catch(() => toast.error('Não foi possível carregar seus campeonatos.'));
+      .then((list) => {
+        setGames(list.map((g) => ({ code: g.code, name: g.name })));
+        setGamesError(false);
+      })
+      .catch(() => setGamesError(true));
   }, []);
+
+  useEffect(() => {
+    loadGames();
+  }, [loadGames]);
 
   const gameName = useCallback(
     (code: string) => games.find((g) => g.code === code)?.name ?? code,
     [games],
   );
 
-  const run = async (action: () => Promise<unknown>, okMessage: string) => {
+  const run = async (action: () => Promise<unknown>, okMessage: string, context: 'claim' | 'other' = 'other') => {
     try {
       await action();
       toast.success(okMessage);
       setDialog(null);
       await refresh();
     } catch (err) {
-      toast.error(friendlyError(err));
+      toast.error(friendlyError(err, context));
+      // Telão que sumiu: fecha o diálogo e atualiza a lista.
+      if (err instanceof ApiError && err.status === 404 && context === 'other') {
+        setDialog(null);
+        await refresh();
+      }
     }
   };
 
@@ -208,7 +226,7 @@ export default function TelasPage() {
                     <span>Rotação: {s.rotateSeconds} s</span>
                     <span>
                       Campeonatos:{' '}
-                      {s.gameCodes.length ? s.gameCodes.map(gameName).join(', ') : 'todos os meus campeonatos'}
+                      {s.gameCodes.length ? s.gameCodes.map(gameName).join(', ') : 'nenhum campeonato'}
                     </span>
                     {s.frozen && s.overlayText && <span className="text-sky-300">Aviso: {s.overlayText}</span>}
                   </div>
@@ -222,11 +240,14 @@ export default function TelasPage() {
       {dialog?.kind === 'claim' && (
         <ScreenFormDialog
           games={games}
+          gamesError={gamesError}
+          onRetryGames={loadGames}
           onClose={() => setDialog(null)}
           onSubmit={(v) =>
             run(
               () => apiClient.claimScreen({ code: v.code, name: v.name, gameCodes: v.gameCodes, mode: v.mode, rotateSeconds: v.rotateSeconds }),
               'Telão pareado com sucesso.',
+              'claim',
             )
           }
         />
@@ -234,6 +255,8 @@ export default function TelasPage() {
       {dialog?.kind === 'edit' && (
         <ScreenFormDialog
           games={games}
+          gamesError={gamesError}
+          onRetryGames={loadGames}
           screen={dialog.screen}
           onClose={() => setDialog(null)}
           onSubmit={(v) =>
@@ -279,12 +302,66 @@ export default function TelasPage() {
   );
 }
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+// Modal acessível: Esc fecha, o foco entra no modal e fica preso, e volta a quem abriu ao fechar.
 function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  const titleId = useId();
+  const ref = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    const node = ref.current;
+    const items = () => (node ? Array.from(node.querySelectorAll<HTMLElement>(FOCUSABLE)) : []);
+    // Foca o primeiro campo (ignorando o botão de fechar); senão o próprio diálogo.
+    const first = items().find((el) => el.getAttribute('aria-label') !== 'Fechar') ?? node;
+    first?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const list = items();
+      if (list.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const firstEl = list[0];
+      const lastEl = list[list.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === firstEl || !node?.contains(active))) {
+        e.preventDefault();
+        lastEl.focus();
+      } else if (!e.shiftKey && (active === lastEl || !node?.contains(active))) {
+        e.preventDefault();
+        firstEl.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      opener?.focus?.();
+    };
+  }, []);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-      <div role="dialog" aria-modal="true" aria-label={title} className="bg-zinc-900 border border-zinc-700 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+      <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="bg-zinc-900 border border-zinc-700 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto focus:outline-none"
+      >
         <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
-          <h3 className="font-bold text-white text-base">{title}</h3>
+          <h3 id={titleId} className="font-bold text-white text-base">{title}</h3>
           <button onClick={onClose} aria-label="Fechar" className="text-zinc-500 hover:text-white">✕</button>
         </div>
         {children}
@@ -295,11 +372,15 @@ function ModalShell({ title, onClose, children }: { title: string; onClose: () =
 
 function ScreenFormDialog({
   games,
+  gamesError,
+  onRetryGames,
   screen,
   onClose,
   onSubmit,
 }: {
   games: GameOption[];
+  gamesError: boolean;
+  onRetryGames: () => void;
   screen?: ScreenView;
   onClose: () => void;
   onSubmit: (v: { code: string; name: string; gameCodes: string[]; mode: ScreenMode; rotateSeconds: number }) => void | Promise<void>;
@@ -314,7 +395,7 @@ function ScreenFormDialog({
   const rotateNum = Number(rotate);
   const rotateOk = Number.isInteger(rotateNum) && rotateNum >= ROTATE_MIN && rotateNum <= ROTATE_MAX;
   const codeOk = screen ? true : code.length === 6;
-  const canSubmit = codeOk && name.trim().length > 0 && name.trim().length <= 60 && rotateOk && !busy;
+  const canSubmit = codeOk && gameCodes.length > 0 && name.trim().length > 0 && name.trim().length <= 60 && rotateOk && !busy;
 
   const toggleGame = (c: string) =>
     setGameCodes((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
@@ -358,8 +439,13 @@ function ScreenFormDialog({
           />
         </div>
         <div>
-          <span className={LABEL_CLASS}>Campeonatos exibidos</span>
-          {games.length === 0 ? (
+          <span className={LABEL_CLASS}>Campeonatos exibidos (selecione ao menos um)</span>
+          {gamesError ? (
+            <div role="alert" className="text-[11px] text-red-300 flex items-center justify-between gap-2">
+              <span>Não foi possível carregar seus campeonatos.</span>
+              <button type="button" onClick={onRetryGames} className="font-bold underline">Tentar de novo</button>
+            </div>
+          ) : games.length === 0 ? (
             <p className="text-[11px] text-zinc-500">Você ainda não tem campeonatos.</p>
           ) : (
             <div className="max-h-40 overflow-y-auto space-y-1 p-2 rounded-xl bg-zinc-950 border border-zinc-800">

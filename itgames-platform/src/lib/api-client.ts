@@ -2,6 +2,7 @@ import { ScoreEntry, Heat, AuditLogEntry, GameEvent, Category, WorkoutRule, Team
 import { storage } from './storage';
 import type { BoardResponse } from './board';
 import { getAuthToken, logoutUser } from './acl';
+import type { ScreenView, ScreenMode } from './screens';
 
 export function getApiBaseUrl(): string {
   if (process.env.NEXT_PUBLIC_API_URL) {
@@ -14,8 +15,6 @@ export function getApiBaseUrl(): string {
   }
   return process.env.API_INTERNAL_URL || 'http://127.0.0.1:3334';
 }
-
-import type { ScreenView, ScreenMode } from './screens';
 
 export class ApiError extends Error {
   constructor(
