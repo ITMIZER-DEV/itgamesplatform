@@ -1,4 +1,6 @@
+import { Prisma } from '@prisma/client';
 import * as request from 'supertest';
+import { OfficialLockService } from '../src/modules/official/official-lock.service';
 import { bearer, createCategoryFixture, createGameFixture, createTestApp, createUser, login, resetDb, TestCtx } from './helpers';
 
 describe('Cálculo oficial /official (e2e)', () => {
@@ -119,6 +121,33 @@ describe('Cálculo oficial /official (e2e)', () => {
       await ctx.prisma.score.updateMany({ where: { codeTeam: 101 }, data: { scoreStatus: 'contested' } });
       await http().post(`${base}/confirm`).set(bearer(tA)).expect(409);
       expect(await counts()).toEqual({ results: 0, rows: 0, logs: 0 });
+    });
+
+    it('WOD só com W.O. bloqueia na prévia e na confirmação, com mensagem', async () => {
+      await ctx.prisma.score.deleteMany({ where: { codeTeam: 102 } });
+      await ctx.prisma.score.updateMany({ where: { codeTeam: 101 }, data: { isWO: true } });
+      const pv = await http().get(`${base}/preview`).set(bearer(tA)).expect(200);
+      expect(pv.body.state).toBe('blocked');
+      const res = await http().post(`${base}/confirm`).set(bearer(tA)).expect(409);
+      expect(res.body.message).toContain('nenhuma súmula válida');
+      expect(await counts()).toEqual({ results: 0, rows: 0, logs: 0 });
+    });
+
+    it('a trava serializa: gravação em transação espera a confirmação e recebe 409', async () => {
+      const lock = ctx.app.get(OfficialLockService);
+      await http().post(`${base}/confirm`).set(bearer(tA)).expect(200);
+      await expect(
+        ctx.prisma.$transaction((tx: Prisma.TransactionClient) => lock.assertUnlockedInTx(tx, 'G1', 1, 1)),
+      ).rejects.toThrow(/já foi calculado oficialmente/);
+      await http().post(`${base}/revert`).set(bearer(tA)).send({ reason: 'motivo válido' }).expect(200);
+      await ctx.prisma.$transaction((tx: Prisma.TransactionClient) => lock.assertUnlockedInTx(tx, 'G1', 1, 1));
+    });
+
+    it('prévia de WOD já confirmado traz aviso explicativo', async () => {
+      await http().post(`${base}/confirm`).set(bearer(tA)).expect(200);
+      const pv = await http().get(`${base}/preview`).set(bearer(tA)).expect(200);
+      expect(pv.body.state).toBe('confirmed');
+      expect(pv.body.warnings.join(' ')).toContain('já foi calculado oficialmente');
     });
 
     it('todas as baterias encerradas: grava linhas de todas as equipes, W.O. por último', async () => {

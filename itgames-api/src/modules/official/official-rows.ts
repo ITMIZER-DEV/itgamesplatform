@@ -71,3 +71,17 @@ export function toSnapshotRows(
       };
     });
 }
+
+/** Quantas equipes têm resultado válido (status 'scored') segundo o motor; W.O. e canceladas não contam. */
+export function countScored(entries: ReadonlyMap<number, WodEntry> | null): number {
+  if (!entries) return 0;
+  let n = 0;
+  for (const e of entries.values()) if (e.status === 'scored') n++;
+  return n;
+}
+
+/** Mensagem de bloqueio da confirmação; nunca vazia. */
+export function blockedMessage(blockers: string[]): string {
+  const txt = blockers.join(' ').trim();
+  return `Não é possível confirmar: ${txt || 'o WOD não tem resultado válido para calcular.'}`;
+}

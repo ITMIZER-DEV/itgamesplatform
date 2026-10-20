@@ -14,7 +14,8 @@ import {
   officialState,
   parseRevertReason,
 } from './official-logic';
-import { PreviewRow, buildPreviewRows, toSnapshotRows } from './official-rows';
+import { OfficialLockService } from './official-lock.service';
+import { PreviewRow, blockedMessage, buildPreviewRows, countScored, toSnapshotRows } from './official-rows';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -56,13 +57,15 @@ export class OfficialService {
     private readonly access: GameAccessService,
     private readonly boards: BoardService,
     private readonly notifier: LeaderboardNotifier,
+    private readonly lock: OfficialLockService,
   ) {}
 
   // ---------- consultas ----------
 
   async status(code: string, user: AuthUser): Promise<OfficialStatus> {
     await this.access.assertCanManage(user, code);
-    const [categories, events, heats, scores, actives] = await Promise.all([
+    const [rows, categories, events, heats, scores, actives] = await Promise.all([
+      this.boards.loadRows(code),
       this.prisma.category.findMany({ where: { gamesId: code }, select: { code: true, name: true }, orderBy: { code: 'asc' } }),
       this.prisma.event.findMany({
         where: { game: code },
@@ -83,6 +86,7 @@ export class OfficialService {
       }),
     ]);
 
+    const input = toEngineInput(rows);
     return {
       categories: categories.map((c) => ({
         id: c.code,
@@ -94,7 +98,8 @@ export class OfficialService {
             const r = this.readiness(
               e.workout,
               heats.filter((h) => h.categoryId === c.code),
-              st,
+              st.map((x) => x.scoreStatus),
+              countScored(computeWorkoutEntries(input, c.code, e.idEvent)),
             );
             const done = actives.find((a) => a.categoryId === c.code && a.eventId === e.idEvent);
             return {
@@ -136,6 +141,8 @@ export class OfficialService {
     let confirmedAt: Date;
     try {
       confirmedAt = await this.prisma.$transaction(async (tx) => {
+        // Serializa com quem grava súmula deste WOD (ver OfficialLockService).
+        await this.lock.lockEventForUpdate(tx, code, eventId);
         // Cria o resultado primeiro: a trava da súmula existe o quanto antes.
         const result = await tx.officialResult.create({
           data: {
@@ -207,6 +214,7 @@ export class OfficialService {
     const key = officialKey(code, categoryId, eventId);
 
     await this.prisma.$transaction(async (tx) => {
+      await this.lock.lockEventForUpdate(tx, code, eventId);
       const active = await tx.officialResult.findUnique({ where: { activeKey: key } });
       if (!active) throw new ConflictException(NOT_ACTIVE_MSG);
       // Condiciona ao activeKey para que reversões simultâneas não passem as duas.
@@ -239,7 +247,7 @@ export class OfficialService {
     await this.access.assertCanManage(user, code);
     return this.prisma.officialLog.findMany({
       where: { gameCode: code },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: 200,
     });
   }
@@ -247,7 +255,7 @@ export class OfficialService {
   // ---------- internos ----------
 
   private throwBlocked(blockers: string[]): never {
-    throw new ConflictException(`Não é possível confirmar: ${blockers.join(' ')}`);
+    throw new ConflictException(blockedMessage(blockers));
   }
 
   private async findEvent(db: Db, code: string, categoryId: number, eventId: number) {
@@ -262,21 +270,15 @@ export class OfficialService {
   private readiness(
     workout: number | null,
     categoryHeats: { workoutCode: number; heatNumber: number; status: string }[],
-    scores: { codeTeam: number; scoreStatus: string | null }[],
+    scoreStatuses: (string | null)[],
+    validResults: number,
   ): Readiness {
     const hasWorkoutLink = workout != null;
     const heats = hasWorkoutLink
       ? categoryHeats.filter((h) => h.workoutCode === workout).map((h) => ({ heatNumber: h.heatNumber, status: h.status }))
       : [];
-    const valid = new Set(
-      scores.filter((s) => s.scoreStatus !== 'draft' && s.scoreStatus !== 'voided').map((s) => s.codeTeam),
-    );
-    return evaluateReadiness({
-      hasWorkoutLink,
-      heats,
-      scoreStatuses: scores.map((s) => s.scoreStatus),
-      validResults: valid.size,
-    });
+    // validResults vem do motor: só equipes com resultado 'scored' (W.O./canceladas não contam).
+    return evaluateReadiness({ hasWorkoutLink, heats, scoreStatuses, validResults });
   }
 
   // Lê o necessário e calcula prontidão + prévia completa (com pontos) do WOD na categoria.
@@ -299,8 +301,14 @@ export class OfficialService {
       }),
     ]);
     const input = toEngineInput(rows);
-    const r = this.readiness(event.workout, heats, scores);
     const entries = computeWorkoutEntries(input, categoryId, event.idEvent);
+    const r = this.readiness(
+      event.workout,
+      heats,
+      scores.map((x) => x.scoreStatus),
+      countScored(entries),
+    );
+    const warnings = confirmed ? [...r.warnings, 'Este WOD já foi calculado oficialmente.'] : r.warnings;
     const previewRows = buildPreviewRows(input, categoryId, entries);
     const preview: OfficialPreview = {
       eventId: event.idEvent,
@@ -308,7 +316,7 @@ export class OfficialService {
       state: officialState(r, confirmed),
       canConfirm: r.canConfirm && !confirmed,
       blockers: r.blockers,
-      warnings: r.warnings,
+      warnings,
       heats: r.heats,
       rows: previewRows,
       woTeams: previewRows.filter((p) => p.status === 'wo').map((p) => p.team),

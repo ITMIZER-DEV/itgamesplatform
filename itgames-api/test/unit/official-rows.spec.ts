@@ -1,5 +1,5 @@
 import { computeWorkoutEntries } from '../../src/modules/scoring/engine';
-import { buildPreviewRows, toSnapshotRows } from '../../src/modules/official/official-rows';
+import { blockedMessage, buildPreviewRows, countScored, toSnapshotRows } from '../../src/modules/official/official-rows';
 import { EngineInput } from '../../src/modules/scoring/types';
 
 const input: EngineInput = {
@@ -44,5 +44,22 @@ describe('linhas do cálculo oficial', () => {
     expect(rows).toHaveLength(4);
     expect(rows.find((r) => r.teamCode === 104)!.status).toBe('cancelled');
     expect(rows.find((r) => r.teamCode === 101)!.status).toBe('none');
+  });
+});
+
+describe('countScored e blockedMessage', () => {
+  it('conta só equipes com resultado válido', () => {
+    expect(countScored(computeWorkoutEntries(input, 1, 1))).toBe(2);
+    expect(countScored(null)).toBe(0);
+  });
+
+  it('WOD só com W.O. não tem resultado válido', () => {
+    const soWo: EngineInput = { ...input, scores: [{ workoutCode: 1, category: 1, teamCode: 101, isWO: true }] };
+    expect(countScored(computeWorkoutEntries(soWo, 1, 1))).toBe(0);
+  });
+
+  it('a mensagem de bloqueio nunca fica vazia', () => {
+    expect(blockedMessage([])).toMatch(/resultado válido/);
+    expect(blockedMessage(['Baterias não encerradas: 2.'])).toContain('Baterias não encerradas');
   });
 });

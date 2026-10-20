@@ -1,4 +1,5 @@
 import { ConflictException, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { officialKey } from './official-logic';
 
@@ -37,5 +38,22 @@ export class OfficialLockService {
       select: { eventId: true },
     });
     return rows.map((r) => r.eventId);
+  }
+
+  // CONTRATO DE SERIALIZAÇÃO (READ COMMITTED não enxerga OfficialResult não commitado):
+  // - confirmar e reverter chamam lockEventForUpdate(tx, ...) no início da transação
+  //   (FOR UPDATE na linha do evento em games_events);
+  // - todo caminho que grava súmula deve abrir transação e chamar assertUnlockedInTx(tx, ...)
+  //   antes de escrever (FOR SHARE na mesma linha + checagem do resultado ativo dentro da transação).
+  // Assim, a gravação espera a confirmação em curso terminar e então enxerga o resultado commitado
+  // (409), ou a confirmação espera a gravação terminar e então recalcula com a súmula já gravada.
+  async lockEventForUpdate(tx: Prisma.TransactionClient, game: string, eventId: number): Promise<void> {
+    await tx.$queryRaw`SELECT 1 FROM "games_events" WHERE "game" = ${game} AND "idEvent" = ${eventId} FOR UPDATE`;
+  }
+
+  async assertUnlockedInTx(tx: Prisma.TransactionClient, game: string, category: number, eventId: number): Promise<void> {
+    await tx.$queryRaw`SELECT 1 FROM "games_events" WHERE "game" = ${game} AND "idEvent" = ${eventId} FOR SHARE`;
+    const n = await tx.officialResult.count({ where: { activeKey: officialKey(game, category, eventId) } });
+    if (n > 0) throw new ConflictException(LOCKED_MSG);
   }
 }
