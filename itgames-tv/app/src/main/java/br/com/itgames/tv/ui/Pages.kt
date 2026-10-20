@@ -47,6 +47,11 @@ fun statusBadge(config: ScreenConfig?): StatusBadge = when {
     else -> StatusBadge.PARCIAL
 }
 
+const val DEFAULT_OVERLAY_TEXT = "LEADERBOARD CONGELADO"
+
+// Aviso do congelamento: texto em branco (ou ausente) cai no padrão.
+fun overlayTextOrDefault(text: String?): String = text?.trim().takeUnless { it.isNullOrEmpty() } ?: DEFAULT_OVERLAY_TEXT
+
 private val HOUR_MINUTE = DateTimeFormatter.ofPattern("HH:mm")
 
 // "HH:mm" do instante de congelamento no fuso informado; null se ausente ou inválido.

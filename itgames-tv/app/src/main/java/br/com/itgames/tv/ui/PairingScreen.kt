@@ -6,6 +6,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -69,34 +71,46 @@ fun PairingScreen(server: String, onPaired: (token: String) -> Unit) {
         }
     }
 
-    Column(
-        Modifier.fillMaxSize().background(Palette.Background).padding(64.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Image(painterResource(R.drawable.logo_itgames), contentDescription = "ITGames", modifier = Modifier.height(72.dp), contentScale = ContentScale.Fit)
-        Spacer(Modifier.height(32.dp))
-        Text(
-            "Abra Telões no painel do organizador e digite o código",
-            color = Palette.Text, fontSize = 28.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(32.dp))
-        Box(
-            Modifier
-                .background(Palette.Surface, RoundedCornerShape(24.dp))
-                .border(3.dp, Palette.Amber, RoundedCornerShape(24.dp))
-                .padding(horizontal = 64.dp, vertical = 32.dp),
-            contentAlignment = Alignment.Center,
+    // Em 960×540 dp (TV 1080p xhdpi) tudo precisa caber: o conteúdo central é compacto e o status
+    // e a dica do MENU ficam numa linha própria na base, fora da coluna central.
+    Box(Modifier.fillMaxSize().background(Palette.Background).padding(32.dp)) {
+        Column(
+            Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            Image(painterResource(R.drawable.logo_itgames), contentDescription = "ITGames", modifier = Modifier.height(56.dp), contentScale = ContentScale.Fit)
+            Spacer(Modifier.height(16.dp))
             Text(
-                code ?: "• • • •",
-                color = Palette.Amber, fontSize = 120.sp, fontWeight = FontWeight.Black,
-                fontFamily = FontFamily.Monospace, letterSpacing = 16.sp,
+                "Abra Telões no painel do organizador e digite o código",
+                color = Palette.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
             )
+            Spacer(Modifier.height(4.dp))
+            // Sem URL do painel configurável no app: indica o caminho de menus, sem inventar endereço.
+            Text(PANEL_HINT, color = Palette.TextMuted, fontSize = 18.sp, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(16.dp))
+            Box(
+                Modifier
+                    .background(Palette.Surface, RoundedCornerShape(24.dp))
+                    .border(3.dp, Palette.Amber, RoundedCornerShape(24.dp))
+                    .padding(horizontal = 48.dp, vertical = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    code ?: "• • • •",
+                    color = Palette.Amber, fontSize = 96.sp, fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Monospace, letterSpacing = 12.sp,
+                )
+            }
         }
-        Spacer(Modifier.height(24.dp))
-        Text(status, color = Palette.TextMuted, fontSize = 20.sp)
-        Spacer(Modifier.height(8.dp))
-        Text("MENU: endereço do servidor", color = Palette.TextMuted, fontSize = 16.sp)
+        Row(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(status, color = Palette.TextMuted, fontSize = 18.sp)
+            Text("MENU: endereço do servidor", color = Palette.TextMuted, fontSize = 14.sp)
+        }
     }
 }
+
+const val PANEL_HINT = "Painel do organizador > Telões"

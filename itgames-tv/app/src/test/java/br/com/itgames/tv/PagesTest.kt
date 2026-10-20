@@ -3,7 +3,9 @@ package br.com.itgames.tv
 import br.com.itgames.tv.ui.BoardPage
 import br.com.itgames.tv.ui.StatusBadge
 import br.com.itgames.tv.ui.frozenSince
+import br.com.itgames.tv.ui.DEFAULT_OVERLAY_TEXT
 import br.com.itgames.tv.ui.keepPosition
+import br.com.itgames.tv.ui.overlayTextOrDefault
 import br.com.itgames.tv.ui.pagesOf
 import br.com.itgames.tv.ui.statusBadge
 import java.time.ZoneOffset
@@ -65,5 +67,12 @@ class PagesTest {
         assertEquals(0, keepPosition(BoardPage(0, 0, 1, 2), pages, 5))
         assertEquals(0, keepPosition(null, pages, 9))
         assertEquals(0, keepPosition(null, emptyList(), 3))
+    }
+
+    @Test fun avisoEmBrancoCaiNoPadrao() {
+        assertEquals(DEFAULT_OVERLAY_TEXT, overlayTextOrDefault(null))
+        assertEquals(DEFAULT_OVERLAY_TEXT, overlayTextOrDefault(""))
+        assertEquals(DEFAULT_OVERLAY_TEXT, overlayTextOrDefault("   "))
+        assertEquals("Intervalo", overlayTextOrDefault("  Intervalo "))
     }
 }

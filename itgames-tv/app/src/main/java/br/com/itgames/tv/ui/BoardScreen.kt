@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,12 +76,16 @@ fun BoardScreen(state: ScreenState, modifier: Modifier = Modifier) {
         anchor = pages.getOrNull(safeIndex)
     }
     val rotateMs = (config?.rotateSeconds ?: 15).coerceAtLeast(3) * 1000L
+    // O efeito não reinicia quando só o conteúdo muda; lê sempre a lista de páginas mais recente
+    val latestPages by rememberUpdatedState(pages)
     LaunchedEffect(pages.size, paused, safeIndex, rotateMs) {
         if (paused || pages.size <= 1) return@LaunchedEffect
         delay(rotateMs) // reinicia a contagem a cada troca, inclusive as manuais
-        val next = (safeIndex + 1) % pages.size
+        val atual = latestPages
+        if (atual.isEmpty()) return@LaunchedEffect
+        val next = (safeIndex + 1) % atual.size
         current = next
-        anchor = pages[next]
+        anchor = atual[next]
     }
 
     // controle remoto: ◀ ▶ trocam de página, OK pausa/retoma a rotação
@@ -117,7 +122,7 @@ fun BoardScreen(state: ScreenState, modifier: Modifier = Modifier) {
         val category = if (page != null && board != null) board.categories.getOrNull(page.categoryIndex) else null
 
         Column(Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 20.dp)) {
-            Header(board, boards.size > 1, state.link, category?.name ?: "", page, paused, badge, config)
+            Header(board, boards.size > 1, state.link, category?.name ?: "", page, paused, badge, config, showBadge = boards.isNotEmpty() || badge != StatusBadge.PARCIAL)
             Spacer(Modifier.height(14.dp))
 
             if (board == null) {
@@ -137,14 +142,12 @@ fun BoardScreen(state: ScreenState, modifier: Modifier = Modifier) {
                 }
             }
 
-            Footer(state, badge)
+            Footer(state, partialNotice = badge == StatusBadge.PARCIAL && boards.isNotEmpty())
         }
 
-        if (badge == StatusBadge.CONGELADO) FrozenOverlay(config.overlayText ?: DEFAULT_OVERLAY_TEXT)
+        if (badge == StatusBadge.CONGELADO) FrozenOverlay(overlayTextOrDefault(config.overlayText))
     }
 }
-
-private const val DEFAULT_OVERLAY_TEXT = "LEADERBOARD CONGELADO"
 
 // Faixa translúcida grande, legível de longe, sobre o meio do placar (as linhas continuam visíveis acima e abaixo).
 @Composable
@@ -154,13 +157,13 @@ private fun FrozenOverlay(text: String) {
             Modifier
                 .fillMaxWidth()
                 .background(Palette.Frozen.copy(alpha = 0.82f))
-                .padding(horizontal = 48.dp, vertical = 22.dp),
+                .padding(horizontal = 48.dp, vertical = 10.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text,
                 color = Color.White,
-                fontSize = 56.sp,
+                fontSize = 48.sp,
                 fontWeight = FontWeight.Black,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
@@ -197,6 +200,7 @@ private fun Header(
     paused: Boolean,
     badge: StatusBadge,
     config: ScreenConfig,
+    showBadge: Boolean,
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         // logo oficial no lugar do texto; altura fixa preserva o layout (proporção mantida)
@@ -204,20 +208,33 @@ private fun Header(
         Spacer(Modifier.width(20.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                LiveBadge(link)
-                Spacer(Modifier.width(8.dp))
-                StatusPill(badge, config)
-                Spacer(Modifier.width(12.dp))
+                // congelado e online: o selo CONGELADO já diz tudo, "AO VIVO" seria enganoso
+                if (LiveBadge(link, config.frozen)) Spacer(Modifier.width(8.dp))
+                if (showBadge) {
+                    StatusPill(badge, config)
+                    Spacer(Modifier.width(12.dp))
+                }
                 if (board != null) {
                     // com mais de um campeonato, o nome ganha destaque para saber qual placar está na tela
                     Text(
-                        listOf(board.gameName, board.location).filter { it.isNotBlank() }.joinToString(" • "),
+                        board.gameName,
                         color = if (multiple) Palette.Text else Palette.TextMuted,
                         fontSize = if (multiple) 20.sp else 14.sp,
                         fontWeight = if (multiple) FontWeight.Bold else FontWeight.Normal,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
                     )
+                    // o local só aparece com um campeonato (com vários, o nome precisa do espaço)
+                    if (!multiple && board.location.isNotBlank()) {
+                        Text(
+                            " • ${board.location}",
+                            color = Palette.TextMuted,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
             if (board != null) {
@@ -291,7 +308,8 @@ private fun LockIcon(color: Color) {
 }
 
 @Composable
-private fun LiveBadge(link: Link) {
+private fun LiveBadge(link: Link, frozen: Boolean): Boolean {
+    if (link == Link.ONLINE && frozen) return false
     val (label, color) = when (link) {
         Link.ONLINE -> "AO VIVO" to Palette.Online
         Link.CONNECTING -> "CONECTANDO" to Palette.TextMuted
@@ -305,6 +323,7 @@ private fun LiveBadge(link: Link) {
         Spacer(Modifier.width(6.dp))
         Text(label, color = color, fontSize = 12.sp, fontWeight = FontWeight.Black)
     }
+    return true
 }
 
 @Composable
@@ -339,7 +358,7 @@ private fun ScoreRow(row: BoardRow, wodCount: Int, totalUnit: String, modifier: 
             .alpha(if (cancelled) 0.55f else 1f)
             .background(if (row.rank == 1 && !cancelled) Palette.Amber.copy(alpha = 0.10f) else Palette.Surface)
             .border(if (row.rank == 1 && !cancelled) 2.dp else 1.dp, if (cancelled) Palette.SurfaceHigh else rowBorder, shape)
-            .padding(horizontal = 12.dp, vertical = 5.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(badgeBg), contentAlignment = Alignment.Center) {
@@ -394,7 +413,7 @@ private fun ScoreRow(row: BoardRow, wodCount: Int, totalUnit: String, modifier: 
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color.Black.copy(alpha = 0.6f))
                 .border(1.dp, Palette.Amber.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
-                .padding(horizontal = 12.dp, vertical = 1.dp),
+                .padding(horizontal = 14.dp, vertical = 3.dp),
             horizontalAlignment = Alignment.End,
         ) {
             Text("TOTAL", color = Palette.TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
@@ -403,7 +422,7 @@ private fun ScoreRow(row: BoardRow, wodCount: Int, totalUnit: String, modifier: 
             Text(
                 text,
                 color = totalColor,
-                fontSize = if (text.length > 9) 16.sp else if (text.length > 7) 19.sp else 22.sp,
+                fontSize = if (text.length > 9) 15.sp else if (text.length > 7) 18.sp else 20.sp,
                 fontWeight = FontWeight.Black,
                 fontFamily = FontFamily.Monospace,
                 maxLines = 1,
@@ -423,17 +442,21 @@ private const val MAX_WOD_CHIPS = 5
 private val WOD_CHIP_WIDTH = 80.dp
 
 @Composable
-private fun Footer(state: ScreenState, badge: StatusBadge) {
+private fun Footer(state: ScreenState, partialNotice: Boolean) {
     Row(
         Modifier.fillMaxWidth().padding(top = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("◀ ▶ trocar página   OK pausar/retomar   MENU configurar", color = Palette.TextMuted, fontSize = 12.sp)
-        if (state.link == Link.OFFLINE) {
-            Text(state.error ?: "Reconectando…", color = Palette.Offline, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        } else if (badge == StatusBadge.PARCIAL) {
-            Text("Resultados parciais, sujeitos a homologação", color = Palette.TextMuted, fontSize = 12.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            // offline mostra RECONECTANDO e mantém o aviso PARCIAL quando o modo for parcial
+            if (state.link == Link.OFFLINE) {
+                Text(state.error ?: "RECONECTANDO…", color = Palette.Offline, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+            if (partialNotice) {
+                Text("Resultados parciais, sujeitos a homologação", color = Palette.TextMuted, fontSize = 12.sp)
+            }
         }
     }
 }

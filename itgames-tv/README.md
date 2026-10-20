@@ -21,6 +21,8 @@ Na primeira abertura a TV mostra um **código de pareamento** grande (não preci
 organizador, abra **Telões** e digite o código: a TV recebe uma credencial, guarda só no aparelho e passa a mostrar o telão
 configurado no painel. Ao reabrir, reconecta sozinha e mantém o último placar se a rede cair. O código expira e a TV pede
 outro automaticamente. Se o telão for removido no painel (ou a credencial for invalidada), a TV volta ao pareamento.
+Telão congelado mostra só o selo CONGELADO (sem "AO VIVO") e o aviso do painel sobre o placar; sem campeonatos, a TV
+não exibe os avisos de resultado parcial.
 
 A tela do **MENU** edita o endereço do servidor e tem o botão **Desparear** (apaga a credencial deste aparelho).
 
