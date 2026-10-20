@@ -39,4 +39,13 @@ object Api {
             ?.build()
             ?.toString()
             ?.replaceFirst("http", "ws") // "https" vira "wss"
+
+    // http(s)://host[:porta] -> ws(s)://host[:porta]/ws/screen?token=... (o token é codificado na URL)
+    fun screenSocketUrl(serverUrl: String, deviceToken: String): String? =
+        serverUrl.toHttpUrlOrNull()?.newBuilder()
+            ?.addPathSegments("ws/screen")
+            ?.addQueryParameter("token", deviceToken)
+            ?.build()
+            ?.toString()
+            ?.replaceFirst("http", "ws")
 }

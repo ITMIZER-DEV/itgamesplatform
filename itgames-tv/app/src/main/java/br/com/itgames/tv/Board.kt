@@ -28,7 +28,11 @@ data class Board(val gameName: String, val location: String, val eventType: Stri
         fun parse(message: String): Board? {
             val root = JSONObject(message)
             if (root.optString("type") != "board") return null
-            val board = root.getJSONObject("board")
+            return fromJson(root.getJSONObject("board"))
+        }
+
+        // Aceita o objeto do placar em si ({"game":{...},"categories":[...]}), também usado na mensagem "screen".
+        fun fromJson(board: JSONObject): Board {
             val game = board.getJSONObject("game")
             val categories = board.getJSONArray("categories")
             return Board(

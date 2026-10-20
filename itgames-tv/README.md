@@ -1,7 +1,7 @@
 # ITGames Telão (Android TV / Fire TV)
 
 App nativo (Kotlin + Jetpack Compose) que mostra o leaderboard ao vivo numa TV. Recebe o placar já calculado por
-**websocket** (`ws://servidor/ws/leaderboard?game=CODIGO`) e se atualiza sozinho a cada súmula lançada.
+**websocket** (`ws://servidor/ws/screen?token=CREDENCIAL`) e se atualiza sozinho a cada súmula lançada.
 
 - Funciona em Android TV 5.1+ e Fire TV (Stick 2ª geração em diante).
 - Rotaciona categorias a cada 15 s; categorias grandes são paginadas (7 equipes por tela).
@@ -14,10 +14,14 @@ App nativo (Kotlin + Jetpack Compose) que mostra o leaderboard ao vivo numa TV. 
 | --- | --- |
 | ◀ ▶ | página/categoria anterior ou próxima |
 | OK | pausa/retoma a rotação |
-| MENU (☰) | abre a configuração (servidor e campeonato) |
+| MENU (☰) | abre a tela do servidor (endereço e Desparear) |
 
-Na primeira abertura aparece a tela de configuração: confira o endereço do servidor, aperte **Atualizar** e escolha o
-campeonato (só aparecem campeonatos liberados/`live`). A escolha fica salva no aparelho.
+Na primeira abertura a TV mostra um **código de pareamento** grande (não precisa digitar nada no controle). No painel do
+organizador, abra **Telões** e digite o código: a TV recebe uma credencial, guarda só no aparelho e passa a mostrar o telão
+configurado no painel. Ao reabrir, reconecta sozinha e mantém o último placar se a rede cair. O código expira e a TV pede
+outro automaticamente. Se o telão for removido no painel (ou a credencial for invalidada), a TV volta ao pareamento.
+
+A tela do **MENU** edita o endereço do servidor e tem o botão **Desparear** (apaga a credencial deste aparelho).
 
 ## Gerar o APK
 
@@ -29,7 +33,7 @@ Requer JDK 17+ e Android SDK (platform 34). Crie `local.properties` com `sdk.dir
 ./gradlew :app:testDebugUnitTest   # testes
 ```
 
-`-PapiUrl` só define o endereço sugerido na tela de configuração. O release é assinado com a chave de debug (serve para
+`-PapiUrl` só define o endereço sugerido do servidor. O release é assinado com a chave de debug (serve para
 sideload); para publicar em loja, configure uma keystore própria em `app/build.gradle.kts`.
 
 ## Instalar

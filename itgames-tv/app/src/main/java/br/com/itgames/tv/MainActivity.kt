@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import br.com.itgames.tv.ui.BoardScreen
 import br.com.itgames.tv.ui.ItGamesTheme
+import br.com.itgames.tv.ui.PairingScreen
 import br.com.itgames.tv.ui.SetupScreen
 
 class MainActivity : ComponentActivity() {
@@ -25,43 +26,57 @@ class MainActivity : ComponentActivity() {
         // telão: a TV não pode apagar nem ligar protetor de tela durante o evento
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val prefs = Prefs(this)
-        showSetup = prefs.gameCode == null
 
         setContent {
             ItGamesTheme {
                 var server by remember { mutableStateOf(prefs.serverUrl) }
-                var game by remember { mutableStateOf(prefs.gameCode) }
+                var token by remember { mutableStateOf(prefs.deviceToken) }
+                val unpair = {
+                    prefs.deviceToken = null
+                    token = null
+                    showSetup = false
+                }
 
-                if (showSetup || game == null) {
-                    BackHandler(enabled = game != null) { showSetup = false }
+                val currentToken = token
+                if (showSetup) {
+                    BackHandler { showSetup = false }
                     SetupScreen(
                         initialServer = server,
-                        currentGame = game,
-                        onDone = { newServer, newGame ->
+                        paired = currentToken != null,
+                        onSave = { newServer ->
                             prefs.serverUrl = newServer
-                            prefs.gameCode = newGame
-                            server = newServer
-                            game = newGame
+                            server = prefs.serverUrl
                             showSetup = false
                         },
-                        onCancel = if (game != null) ({ showSetup = false }) else null,
+                        onUnpair = unpair,
+                        onCancel = { showSetup = false },
+                    )
+                } else if (currentToken == null) {
+                    PairingScreen(
+                        server = server,
+                        onPaired = { newToken ->
+                            prefs.deviceToken = newToken
+                            token = newToken
+                        },
                     )
                 } else {
                     val scope = rememberCoroutineScope()
-                    val socket = remember(server, game) {
-                        BoardSocket(Api.socketUrl(server, game!!) ?: "http://invalid/", scope)
+                    val socket = remember(server, currentToken) {
+                        ScreenSocket(Api.screenSocketUrl(server, currentToken) ?: "http://invalid/", scope, onUnpaired = unpair)
                     }
                     DisposableEffect(socket) {
                         socket.start()
                         onDispose { socket.stop() }
                     }
-                    BoardScreen(socket.state.collectAsState().value)
+                    // Task 6 troca por telas de rotação/congelamento; por ora mostra o primeiro placar da lista.
+                    val state = socket.state.collectAsState().value
+                    BoardScreen(BoardState(state.boards.firstOrNull(), state.link, state.error))
                 }
             }
         }
     }
 
-    // MENU do controle (Android TV e Fire TV) abre a configuração
+    // MENU do controle (Android TV e Fire TV) abre a tela do servidor
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_MENU) {
             showSetup = true
