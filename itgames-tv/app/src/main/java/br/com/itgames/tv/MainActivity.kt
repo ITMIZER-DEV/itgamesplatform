@@ -68,9 +68,7 @@ class MainActivity : ComponentActivity() {
                         socket.start()
                         onDispose { socket.stop() }
                     }
-                    // Task 6 troca por telas de rotação/congelamento; por ora mostra o primeiro placar da lista.
-                    val state = socket.state.collectAsState().value
-                    BoardScreen(BoardState(state.boards.firstOrNull(), state.link, state.error))
+                    BoardScreen(socket.state.collectAsState().value)
                 }
             }
         }

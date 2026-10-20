@@ -18,6 +18,7 @@ object Palette {
     val Bronze = Color(0xFFB45309)
     val Online = Color(0xFF22C55E)
     val Offline = Color(0xFFEF4444)
+    val Frozen = Color(0xFF3B82F6)
 }
 
 @Composable

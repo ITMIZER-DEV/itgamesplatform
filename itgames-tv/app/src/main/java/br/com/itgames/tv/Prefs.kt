@@ -2,7 +2,7 @@ package br.com.itgames.tv
 
 import android.content.Context
 
-// Servidor e campeonato escolhidos na tela de configuração (ficam salvos no aparelho).
+// Servidor e credencial do telão (ficam salvos no aparelho).
 class Prefs(context: Context) {
     private val prefs = context.getSharedPreferences("itgames_tv", Context.MODE_PRIVATE)
 
@@ -14,8 +14,4 @@ class Prefs(context: Context) {
     var deviceToken: String?
         get() = prefs.getString("device_token", null)
         set(value) = prefs.edit().apply { if (value == null) remove("device_token") else putString("device_token", value) }.apply()
-
-    var gameCode: String?
-        get() = prefs.getString("game", null)
-        set(value) = prefs.edit().putString("game", value).apply()
 }

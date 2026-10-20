@@ -41,62 +41,60 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import br.com.itgames.tv.Board
 import br.com.itgames.tv.BoardRow
-import br.com.itgames.tv.BoardState
+import br.com.itgames.tv.ScreenConfig
+import br.com.itgames.tv.ScreenState
 import br.com.itgames.tv.Link
 import br.com.itgames.tv.R
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
+import java.time.ZoneId
 import java.util.Date
 import java.util.Locale
 
-const val ROWS_PER_PAGE = 6
-private const val ROTATE_MS = 15_000L
-
-// Uma "tela" do telão: uma página de uma categoria. Categorias grandes são paginadas.
-data class BoardPage(val categoryIndex: Int, val page: Int, val pages: Int)
-
-fun pagesOf(board: Board): List<BoardPage> {
-    // categorias sem equipes não entram na rotação (se nenhuma tiver equipe, mostra a primeira com o aviso)
-    val indexes = board.categories.indices.filter { board.categories[it].rows.isNotEmpty() }
-        .ifEmpty { board.categories.indices.take(1) }
-    return indexes.flatMap { index ->
-        val pages = maxOf(1, (board.categories[index].rows.size + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE)
-        List(pages) { BoardPage(index, it, pages) }
-    }
-}
-
 @Composable
-fun BoardScreen(state: BoardState, modifier: Modifier = Modifier) {
-    val board = state.board
-    val pages = remember(board) { board?.let(::pagesOf) ?: emptyList() }
+fun BoardScreen(state: ScreenState, modifier: Modifier = Modifier) {
+    val config = state.config
+    val boards = state.boards
+    val pages = remember(boards) { pagesOf(boards) }
     var current by remember { mutableIntStateOf(0) }
+    var anchor by remember { mutableStateOf<BoardPage?>(null) }
     var paused by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
-    // um placar novo pode ter menos páginas que antes
-    val safeIndex = if (pages.isEmpty()) 0 else current.coerceIn(0, pages.lastIndex)
+    // atualização ao vivo mantém a página (campeonato, categoria, página) quando ela ainda existe; senão limita
+    val safeIndex = keepPosition(anchor, pages, current)
 
     LaunchedEffect(Unit) { focus.requestFocus() }
-    LaunchedEffect(pages.size, paused, safeIndex) {
+    LaunchedEffect(pages) {
+        current = safeIndex
+        anchor = pages.getOrNull(safeIndex)
+    }
+    val rotateMs = (config?.rotateSeconds ?: 15).coerceAtLeast(3) * 1000L
+    LaunchedEffect(pages.size, paused, safeIndex, rotateMs) {
         if (paused || pages.size <= 1) return@LaunchedEffect
-        delay(ROTATE_MS) // reinicia a contagem a cada troca, inclusive as manuais
-        current = (safeIndex + 1) % pages.size
+        delay(rotateMs) // reinicia a contagem a cada troca, inclusive as manuais
+        val next = (safeIndex + 1) % pages.size
+        current = next
+        anchor = pages[next]
     }
 
     // controle remoto: ◀ ▶ trocam de página, OK pausa/retoma a rotação
     fun move(step: Int) {
-        if (pages.isNotEmpty()) current = (safeIndex + step + pages.size) % pages.size
+        if (pages.isEmpty()) return
+        val next = (safeIndex + step + pages.size) % pages.size
+        current = next
+        anchor = pages[next]
     }
 
-    Column(
+    Box(
         modifier
             .fillMaxSize()
             .background(Palette.Background)
-            .padding(horizontal = 32.dp, vertical = 20.dp)
             .focusRequester(focus)
             .focusable()
             .onKeyEvent { event ->
@@ -109,36 +107,71 @@ fun BoardScreen(state: BoardState, modifier: Modifier = Modifier) {
                 }
             },
     ) {
-        if (board == null) {
+        if (config == null) {
             Waiting(state)
-            return@Column
+            return@Box
         }
-
+        val badge = statusBadge(config)
         val page = pages.getOrNull(safeIndex)
-        val category = page?.let { board.categories[it.categoryIndex] }
+        val board = page?.let { boards.getOrNull(it.gameIndex) }
+        val category = if (page != null && board != null) board.categories.getOrNull(page.categoryIndex) else null
 
-        Header(board, state.link, category?.name ?: "", page, paused)
-        Spacer(Modifier.height(14.dp))
+        Column(Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 20.dp)) {
+            Header(board, boards.size > 1, state.link, category?.name ?: "", page, paused, badge, config)
+            Spacer(Modifier.height(14.dp))
 
-        if (category == null || category.rows.isEmpty()) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text("Nenhuma equipe inscrita nesta categoria", color = Palette.TextMuted, fontSize = 22.sp)
+            if (board == null) {
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text("Nenhum campeonato disponível", color = Palette.TextMuted, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                }
+            } else if (category == null || category.rows.isEmpty()) {
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text("Nenhuma equipe inscrita nesta categoria", color = Palette.TextMuted, fontSize = 22.sp)
+                }
+            } else {
+                val rows = category.rows.drop(page.page * ROWS_PER_PAGE).take(ROWS_PER_PAGE)
+                // cada linha ocupa uma fração igual da altura, então 6 equipes sempre cabem na tela
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    rows.forEach { ScoreRow(it, category.wodTitles.size, board.totalUnit, Modifier.weight(1f)) }
+                    repeat(ROWS_PER_PAGE - rows.size) { Spacer(Modifier.weight(1f)) }
+                }
             }
-        } else {
-            val rows = category.rows.drop(page.page * ROWS_PER_PAGE).take(ROWS_PER_PAGE)
-            // cada linha ocupa uma fração igual da altura, então 6 equipes sempre cabem na tela
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                rows.forEach { ScoreRow(it, category.wodTitles.size, board.totalUnit, Modifier.weight(1f)) }
-                repeat(ROWS_PER_PAGE - rows.size) { Spacer(Modifier.weight(1f)) }
-            }
+
+            Footer(state, badge)
         }
 
-        Footer(state)
+        if (badge == StatusBadge.CONGELADO) FrozenOverlay(config.overlayText ?: DEFAULT_OVERLAY_TEXT)
+    }
+}
+
+private const val DEFAULT_OVERLAY_TEXT = "LEADERBOARD CONGELADO"
+
+// Faixa translúcida grande, legível de longe, sobre o meio do placar (as linhas continuam visíveis acima e abaixo).
+@Composable
+private fun FrozenOverlay(text: String) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .background(Palette.Frozen.copy(alpha = 0.82f))
+                .padding(horizontal = 48.dp, vertical = 22.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text,
+                color = Color.White,
+                fontSize = 56.sp,
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
 @Composable
-private fun Waiting(state: BoardState) {
+private fun Waiting(state: ScreenState) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Image(painterResource(R.drawable.logo_itgames), contentDescription = "ITGames", modifier = Modifier.height(160.dp), contentScale = ContentScale.Fit)
@@ -155,7 +188,16 @@ private fun Waiting(state: BoardState) {
 }
 
 @Composable
-private fun Header(board: Board, link: Link, categoryName: String, page: BoardPage?, paused: Boolean) {
+private fun Header(
+    board: Board?,
+    multiple: Boolean,
+    link: Link,
+    categoryName: String,
+    page: BoardPage?,
+    paused: Boolean,
+    badge: StatusBadge,
+    config: ScreenConfig,
+) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         // logo oficial no lugar do texto; altura fixa preserva o layout (proporção mantida)
         Image(painterResource(R.drawable.logo_itgames), contentDescription = "ITGames", modifier = Modifier.height(60.dp), contentScale = ContentScale.Fit)
@@ -163,41 +205,88 @@ private fun Header(board: Board, link: Link, categoryName: String, page: BoardPa
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 LiveBadge(link)
+                Spacer(Modifier.width(8.dp))
+                StatusPill(badge, config)
                 Spacer(Modifier.width(12.dp))
-                Text(
-                    listOf(board.gameName, board.location).filter { it.isNotBlank() }.joinToString(" • "),
-                    color = Palette.TextMuted,
-                    fontSize = 14.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    categoryName.ifBlank { "Geral" },
-                    color = Palette.Amber,
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Black,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Palette.Amber.copy(alpha = 0.12f))
-                        .border(1.dp, Palette.Amber.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
-                        .padding(horizontal = 16.dp, vertical = 2.dp),
-                )
-                if (page != null && page.pages > 1) {
-                    Spacer(Modifier.width(12.dp))
-                    Text("${page.page + 1}/${page.pages}", color = Palette.TextMuted, fontSize = 16.sp)
+                if (board != null) {
+                    // com mais de um campeonato, o nome ganha destaque para saber qual placar está na tela
+                    Text(
+                        listOf(board.gameName, board.location).filter { it.isNotBlank() }.joinToString(" • "),
+                        color = if (multiple) Palette.Text else Palette.TextMuted,
+                        fontSize = if (multiple) 20.sp else 14.sp,
+                        fontWeight = if (multiple) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
-                if (paused) {
-                    Spacer(Modifier.width(12.dp))
-                    Text("ROTAÇÃO PAUSADA", color = Palette.TextMuted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+            if (board != null) {
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        categoryName.ifBlank { "Geral" },
+                        color = Palette.Amber,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Palette.Amber.copy(alpha = 0.12f))
+                            .border(1.dp, Palette.Amber.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                            .padding(horizontal = 16.dp, vertical = 2.dp),
+                    )
+                    if (page != null && page.pages > 1) {
+                        Spacer(Modifier.width(12.dp))
+                        Text("${page.page + 1}/${page.pages}", color = Palette.TextMuted, fontSize = 16.sp)
+                    }
+                    if (paused) {
+                        Spacer(Modifier.width(12.dp))
+                        Text("ROTAÇÃO PAUSADA", color = Palette.TextMuted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
         Clock()
+    }
+}
+
+// Selo do cabeçalho: PARCIAL (âmbar), OFICIAL (verde) ou CONGELADO (azul, com cadeado e a hora).
+@Composable
+private fun StatusPill(badge: StatusBadge, config: ScreenConfig) {
+    val color = when (badge) {
+        StatusBadge.PARCIAL -> Palette.Amber
+        StatusBadge.OFICIAL -> Palette.Online
+        StatusBadge.CONGELADO -> Palette.Frozen
+    }
+    val since = if (badge == StatusBadge.CONGELADO) frozenSince(config.frozenAt, ZoneId.systemDefault()) else null
+    Row(
+        Modifier
+            .clip(CircleShape)
+            .background(color.copy(alpha = 0.18f))
+            .border(1.dp, color.copy(alpha = 0.6f), CircleShape)
+            .padding(horizontal = 12.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (badge == StatusBadge.CONGELADO) {
+            LockIcon(color)
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(
+            if (since != null) "CONGELADO $since" else badge.name,
+            color = color,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Black,
+        )
+    }
+}
+
+// Cadeado desenhado com formas (fontes de TV nem sempre têm o emoji).
+@Composable
+private fun LockIcon(color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(width = 9.dp, height = 7.dp).border(2.dp, color, RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp)))
+        Box(Modifier.size(width = 14.dp, height = 9.dp).clip(RoundedCornerShape(2.dp)).background(color))
     }
 }
 
@@ -334,15 +423,17 @@ private const val MAX_WOD_CHIPS = 5
 private val WOD_CHIP_WIDTH = 80.dp
 
 @Composable
-private fun Footer(state: BoardState) {
+private fun Footer(state: ScreenState, badge: StatusBadge) {
     Row(
         Modifier.fillMaxWidth().padding(top = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("◀ ▶ trocar categoria   OK pausar/retomar   MENU configurar", color = Palette.TextMuted, fontSize = 12.sp)
+        Text("◀ ▶ trocar página   OK pausar/retomar   MENU configurar", color = Palette.TextMuted, fontSize = 12.sp)
         if (state.link == Link.OFFLINE) {
             Text(state.error ?: "Reconectando…", color = Palette.Offline, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        } else if (badge == StatusBadge.PARCIAL) {
+            Text("Resultados parciais, sujeitos a homologação", color = Palette.TextMuted, fontSize = 12.sp)
         }
     }
 }

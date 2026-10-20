@@ -4,7 +4,8 @@ App nativo (Kotlin + Jetpack Compose) que mostra o leaderboard ao vivo numa TV. 
 **websocket** (`ws://servidor/ws/screen?token=CREDENCIAL`) e se atualiza sozinho a cada súmula lançada.
 
 - Funciona em Android TV 5.1+ e Fire TV (Stick 2ª geração em diante).
-- Rotaciona categorias a cada 15 s; categorias grandes são paginadas (7 equipes por tela).
+- Rotaciona campeonatos e categorias no intervalo configurado no painel (padrão 15 s); categorias grandes são paginadas (6 equipes por tela).
+- Selo no cabeçalho: PARCIAL (âmbar), OFICIAL (verde) ou CONGELADO (azul, com cadeado e a hora). Congelado mostra uma faixa grande com o texto do painel sobre o placar.
 - Reconecta sozinho (2 s → 30 s) e mantém o último placar na tela se a rede cair.
 - Mantém a tela ligada.
 

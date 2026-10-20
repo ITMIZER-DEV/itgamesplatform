@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -70,7 +71,7 @@ fun SetupScreen(
         )
         Spacer(Modifier.height(16.dp))
 
-        Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Choice("Salvar", onClick = { onSave(server.trim().trimEnd('/')) })
             if (paired) Choice("Desparear", onClick = onUnpair)
             Choice("Voltar", onClick = onCancel)
