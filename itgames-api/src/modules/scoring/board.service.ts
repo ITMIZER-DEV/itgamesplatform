@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { GameAccessService } from '../../common/access/game-access.service';
 import { AuthUser } from '../../common/types/auth-user';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -116,7 +117,12 @@ export class BoardService {
 
   // Calcula o placar sem checar visibilidade: quem chama já autorizou (ex.: telões).
   async loadBoard(code: string): Promise<Board> {
-    const game = await this.prisma.game.findUnique({
+    return computeBoard(toEngineInput(await this.loadRows(code)));
+  }
+
+  // Lê do banco os dados brutos do campeonato (aceita um cliente de transação para leitura consistente).
+  async loadRows(code: string, db: PrismaService | Prisma.TransactionClient = this.prisma): Promise<BoardRows> {
+    const game = await db.game.findUnique({
       where: { code },
       select: {
         code: true,
@@ -132,17 +138,17 @@ export class BoardService {
     if (!game) throw new NotFoundException('Campeonato não encontrado');
 
     const [categories, workouts, registrations, scores] = await Promise.all([
-      this.prisma.category.findMany({
+      db.category.findMany({
         where: { gamesId: code },
         select: { code: true, name: true },
         orderBy: { code: 'asc' },
       }),
-      this.prisma.workout.findMany({
+      db.workout.findMany({
         where: { game: code },
         select: { code: true, category: true, title: true, type: true, timeCap: true },
         orderBy: { code: 'asc' },
       }),
-      this.prisma.registration.findMany({
+      db.registration.findMany({
         where: { gameCode: code },
         select: {
           code: true,
@@ -154,7 +160,7 @@ export class BoardService {
         },
         orderBy: { code: 'asc' },
       }),
-      this.prisma.score.findMany({
+      db.score.findMany({
         where: { game: code },
         select: {
           idEvent: true,
@@ -173,6 +179,6 @@ export class BoardService {
       }),
     ]);
 
-    return computeBoard(toEngineInput({ game, categories, workouts, registrations, scores }));
+    return { game, categories, workouts, registrations, scores };
   }
 }
