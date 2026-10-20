@@ -16,8 +16,8 @@ Atualize a linha da tarefa e faça commit só deste arquivo ao concluir cada tar
 | 1 | Motor: entradas por WOD, `buildBoard` e visões do board | done | 52d0215 |
 | 2 | Modelos do cálculo oficial e regras puras de prontidão | done | 6702837, 78c52dd |
 | 3 | Módulo `official`: status, prévia, confirmar, reverter, histórico e trava | done | ad912d3, eba76c5 |
-| 4 | Trava de súmula em todos os caminhos de escrita | in-progress | |
-| 5 | Board por visão: parcial sem pontos, oficial e telões em modo oficial | pending | |
+| 4 | Trava de súmula em todos os caminhos de escrita | done | fcb26a9, 8881056 |
+| 5 | Board por visão: parcial sem pontos, oficial e telões em modo oficial | in-progress | |
 | 6 | Webapp: API client, helpers e modo Oficial nos Telões | pending | |
 | 7 | Webapp: página "Cálculo oficial" do juiz-chefe | pending | |
 | 8 | Webapp: telas públicas sem pontos no parcial e visão Oficial | pending | |
