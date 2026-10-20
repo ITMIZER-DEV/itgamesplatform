@@ -72,6 +72,8 @@ model Game {
   heats                 Heat[]
   auditLogs             AuditLog[]
   organizers            GameOrganizer[]
+  officialResults       OfficialResult[]
+  officialLogs          OfficialLog[]
 
   @@map("games")
 }
@@ -379,4 +381,66 @@ model ScreenLog {
 
   @@index([screenId])
   @@map("screen_logs")
+}
+
+// Resultado oficial confirmado de uma categoria em um WOD (instantâneo).
+model OfficialResult {
+  id              String    @id @default(uuid())
+  gameCode        String
+  categoryId      Int
+  eventId         Int
+  activeKey       String?   @unique // "game:categoria:evento"; nulo quando revertido
+  confirmedById   String
+  confirmedByName String
+  confirmedAt     DateTime  @default(now())
+  revertedAt      DateTime?
+  revertedByName  String?
+  revertReason    String?
+  teamCount       Int
+  woCount         Int
+
+  game Game                 @relation(fields: [gameCode], references: [code], onDelete: Cascade)
+  rows OfficialResultRow[]
+
+  @@index([gameCode, categoryId, eventId])
+  @@map("games_official_results")
+}
+
+// Linha do instantâneo; sem FK para Registration de propósito.
+model OfficialResultRow {
+  id       String @id @default(uuid())
+  resultId String
+  teamCode Int
+  rank     Int
+  points   Float
+  display  String
+  status   String // scored | wo | cancelled | none
+  seconds  Float?
+  splits   Json?
+
+  result OfficialResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+
+  @@unique([resultId, teamCode])
+  @@map("games_official_result_rows")
+}
+
+// Histórico somente de acréscimo das ações oficiais.
+model OfficialLog {
+  id         String   @id @default(uuid())
+  gameCode   String
+  categoryId Int
+  eventId    Int
+  resultId   String?
+  action     String // confirm | revert
+  userId     String
+  userName   String
+  reason     String?
+  teamCount  Int
+  woCount    Int
+  createdAt  DateTime @default(now())
+
+  game Game @relation(fields: [gameCode], references: [code], onDelete: Cascade)
+
+  @@index([gameCode, createdAt])
+  @@map("games_official_logs")
 }
