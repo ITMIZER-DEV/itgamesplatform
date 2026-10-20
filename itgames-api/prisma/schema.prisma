@@ -332,3 +332,51 @@ model PasswordResetToken {
   @@index([userId])
   @@map("password_reset_tokens")
 }
+
+// Telões de TV: sem relação com User/Game (só ids), para a tabela ser puramente aditiva.
+model Screen {
+  id               String    @id @default(uuid())
+  name             String
+  ownerId          String? // nulo enquanto o pareamento não foi resgatado
+  mode             String    @default("partial") // partial | official
+  rotateSeconds    Int       @default(15)
+  frozen           Boolean   @default(false)
+  frozenAt         DateTime?
+  overlayText      String?
+  frozenBoards     Json? // placares congelados por campeonato
+  pairingCode      String?   @unique
+  pairingExpiresAt DateTime?
+  claimedAt        DateTime?
+  deviceTokenHash  String?   @unique // SHA-256 da credencial; a credencial nunca é guardada
+  lastSeenAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  games ScreenGame[]
+
+  @@index([ownerId])
+  @@map("screens")
+}
+
+model ScreenGame {
+  screenId String
+  gameCode String
+
+  screen Screen @relation(fields: [screenId], references: [id], onDelete: Cascade)
+
+  @@id([screenId, gameCode])
+  @@map("screen_games")
+}
+
+model ScreenLog {
+  id         String   @id @default(uuid())
+  screenId   String
+  screenName String
+  action     String
+  userId     String
+  userName   String
+  createdAt  DateTime @default(now())
+
+  @@index([screenId])
+  @@map("screen_logs")
+}

@@ -111,7 +111,11 @@ export class BoardService {
   // Só dados públicos: atletas apenas por nome, sem e-mail/CPF/telefone.
   async getBoard(code: string, user?: AuthUser): Promise<Board> {
     await this.access.assertCanView(user, code);
+    return this.loadBoard(code);
+  }
 
+  // Calcula o placar sem checar visibilidade: quem chama já autorizou (ex.: telões).
+  async loadBoard(code: string): Promise<Board> {
     const game = await this.prisma.game.findUnique({
       where: { code },
       select: {

@@ -12,6 +12,7 @@ import { UsersModule } from './modules/users/users.module';
 import { BackupModule } from './modules/backup/backup.module';
 import { MailModule } from './modules/mail/mail.module';
 import { LeaderboardModule } from './modules/leaderboard/leaderboard.module';
+import { ScreensModule } from './modules/screens/screens.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PasswordChangeGuard } from './common/guards/password-change.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -32,6 +33,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     BackupModule,
     MailModule,
     LeaderboardModule,
+    ScreensModule,
   ],
   providers: [
     // A ordem importa: autentica → exige troca de senha pendente → confere papéis

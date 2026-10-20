@@ -89,7 +89,7 @@ export async function resetDb(prisma: PrismaService): Promise<void> {
     throw new Error('resetDb só pode rodar no banco itgames_test');
   }
   // CASCADE alcança todas as tabelas que dependem de users ou games
-  await prisma.$executeRawUnsafe('TRUNCATE TABLE "users", "games", "mail_settings", "mail_templates", "email_logs" RESTART IDENTITY CASCADE');
+  await prisma.$executeRawUnsafe('TRUNCATE TABLE "users", "games", "mail_settings", "mail_templates", "email_logs", "screens", "screen_logs" RESTART IDENTITY CASCADE');
 }
 
 export async function createUser(
