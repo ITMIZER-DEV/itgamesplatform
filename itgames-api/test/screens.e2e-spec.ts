@@ -158,6 +158,24 @@ describe('Telões de TV (e2e)', () => {
     expect((await ctx.prisma.screen.findUnique({ where: { id: a } }))?.frozen).toBe(false);
   });
 
+  it('freeze-all do super admin afeta só os telões dele, não os de organizadores', async () => {
+    const a = (await pair(tA, {})).res.body.id;
+    const all = await http().post('/screens/freeze-all').set(bearer(tSuper)).send({}).expect(200);
+    expect(all.body).toEqual([]);
+    expect((await ctx.prisma.screen.findUnique({ where: { id: a } }))?.frozen).toBe(false);
+    // individualmente, o super admin ainda congela o telão de outro
+    await http().post(`/screens/${a}/freeze`).set(bearer(tSuper)).send({}).expect(200);
+    expect((await ctx.prisma.screen.findUnique({ where: { id: a } }))?.frozen).toBe(true);
+  });
+
+  it('congelamento pelo super admin usa os campeonatos efetivos do dono (vínculo suspenso fica fora)', async () => {
+    const a = (await pair(tA, {})).res.body.id;
+    await ctx.prisma.gameOrganizer.updateMany({ where: { gameCode: 'G1', userId: orgA.id }, data: { active: false } });
+    await http().post(`/screens/${a}/freeze`).set(bearer(tSuper)).send({}).expect(200);
+    const row = await ctx.prisma.screen.findUnique({ where: { id: a } });
+    expect(Object.keys(row!.frozenBoards as object)).toEqual([]);
+  });
+
   it('DELETE remove o telão', async () => {
     const { res } = await pair(tA, {});
     await http().delete(`/screens/${res.body.id}`).set(bearer(tA)).expect(200);

@@ -1,14 +1,14 @@
 import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
 import { WebSocket, WebSocketServer } from 'ws';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UserRole } from '../../common/enums/role.enum';
 import { LeaderboardNotifier } from '../leaderboard/leaderboard-notifier.service';
 import { BoardService } from '../scoring/board.service';
 import { Board } from '../scoring/types';
 import { WsUpgradeRouter } from '../ws/ws-upgrade-router';
 import { ScreenNotifier } from './screen-notifier.service';
 import { buildScreenMessage, ScreenRecord } from './screen-message';
-import { effectiveGameCodes, ScreenMode } from './screens-logic';
+import { effectiveCodesForOwner } from './owner-codes';
+import { ScreenMode } from './screens-logic';
 import { hashDeviceToken } from './screen-token';
 
 const PATH = '/ws/screen';
@@ -34,6 +34,9 @@ export class ScreenStreamService implements OnApplicationBootstrap, OnApplicatio
   private pingTimer?: NodeJS.Timeout;
   private seenTimer?: NodeJS.Timeout;
   private readonly live = new Map<string, Live>();
+  // true quando o aparelho respondeu (pong) ao último ping; quem não responde é derrubado no ping seguinte
+  private readonly alive = new WeakMap<WebSocket, boolean>();
+  private readonly lastPong = new WeakMap<WebSocket, number>(); // instante do último sinal de vida
 
   constructor(
     private readonly router: WsUpgradeRouter,
@@ -67,6 +70,12 @@ export class ScreenStreamService implements OnApplicationBootstrap, OnApplicatio
 
   private async attach(socket: WebSocket, token: string) {
     socket.on('error', () => socket.terminate());
+    this.alive.set(socket, true);
+    this.lastPong.set(socket, Date.now());
+    socket.on('pong', () => {
+      this.alive.set(socket, true);
+      this.lastPong.set(socket, Date.now());
+    });
     // O 'close' é ouvido antes de qualquer await: socket que fecha durante a consulta não vaza
     let id: string | undefined;
     let entry: Live | undefined;
@@ -100,6 +109,8 @@ export class ScreenStreamService implements OnApplicationBootstrap, OnApplicatio
     entry = this.live.get(id) ?? { sockets: new Set(), codes: new Set(), frozen: false, seq: 0 };
     entry.sockets.add(socket);
     this.live.set(id, entry);
+    // Define os campeonatos antes do unicast: um placar que chegue durante o primeiro cálculo já é empurrado
+    if (!entry.codes.size) entry.codes = await this.configuredCodes(id);
     void this.touch(id);
     await this.send(id, socket);
   }
@@ -187,34 +198,9 @@ export class ScreenStreamService implements OnApplicationBootstrap, OnApplicatio
     return [];
   }
 
-  // Campeonatos efetivos com o dono ATUAL: super admin vê tudo; organizador só vínculos ativos.
+  // Campeonatos efetivos com o dono ATUAL (lógica compartilhada com o congelamento).
   private async liveBoards(ownerId: string | null, configured: string[]): Promise<Board[]> {
-    if (!ownerId || !configured.length) return [];
-    const owner = await this.prisma.user.findUnique({ where: { id: ownerId }, select: { role: true } });
-    if (!owner) return [];
-    const games = await this.prisma.game.findMany({
-      where: { code: { in: configured } },
-      select: { code: true, status: true },
-    });
-    const existing = new Set(games.map((g) => g.code));
-    const blocked = new Set(games.filter((g) => g.status === 'blocked').map((g) => g.code));
-    let manageable: Set<string> | 'all';
-    if (owner.role === UserRole.SUPER_ADMIN) {
-      manageable = 'all';
-    } else if (owner.role === UserRole.ORGANIZER) {
-      const links = await this.prisma.gameOrganizer.findMany({
-        where: { userId: ownerId, active: true, gameCode: { in: configured } },
-        select: { gameCode: true },
-      });
-      manageable = new Set(links.map((l) => l.gameCode));
-    } else {
-      return [];
-    }
-    const codes = effectiveGameCodes(
-      configured.filter((c) => existing.has(c)),
-      manageable,
-      blocked,
-    );
+    const codes = await effectiveCodesForOwner(this.prisma, ownerId, configured);
     const out: Board[] = [];
     for (const code of codes) {
       try {
@@ -234,11 +220,37 @@ export class ScreenStreamService implements OnApplicationBootstrap, OnApplicatio
     }
   }
 
-  private async touchAll() {
-    for (const id of [...this.live.keys()]) await this.touch(id);
+  // Campeonatos configurados no telão (vazio se a consulta falhar; o send() corrige em seguida).
+  private async configuredCodes(id: string): Promise<Set<string>> {
+    try {
+      const rows = await this.prisma.screenGame.findMany({ where: { screenId: id }, select: { gameCode: true } });
+      return new Set(rows.map((r) => r.gameCode));
+    } catch {
+      return new Set();
+    }
   }
 
+  // Só telões com algum socket vivo (que respondeu ao ping) têm o lastSeenAt renovado.
+  private async touchAll() {
+    for (const [id, entry] of [...this.live]) {
+      const now = Date.now();
+      const vivo = [...entry.sockets].some(
+        (s) => s.readyState === WebSocket.OPEN && now - (this.lastPong.get(s) ?? 0) <= PING_MS + 10_000,
+      );
+      if (vivo) await this.touch(id);
+    }
+  }
+
+  // Quem não respondeu ao ping anterior está morto: derruba; os demais recebem novo ping.
   private ping() {
-    this.wss?.clients.forEach((s) => s.readyState === WebSocket.OPEN && s.ping());
+    this.wss?.clients.forEach((s) => {
+      if (s.readyState !== WebSocket.OPEN) return;
+      if (this.alive.get(s) === false) {
+        s.terminate();
+        return;
+      }
+      this.alive.set(s, false);
+      s.ping();
+    });
   }
 }

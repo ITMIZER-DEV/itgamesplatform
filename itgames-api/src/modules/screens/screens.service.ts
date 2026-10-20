@@ -9,6 +9,7 @@ import { BoardService } from '../scoring/board.service';
 import { Board } from '../scoring/types';
 import { AttemptLimiter } from './attempt-limiter';
 import { ClaimScreenDto, UpdateScreenDto } from './dto/screens.dto';
+import { effectiveCodesForOwner } from './owner-codes';
 import { generateDeviceToken, hashDeviceToken } from './screen-token';
 import { ScreenNotifier } from './screen-notifier.service';
 import {
@@ -17,7 +18,6 @@ import {
   ScreenMode,
   canControlScreen,
   clampRotateSeconds,
-  effectiveGameCodes,
   generatePairingCode,
   isPairingExpired,
   normalizePairingCode,
@@ -112,14 +112,24 @@ export class ScreensService {
   // ---------- resgate e CRUD (organizador) ----------
 
   async claim(user: AuthUser, dto: ClaimScreenDto): Promise<ScreenView> {
-    // Só tentativas inválidas (404 genérico) consomem cota; claims válidos e 400 não.
-    if (this.claimByUser.isBlocked(user.id, Date.now())) {
+    // Consome a cota ANTES de qualquer consulta (sem janela de corrida entre verificar e contar)
+    // e devolve quando o pedido não foi uma tentativa de código inválido: só o 404 genérico fica contado.
+    const t = Date.now();
+    if (!this.claimByUser.hit(user.id, t)) {
       throw new HttpException('Muitas tentativas. Aguarde alguns minutos.', HttpStatus.TOO_MANY_REQUESTS);
     }
-    const notFound = () => {
-      this.claimByUser.hit(user.id, Date.now());
-      return new NotFoundException('Código inválido ou expirado');
-    };
+    try {
+      const view = await this.claimInner(user, dto);
+      this.claimByUser.release(user.id, t);
+      return view;
+    } catch (e) {
+      if (!(e instanceof NotFoundException)) this.claimByUser.release(user.id, t);
+      throw e;
+    }
+  }
+
+  private async claimInner(user: AuthUser, dto: ClaimScreenDto): Promise<ScreenView> {
+    const notFound = () => new NotFoundException('Código inválido ou expirado');
     const code = normalizePairingCode(dto.code);
     if (!code) throw notFound();
 
@@ -208,13 +218,13 @@ export class ScreensService {
   async freezeAll(user: AuthUser, text?: unknown): Promise<ScreenView[]> {
     const overlay = this.overlayOrThrow(text);
     const out: ScreenView[] = [];
-    for (const screen of await this.controlledScreens(user)) out.push(await this.freezeScreen(user, screen, overlay));
+    for (const screen of await this.ownScreens(user)) out.push(await this.freezeScreen(user, screen, overlay));
     return out;
   }
 
   async unfreezeAll(user: AuthUser): Promise<ScreenView[]> {
     const out: ScreenView[] = [];
-    for (const screen of await this.controlledScreens(user)) out.push(await this.unfreezeScreen(user, screen));
+    for (const screen of await this.ownScreens(user)) out.push(await this.unfreezeScreen(user, screen));
     return out;
   }
 
@@ -238,7 +248,12 @@ export class ScreensService {
   }
 
   private async freezeScreen(user: AuthUser, screen: ScreenRow, overlayText: string): Promise<ScreenView> {
-    const codes = await this.effectiveCodes(user, screen);
+    // Cópia montada com os campeonatos efetivos do DONO do telão, não de quem congela
+    const codes = await effectiveCodesForOwner(
+      this.prisma,
+      screen.ownerId,
+      screen.games.map((g) => g.gameCode),
+    );
     const frozenBoards: Record<string, Board> = {};
     for (const code of codes) frozenBoards[code] = await this.boards.loadBoard(code);
 
@@ -266,27 +281,6 @@ export class ScreensService {
     await this.log(updated, 'unfreeze', user);
     this.notifier.changed(screen.id);
     return this.toView(updated);
-  }
-
-  // Campeonatos que o telão de fato exibe agora (gerenciáveis e não bloqueados).
-  private async effectiveCodes(user: AuthUser, screen: ScreenRow): Promise<string[]> {
-    const codes = screen.games.map((g) => g.gameCode);
-    const games = await this.prisma.game.findMany({
-      where: { code: { in: codes } },
-      select: { code: true, status: true },
-    });
-    const existing = new Set(games.map((g) => g.code));
-    const blocked = new Set(games.filter((g) => g.status === 'blocked').map((g) => g.code));
-    let manageable: Set<string> | 'all' = 'all';
-    if (user.role !== UserRole.SUPER_ADMIN) {
-      manageable = new Set<string>();
-      for (const c of codes) if (await this.access.canManage(user, c)) manageable.add(c);
-    }
-    return effectiveGameCodes(
-      codes.filter((c) => existing.has(c)),
-      manageable,
-      blocked,
-    );
   }
 
   private async assertGames(user: AuthUser, codes: string[]): Promise<void> {
@@ -336,6 +330,15 @@ export class ScreensService {
   private controlledScreens(user: AuthUser): Promise<ScreenRow[]> {
     return this.prisma.screen.findMany({
       where: { claimedAt: { not: null }, ...(user.role === UserRole.SUPER_ADMIN ? {} : { ownerId: user.id }) },
+      include: { games: true },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  // freeze-all/unfreeze-all: só os telões de que o usuário é DONO (super admin congela os de outros um a um).
+  private ownScreens(user: AuthUser): Promise<ScreenRow[]> {
+    return this.prisma.screen.findMany({
+      where: { claimedAt: { not: null }, ownerId: user.id },
       include: { games: true },
       orderBy: { createdAt: 'asc' },
     });

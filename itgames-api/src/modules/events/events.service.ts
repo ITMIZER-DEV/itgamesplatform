@@ -283,6 +283,7 @@ export class EventsService {
       update: {},
       create: { gameCode: code, userId },
     });
+    this.screens.gameChanged(code);
     return this.listGameOrganizers(code);
   }
 
@@ -448,6 +449,7 @@ export class EventsService {
       // 10. Game
       await tx.game.delete({ where: { code } });
     });
+    this.screens.gameChanged(code);
 
     return {
       success: true,

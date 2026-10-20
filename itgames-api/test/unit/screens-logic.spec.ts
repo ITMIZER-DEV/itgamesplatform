@@ -15,6 +15,7 @@ import {
 } from '../../src/modules/screens/screens-logic';
 import { generateDeviceToken, hashDeviceToken } from '../../src/modules/screens/screen-token';
 import { AttemptLimiter } from '../../src/modules/screens/attempt-limiter';
+import { effectiveCodesForOwner } from '../../src/modules/screens/owner-codes';
 import { randomInt } from 'crypto';
 
 describe('código de pareamento', () => {
@@ -121,14 +122,56 @@ describe('AttemptLimiter', () => {
     expect(l.hit('a', 1001)).toBe(true);
   });
 
-  it('isBlocked consulta sem consumir cota', () => {
+  it('release devolve a cota de uma tentativa consumida', () => {
     const l = new AttemptLimiter(2, 1000);
-    for (let i = 0; i < 5; i++) expect(l.isBlocked('a', 0)).toBe(false);
+    expect(l.hit('a', 0)).toBe(true);
+    expect(l.hit('a', 10)).toBe(true);
+    expect(l.hit('a', 20)).toBe(false);
+    l.release('a', 10);
+    expect(l.hit('a', 30)).toBe(true);
+    expect(l.hit('a', 40)).toBe(false);
+    l.release('a', 999); // timestamp inexistente: nada acontece
+    l.release('zzz', 0);
+  });
+
+  it('apaga a chave quando a janela esvazia', () => {
+    const l = new AttemptLimiter(2, 1000);
     l.hit('a', 0);
-    l.hit('a', 10);
-    expect(l.isBlocked('a', 20)).toBe(true);
-    expect(l.isBlocked('b', 20)).toBe(false);
-    expect(l.isBlocked('a', 999)).toBe(true);
-    expect(l.isBlocked('a', 1001)).toBe(false);
+    l.hit('b', 0);
+    expect(l.size).toBe(2);
+    l.release('a', 0);
+    expect(l.size).toBe(1);
+    expect(l.hit('b', 5000)).toBe(true); // 'b' antigo expirou; a nova tentativa fica
+    expect(l.size).toBe(1);
+  });
+});
+
+describe('effectiveCodesForOwner', () => {
+  const fakeDb = (role: string | null, links: string[], games: { code: string; status: string }[]) =>
+    ({
+      user: { findUnique: async () => (role ? { role } : null) },
+      game: { findMany: async () => games },
+      gameOrganizer: { findMany: async () => links.map((gameCode) => ({ gameCode })) },
+    }) as never;
+  const games = [
+    { code: 'A', status: 'live' },
+    { code: 'B', status: 'blocked' },
+    { code: 'C', status: 'live' },
+  ];
+
+  it('organizador dono: só vínculos ativos e não bloqueados', async () => {
+    const r = await effectiveCodesForOwner(fakeDb('ORGANIZER', ['A', 'B'], games), 'o1', ['A', 'B', 'C']);
+    expect(r).toEqual(['A']);
+  });
+
+  it('super admin dono: tudo que existe, exceto bloqueado', async () => {
+    const r = await effectiveCodesForOwner(fakeDb('SUPER_ADMIN', [], games), 'o1', ['A', 'B', 'C', 'X']);
+    expect(r).toEqual(['A', 'C']);
+  });
+
+  it('sem dono, dono inexistente ou outro papel: vazio', async () => {
+    expect(await effectiveCodesForOwner(fakeDb('ORGANIZER', ['A'], games), null, ['A'])).toEqual([]);
+    expect(await effectiveCodesForOwner(fakeDb(null, [], games), 'o1', ['A'])).toEqual([]);
+    expect(await effectiveCodesForOwner(fakeDb('ATHLETE', [], games), 'o1', ['A'])).toEqual([]);
   });
 });
