@@ -53,6 +53,11 @@ export class OfficialLockService {
   //   antes de escrever (FOR SHARE na mesma linha + checagem do resultado ativo dentro da transação).
   // Assim, a gravação espera a confirmação em curso terminar e então enxerga o resultado commitado
   // (409), ou a confirmação espera a gravação terminar e então recalcula com a súmula já gravada.
+  // EXCEÇÃO ACEITA: updateGame (mudança de regra), deleteCategory e a checagem da importação de backup
+  // são check-then-act, sem lock de linha. Operam sobre configuração/estrutura (não sobre uma súmula
+  // concreta), são ações raras e manuais de organizador, e a janela é de milissegundos; o pior caso é uma
+  // confirmação concorrente usar a regra antiga, que fica registrada no snapshot do resultado oficial.
+  // Travar linha do evento aqui exigiria varrer todos os WODs do campeonato para um ganho prático nulo.
   async lockEventForUpdate(tx: Prisma.TransactionClient, game: string, eventId: number): Promise<void> {
     await tx.$queryRaw`SELECT 1 FROM "games_events" WHERE "game" = ${game} AND "idEvent" = ${eventId} FOR UPDATE`;
   }

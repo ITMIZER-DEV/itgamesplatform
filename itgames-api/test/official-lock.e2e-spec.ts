@@ -166,4 +166,25 @@ describe('Trava de súmula após o cálculo oficial (e2e)', () => {
       expect(await ctx.prisma.officialResultRow.count()).toBe(0);
     });
   });
+
+  describe('excluir inscrição e categoria (cascata de súmulas)', () => {
+    it('SUPER_ADMIN não apaga inscrição com súmula em WOD confirmado (409); sem confirmação funciona', async () => {
+      await confirm();
+      await http().delete('/events/G1/registrations/101').set(bearer(tSuper)).expect(409);
+      expect(await ctx.prisma.score.count({ where: { codeTeam: 101 } })).toBe(1);
+      await http().delete('/events/G1/registrations/201').set(bearer(tSuper)).expect(200);
+      await http().post(`${base}/revert`).set(bearer(tA)).send({ reason: 'motivo válido' }).expect(200);
+      await http().delete('/events/G1/registrations/101').set(bearer(tSuper)).expect(200);
+    });
+
+    it('excluir categoria é recusado se equipe dela tem súmula em par confirmado de outra categoria', async () => {
+      // equipe 201 (categoria 2) com súmula lançada na categoria 1, WOD 1
+      await ctx.prisma.score.create({
+        data: { game: 'G1', category: 1, idEvent: 1, codeTeam: 201, time: '07:00', judge: 'Juiz', scoreStatus: 'approved_by_head_judge' },
+      });
+      await confirm();
+      await http().delete('/events/G1/categories/2').set(bearer(tA)).expect(409);
+      expect(await ctx.prisma.registration.count({ where: { code: 201 } })).toBe(1);
+    });
+  });
 });

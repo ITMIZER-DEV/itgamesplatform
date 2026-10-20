@@ -595,9 +595,38 @@ export class EventsService {
     });
   }
 
+  // Varre os pares (categoria, WOD) distintos das súmulas da equipe, em ordem fixa, e recusa se algum estiver calculado.
+  private async assertTeamScoresUnlocked(tx: Prisma.TransactionClient, gameCode: string, teamCode: number) {
+    const pairs = await tx.score.findMany({
+      where: { game: gameCode, codeTeam: teamCode },
+      select: { category: true, idEvent: true },
+      orderBy: [{ idEvent: 'asc' }, { category: 'asc' }],
+    });
+    const seen = new Set<string>();
+    for (const p of pairs) {
+      const k = `${p.category}:${p.idEvent}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      await this.lock.assertUnlockedInTx(tx, gameCode, p.category, p.idEvent);
+    }
+  }
+
   async deleteCategory(gamesId: string, categoryCode: number) {
     if (await this.lock.anyConfirmedInCategory(gamesId, categoryCode)) {
       throw new ConflictException('Reverta o cálculo oficial dos WODs desta categoria antes de excluir a categoria');
+    }
+    // a cascata de inscrições apagaria súmulas de equipes da categoria lançadas em OUTRA categoria já calculada
+    const foreign = await this.prisma.score.findMany({
+      where: { game: gamesId, category: { not: categoryCode }, registration: { categoryId: categoryCode } },
+      select: { category: true, idEvent: true },
+      distinct: ['category', 'idEvent'],
+    });
+    for (const f of foreign) {
+      if (await this.lock.isLocked(gamesId, f.category, f.idEvent)) {
+        throw new ConflictException(
+          'Há equipes desta categoria com súmula em WOD já calculado oficialmente. Reverta o cálculo antes de excluir a categoria',
+        );
+      }
     }
     return this.prisma.category.delete({
       where: {
@@ -984,18 +1013,7 @@ export class EventsService {
       }
       if (cancelling) {
         // trava: nenhum par (categoria, WOD) das súmulas da equipe pode ter cálculo oficial ativo
-        const pairs = await tx.score.findMany({
-          where: { game: gameCode, codeTeam: registrationCode },
-          select: { category: true, idEvent: true },
-          orderBy: [{ idEvent: 'asc' }, { category: 'asc' }],
-        });
-        const seen = new Set<string>();
-        for (const p of pairs) {
-          const k = `${p.category}:${p.idEvent}`;
-          if (seen.has(k)) continue;
-          seen.add(k);
-          await this.lock.assertUnlockedInTx(tx, gameCode, p.category, p.idEvent);
-        }
+        await this.assertTeamScoresUnlocked(tx, gameCode, registrationCode);
         // sai das baterias e as súmulas são anuladas (mantidas como histórico, com auditoria)
         await tx.laneSlot.deleteMany({ where: { gameCode, teamCode: registrationCode } });
         const scores = await tx.score.findMany({
@@ -1067,8 +1085,10 @@ export class EventsService {
     }
 
     // Atletas, scores e vagas em bateria saem por cascata; os logs de auditoria permanecem.
-    await this.prisma.$transaction([
-      this.prisma.auditLog.create({
+    // A trava vale para todos os perfis (inclusive SUPER_ADMIN): a cascata apagaria súmulas de WOD calculado.
+    await this.prisma.$transaction(async (tx) => {
+      await this.assertTeamScoresUnlocked(tx, gameCode, registrationCode);
+      await tx.auditLog.create({
         data: {
           gameCode,
           changedBy: actor.name,
@@ -1078,9 +1098,9 @@ export class EventsService {
           reason: `Inscrição excluída (scores: ${scores}, baterias: ${slots})`,
           ipAddress: actor.ip,
         },
-      }),
-      this.prisma.registration.delete({ where: { code_gameCode: { code: registrationCode, gameCode } } }),
-    ]);
+      });
+      await tx.registration.delete({ where: { code_gameCode: { code: registrationCode, gameCode } } });
+    });
 
     return { success: true, message: `Inscrição #${registrationCode} excluída` };
   }
