@@ -120,4 +120,15 @@ describe('AttemptLimiter', () => {
     expect(l.hit('b', 300)).toBe(true);
     expect(l.hit('a', 1001)).toBe(true);
   });
+
+  it('isBlocked consulta sem consumir cota', () => {
+    const l = new AttemptLimiter(2, 1000);
+    for (let i = 0; i < 5; i++) expect(l.isBlocked('a', 0)).toBe(false);
+    l.hit('a', 0);
+    l.hit('a', 10);
+    expect(l.isBlocked('a', 20)).toBe(true);
+    expect(l.isBlocked('b', 20)).toBe(false);
+    expect(l.isBlocked('a', 999)).toBe(true);
+    expect(l.isBlocked('a', 1001)).toBe(false);
+  });
 });

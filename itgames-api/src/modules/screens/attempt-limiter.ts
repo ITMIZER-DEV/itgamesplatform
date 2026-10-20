@@ -7,6 +7,12 @@ export class AttemptLimiter {
     private readonly windowMs: number,
   ) {}
 
+  // Consulta sem consumir cota: true quando a chave já atingiu o limite na janela.
+  isBlocked(key: string, now: number): boolean {
+    const recent = (this.hits.get(key) ?? []).filter((t) => now - t < this.windowMs);
+    return recent.length >= this.max;
+  }
+
   // true = permitido; tentativas bloqueadas não consomem cota.
   hit(key: string, now: number): boolean {
     const recent = (this.hits.get(key) ?? []).filter((t) => now - t < this.windowMs);

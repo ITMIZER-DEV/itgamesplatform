@@ -98,6 +98,13 @@ describe('Telões de TV (e2e)', () => {
     await http().post('/screens/claim').set(bearer(tB)).send({ code: 'ZZZZZZ', name: 'x', gameCodes: ['G2'] }).expect(429);
   });
 
+  it('11 claims válidos seguidos não geram 429 (só tentativas inválidas contam)', async () => {
+    for (let i = 0; i < 11; i++) {
+      const { res } = await pair(tA, {});
+      expect(res.status).toBe(201);
+    }
+  });
+
   it('GET /screens/pairing/:id devolve a credencial uma única vez e depois 410', async () => {
     const { pairing } = await pair(tA, {});
     const first = await http().get(`/screens/pairing/${pairing.pairingId}`).expect(200);

@@ -112,11 +112,14 @@ export class ScreensService {
   // ---------- resgate e CRUD (organizador) ----------
 
   async claim(user: AuthUser, dto: ClaimScreenDto): Promise<ScreenView> {
-    // Conta toda tentativa de resgate do usuário (válida ou não); estourou -> 429.
-    if (!this.claimByUser.hit(user.id, Date.now())) {
+    // Só tentativas inválidas (404 genérico) consomem cota; claims válidos e 400 não.
+    if (this.claimByUser.isBlocked(user.id, Date.now())) {
       throw new HttpException('Muitas tentativas. Aguarde alguns minutos.', HttpStatus.TOO_MANY_REQUESTS);
     }
-    const notFound = () => new NotFoundException('Código inválido ou expirado');
+    const notFound = () => {
+      this.claimByUser.hit(user.id, Date.now());
+      return new NotFoundException('Código inválido ou expirado');
+    };
     const code = normalizePairingCode(dto.code);
     if (!code) throw notFound();
 
@@ -226,6 +229,9 @@ export class ScreensService {
   // ---------- internos ----------
 
   private overlayOrThrow(text: unknown): string {
+    if (text !== undefined && text !== null && typeof text !== 'string') {
+      throw new BadRequestException('Texto do aviso deve ser um texto');
+    }
     const overlay = parseOverlayText(text);
     if (overlay === null) throw new BadRequestException('Texto do aviso deve ter no máximo 60 caracteres');
     return overlay;
