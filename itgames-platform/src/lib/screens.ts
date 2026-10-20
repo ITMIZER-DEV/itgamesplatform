@@ -65,3 +65,21 @@ export function isValidOverlayText(text: string): boolean {
   const len = text.trim().length;
   return len >= 1 && len <= OVERLAY_MAX_LENGTH;
 }
+
+/**
+ * Edição de telão: o formulário só mostra os campeonatos de /events/mine. Códigos do telão fora dessa
+ * lista (vínculo suspenso, campeonato de outro organizador) não aparecem e nunca devem ser reenviados
+ * (o servidor responderia 400). Devolve os códigos a enviar no PATCH, ou undefined quando a seleção
+ * visível não mudou (então `gameCodes` é omitido).
+ */
+export function gameCodesForPatch(
+  initial: string[],
+  selected: string[],
+  visibleCodes: string[],
+): string[] | undefined {
+  const visible = new Set(visibleCodes);
+  const before = new Set(initial.filter((c) => visible.has(c)));
+  const now = selected.filter((c) => visible.has(c));
+  const same = now.length === before.size && now.every((c) => before.has(c));
+  return same ? undefined : now;
+}

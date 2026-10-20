@@ -14,6 +14,7 @@ import {
   ScreenMode,
   ScreenView,
   describeScreenState,
+  gameCodesForPatch,
   isValidOverlayText,
   normalizeCodeInput,
 } from '@/lib/screens';
@@ -54,7 +55,7 @@ const LABEL_CLASS = 'text-xs font-bold text-zinc-300 block mb-1';
 type Dialog =
   | { kind: 'claim' }
   | { kind: 'edit'; screen: ScreenView }
-  | { kind: 'freeze'; screen: ScreenView | null } // null = congelar todos
+  | { kind: 'freeze'; screen: ScreenView | null } // null = congelar todos os telões do próprio usuário
   | { kind: 'remove'; screen: ScreenView }
   | null;
 
@@ -141,14 +142,14 @@ export default function TelasPage() {
               disabled={screens.length === 0}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/40 text-sky-300 text-xs font-bold disabled:opacity-40"
             >
-              <Snowflake className="w-3.5 h-3.5" /> Congelar todos
+              <Snowflake className="w-3.5 h-3.5" /> Congelar todos os meus telões
             </button>
             <button
-              onClick={() => run(() => apiClient.unfreezeAllScreens(), 'Todos os telões foram descongelados.')}
+              onClick={() => run(() => apiClient.unfreezeAllScreens(), 'Todos os seus telões foram descongelados.')}
               disabled={!anyFrozen}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-bold disabled:opacity-40"
             >
-              <Sun className="w-3.5 h-3.5" /> Descongelar todos
+              <Sun className="w-3.5 h-3.5" /> Descongelar todos os meus telões
             </button>
             <button
               onClick={() => setDialog({ kind: 'claim' })}
@@ -245,7 +246,7 @@ export default function TelasPage() {
           onClose={() => setDialog(null)}
           onSubmit={(v) =>
             run(
-              () => apiClient.claimScreen({ code: v.code, name: v.name, gameCodes: v.gameCodes, mode: v.mode, rotateSeconds: v.rotateSeconds }),
+              () => apiClient.claimScreen({ code: v.code, name: v.name, gameCodes: v.gameCodes ?? [], mode: v.mode, rotateSeconds: v.rotateSeconds }),
               'Telão pareado com sucesso.',
               'claim',
             )
@@ -275,7 +276,7 @@ export default function TelasPage() {
             const target = dialog.screen;
             return target
               ? run(() => apiClient.freezeScreen(target.id, text), `“${target.name}” congelado.`)
-              : run(() => apiClient.freezeAllScreens(text), 'Todos os telões foram congelados.');
+              : run(() => apiClient.freezeAllScreens(text), 'Todos os seus telões foram congelados.');
           }}
         />
       )}
@@ -383,7 +384,7 @@ function ScreenFormDialog({
   onRetryGames: () => void;
   screen?: ScreenView;
   onClose: () => void;
-  onSubmit: (v: { code: string; name: string; gameCodes: string[]; mode: ScreenMode; rotateSeconds: number }) => void | Promise<void>;
+  onSubmit: (v: { code: string; name: string; gameCodes: string[] | undefined; mode: ScreenMode; rotateSeconds: number }) => void | Promise<void>;
 }) {
   const [code, setCode] = useState('');
   const [name, setName] = useState(screen?.name ?? '');
@@ -395,7 +396,9 @@ function ScreenFormDialog({
   const rotateNum = Number(rotate);
   const rotateOk = Number.isInteger(rotateNum) && rotateNum >= ROTATE_MIN && rotateNum <= ROTATE_MAX;
   const codeOk = screen ? true : code.length === 6;
-  const canSubmit = codeOk && gameCodes.length > 0 && name.trim().length > 0 && name.trim().length <= 60 && rotateOk && !busy;
+  // Só contam os campeonatos exibidos nas caixas de seleção (os demais códigos do telão ficam ocultos)
+  const visibleSelected = gameCodes.filter((c) => games.some((g) => g.code === c));
+  const canSubmit = codeOk && visibleSelected.length > 0 && name.trim().length > 0 && name.trim().length <= 60 && rotateOk && !busy;
 
   const toggleGame = (c: string) =>
     setGameCodes((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
@@ -405,7 +408,11 @@ function ScreenFormDialog({
     if (!canSubmit) return;
     setBusy(true);
     try {
-      await onSubmit({ code, name: name.trim(), gameCodes, mode, rotateSeconds: rotateNum });
+      // Na edição, só envia gameCodes se a seleção visível mudou (códigos ocultos nunca são reenviados)
+      const codes = screen
+        ? gameCodesForPatch(screen.gameCodes, gameCodes, games.map((g) => g.code))
+        : gameCodes;
+      await onSubmit({ code, name: name.trim(), gameCodes: codes, mode, rotateSeconds: rotateNum });
     } finally {
       setBusy(false);
     }
@@ -542,7 +549,7 @@ function FreezeDialog({
   };
 
   return (
-    <ModalShell title={target ? `Congelar “${target.name}”` : 'Congelar todos os telões'} onClose={onClose}>
+    <ModalShell title={target ? `Congelar “${target.name}”` : 'Congelar todos os meus telões'} onClose={onClose}>
       <p className="text-xs text-zinc-400">Escolha o aviso que aparecerá sobre o placar congelado.</p>
       <div className="space-y-2">
         {OVERLAY_PRESETS.map((p) => (

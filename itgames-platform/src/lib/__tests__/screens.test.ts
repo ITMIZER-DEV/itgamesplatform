@@ -4,6 +4,7 @@ import {
   ScreenView,
   describeScreenState,
   formatLastSeen,
+  gameCodesForPatch,
   isValidOverlayText,
   normalizeCodeInput,
 } from '../screens';
@@ -92,5 +93,17 @@ describe('isValidOverlayText', () => {
 describe('OVERLAY_PRESETS', () => {
   it('traz os dois modelos', () => {
     expect(OVERLAY_PRESETS).toEqual(['LEADERBOARD CONGELADO', 'LEADERBOARD EM REVISÃO']);
+  });
+});
+
+describe('gameCodesForPatch', () => {
+  it('omite gameCodes quando a seleção visível não mudou, mesmo com códigos ocultos', () => {
+    expect(gameCodesForPatch(['A', 'X'], ['A', 'X'], ['A', 'B'])).toBeUndefined();
+  });
+  it('nunca reenvia códigos fora dos visíveis', () => {
+    expect(gameCodesForPatch(['A', 'X'], ['A', 'B', 'X'], ['A', 'B'])).toEqual(['A', 'B']);
+  });
+  it('detecta remoção', () => {
+    expect(gameCodesForPatch(['A', 'B'], ['A'], ['A', 'B'])).toEqual(['A']);
   });
 });
