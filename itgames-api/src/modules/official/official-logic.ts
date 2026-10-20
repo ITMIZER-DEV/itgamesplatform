@@ -51,7 +51,7 @@ export function evaluateReadiness(i: {
   }
 
   if (i.validResults <= 0) {
-    blockers.push('Nenhuma súmula válida neste WOD.');
+    blockers.push('Este WOD não tem nenhuma súmula válida.');
   }
 
   const drafts = i.scoreStatuses.filter((s) => s === 'draft').length;
