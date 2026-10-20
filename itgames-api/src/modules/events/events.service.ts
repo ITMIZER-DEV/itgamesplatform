@@ -8,6 +8,7 @@ import { isValidCpf, maskCpf, normalizeCpf } from '../../common/utils/cpf';
 import { AuthUser } from '../../common/types/auth-user';
 import { detectImageExtension, getUploadsDir } from '../../common/utils/uploads';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ScreenNotifier } from '../screens/screen-notifier.service';
 import { LeaderboardNotifier } from '../leaderboard/leaderboard-notifier.service';
 import { MailNotifier } from '../mail/mail-notifier.service';
 import { affectsBoard, normalizeGameScoring } from '../scoring/game-config';
@@ -91,6 +92,7 @@ export class EventsService {
     private readonly access: GameAccessService,
     private readonly notifier: MailNotifier,
     private readonly leaderboard: LeaderboardNotifier,
+    private readonly screens: ScreenNotifier,
   ) {}
 
   private readonly organizerPublicSelect = { user: { select: { id: true, name: true } } };
@@ -259,7 +261,10 @@ export class EventsService {
       where: { code },
       data: { status },
     });
-    if (existing.status !== status) this.notifier.gameStatusChanged(code, status);
+    if (existing.status !== status) {
+      this.notifier.gameStatusChanged(code, status);
+      this.screens.gameChanged(code);
+    }
     return updated;
   }
 
@@ -286,6 +291,7 @@ export class EventsService {
     if (!game) throw new NotFoundException('Campeonato não encontrado');
 
     await this.prisma.gameOrganizer.deleteMany({ where: { gameCode: code, userId } });
+    this.screens.gameChanged(code);
     return this.listGameOrganizers(code);
   }
 
@@ -303,6 +309,7 @@ export class EventsService {
       where: { gameCode_userId: { gameCode: code, userId } },
       data: { active },
     });
+    this.screens.gameChanged(code);
     return this.listGameOrganizers(code);
   }
 

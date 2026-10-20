@@ -1,8 +1,8 @@
 import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
-import { HttpAdapterHost } from '@nestjs/core';
 import { WebSocket, WebSocketServer } from 'ws';
 import { BoardService } from '../scoring/board.service';
 import { Board } from '../scoring/types';
+import { WsUpgradeRouter } from '../ws/ws-upgrade-router';
 import { LeaderboardNotifier } from './leaderboard-notifier.service';
 
 const PATH = '/ws/leaderboard';
@@ -20,7 +20,7 @@ export class LeaderboardStreamService implements OnApplicationBootstrap, OnAppli
   private readonly timers = new Map<string, NodeJS.Timeout>();
 
   constructor(
-    private readonly httpAdapterHost: HttpAdapterHost,
+    private readonly router: WsUpgradeRouter,
     private readonly boards: BoardService,
     notifier: LeaderboardNotifier,
   ) {
@@ -28,8 +28,8 @@ export class LeaderboardStreamService implements OnApplicationBootstrap, OnAppli
   }
 
   onApplicationBootstrap() {
-    const server = this.httpAdapterHost.httpAdapter.getHttpServer();
-    this.wss = new WebSocketServer({ server, path: PATH });
+    this.wss = new WebSocketServer({ noServer: true });
+    this.router.register(PATH, this.wss);
     this.wss.on('connection', (socket, request) => {
       const game = new URL(request.url || '', 'http://localhost').searchParams.get('game') || '';
       void this.attach(socket, game);

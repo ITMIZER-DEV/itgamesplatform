@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { ScoringModule } from '../scoring/scoring.module';
 import { ScreenNotifier } from './screen-notifier.service';
+import { ScreenStreamService } from './screen-stream.service';
 import { ScreensController } from './screens.controller';
 import { ScreensService } from './screens.service';
 
@@ -10,7 +11,7 @@ import { ScreensService } from './screens.service';
 @Module({
   imports: [PrismaModule, ScoringModule],
   controllers: [ScreensController],
-  providers: [ScreensService, ScreenNotifier],
+  providers: [ScreensService, ScreenNotifier, ScreenStreamService],
   exports: [ScreensService, ScreenNotifier],
 })
 export class ScreensModule {}

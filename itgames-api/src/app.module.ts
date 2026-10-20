@@ -12,6 +12,7 @@ import { UsersModule } from './modules/users/users.module';
 import { BackupModule } from './modules/backup/backup.module';
 import { MailModule } from './modules/mail/mail.module';
 import { LeaderboardModule } from './modules/leaderboard/leaderboard.module';
+import { WsModule } from './modules/ws/ws.module';
 import { ScreensModule } from './modules/screens/screens.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PasswordChangeGuard } from './common/guards/password-change.guard';
@@ -23,6 +24,7 @@ import { RolesGuard } from './common/guards/roles.guard';
       isGlobal: true,
     }),
     PrismaModule,
+    WsModule,
     AccessModule,
     AuthModule,
     UsersModule,
