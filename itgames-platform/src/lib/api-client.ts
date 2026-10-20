@@ -15,6 +15,8 @@ export function getApiBaseUrl(): string {
   return process.env.API_INTERNAL_URL || 'http://127.0.0.1:3334';
 }
 
+import type { ScreenView, ScreenMode } from './screens';
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -357,6 +359,48 @@ export class ApiClient {
 
   async deleteGame(code: string) {
     return this.strict<any>(`/events/${code}`, { method: 'DELETE' });
+  }
+
+  // Telões de TV
+  async listScreens(): Promise<ScreenView[]> {
+    return this.strict<ScreenView[]>('/screens');
+  }
+
+  async claimScreen(data: {
+    code: string;
+    name: string;
+    gameCodes: string[];
+    mode?: ScreenMode;
+    rotateSeconds?: number;
+  }): Promise<ScreenView> {
+    return this.strict<ScreenView>('/screens/claim', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateScreen(
+    id: string,
+    data: { name?: string; gameCodes?: string[]; mode?: ScreenMode; rotateSeconds?: number },
+  ): Promise<ScreenView> {
+    return this.strict<ScreenView>(`/screens/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async freezeScreen(id: string, text?: string): Promise<ScreenView> {
+    return this.strict<ScreenView>(`/screens/${id}/freeze`, { method: 'POST', body: JSON.stringify({ text }) });
+  }
+
+  async unfreezeScreen(id: string): Promise<ScreenView> {
+    return this.strict<ScreenView>(`/screens/${id}/unfreeze`, { method: 'POST' });
+  }
+
+  async freezeAllScreens(text?: string): Promise<ScreenView[]> {
+    return this.strict<ScreenView[]>('/screens/freeze-all', { method: 'POST', body: JSON.stringify({ text }) });
+  }
+
+  async unfreezeAllScreens(): Promise<ScreenView[]> {
+    return this.strict<ScreenView[]>('/screens/unfreeze-all', { method: 'POST' });
+  }
+
+  async deleteScreen(id: string) {
+    return this.strict<unknown>(`/screens/${id}`, { method: 'DELETE' });
   }
 
   async uploadGameBanner(code: string, file: File): Promise<{ foto: string }> {

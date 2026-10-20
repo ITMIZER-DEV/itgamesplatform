@@ -77,6 +77,7 @@ export function Navbar() {
           { href: '/sumulas', label: 'Súmulas A4', icon: FileSpreadsheet },
           { href: '/heats', label: 'Baterias & Raias', icon: Activity },
           { href: '/judge', label: '⚖️ Juiz', icon: Gavel },
+          { href: '/telas', label: 'Telões', icon: Tv },
           { href: '/leaderboard', label: 'Leaderboard', icon: Trophy, badge: 'Live' },
           { href: '/perfil', label: 'Meu Perfil', icon: User },
         ];
@@ -86,6 +87,7 @@ export function Navbar() {
           { href: '/admin', label: '🏢 Painel do Organizador', icon: LayoutDashboard, badge: 'Gestão' },
           { href: '/sumulas', label: 'Súmulas A4', icon: FileSpreadsheet },
           { href: '/heats', label: 'Baterias & Raias', icon: Activity },
+          { href: '/telas', label: 'Telões', icon: Tv },
           { href: '/leaderboard', label: 'Leaderboard', icon: Trophy, badge: 'Live' },
           { href: '/athlete/register', label: 'Inscrever-me como competidor', icon: Sparkles },
           { href: '/perfil', label: 'Meu Perfil', icon: User },
