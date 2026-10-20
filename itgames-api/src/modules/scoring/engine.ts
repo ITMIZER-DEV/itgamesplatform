@@ -1,13 +1,11 @@
 // Motor de classificação: função pura (sem banco, sem Nest) que monta o placar a partir da regra do campeonato.
 import { pointsForPosition, resolveRule, ScoringRule } from './rules';
-import { Board, BoardRow, BoardWod, EngineInput, EngineScore } from './types';
+import { Board, BoardRow, BoardWod, EngineInput, EngineScore, WodEntry } from './types';
 import { compareWithinWorkout, formatTime, parseTime, WorkoutResult } from './workout-order';
 
 type Workout = EngineInput['workouts'][number];
 type Team = EngineInput['teams'][number];
 type Split = { name: string; seconds: number };
-/** Resultado de um WOD por equipe, com dados extras usados só no modo total_time. */
-type WodEntry = BoardWod & { seconds?: number; splits?: Split[] };
 
 const TOTAL_UNIT = { points_table: 'PTS', rank_sum: 'SOMA', total_time: 'TEMPO' } as const;
 
@@ -94,7 +92,36 @@ function rankWorkout(
   return out;
 }
 
+/** Entradas de um WOD numa categoria (chave = código da equipe); `null` quando o WOD não conta. */
+export function computeWorkoutEntries(
+  input: EngineInput,
+  categoryCode: number,
+  workoutCode: number,
+): Map<number, WodEntry> | null {
+  const workout = input.workouts.find((w) => w.code === workoutCode && w.category === categoryCode);
+  if (!workout) return null;
+  // ordem por código da equipe: base estável para empates totais
+  const teams = input.teams.filter((t) => t.categoryId === categoryCode).sort((a, b) => a.code - b.code);
+  const scores = input.scores.filter((s) => s.workoutCode === workoutCode && s.category === categoryCode);
+  return rankWorkout(workout, teams, scores, resolveRule(input.game));
+}
+
+/** Fornece as entradas de um WOD já calculado; `null` deixa o WOD fora do placar. */
+export type EntriesProvider = (categoryCode: number, workoutCode: number) => ReadonlyMap<number, WodEntry> | null;
+
 export function computeBoard(input: EngineInput, now: Date = new Date()): Board {
+  return buildBoard(
+    input,
+    (categoryCode, workoutCode) =>
+      input.onlyWorkouts && !input.onlyWorkouts.has(workoutCode)
+        ? null
+        : computeWorkoutEntries(input, categoryCode, workoutCode),
+    now,
+  );
+}
+
+/** Agrega as entradas por WOD em totais, desempate, posição densa e formatos do placar. */
+export function buildBoard(input: EngineInput, entries: EntriesProvider, now: Date = new Date()): Board {
   const rule = resolveRule(input.game);
   const timeMode = rule.mode === 'total_time';
   const splitName = rule.tiebreak.startsWith('split:') ? rule.tiebreak.slice('split:'.length) : null;
@@ -105,11 +132,7 @@ export function computeBoard(input: EngineInput, now: Date = new Date()): Board 
     // ordem por código da equipe: base estável para empates totais
     const teams = input.teams.filter((t) => t.categoryId === category.code).sort((a, b) => a.code - b.code);
 
-    const perWorkout = workouts.map((workout) => {
-      if (input.onlyWorkouts && !input.onlyWorkouts.has(workout.code)) return null;
-      const scores = input.scores.filter((s) => s.workoutCode === workout.code && s.category === category.code);
-      return rankWorkout(workout, teams, scores, rule);
-    });
+    const perWorkout = workouts.map((workout) => entries(category.code, workout.code));
     let lastCounting = -1;
     perWorkout.forEach((m, i) => {
       if (m) lastCounting = i;

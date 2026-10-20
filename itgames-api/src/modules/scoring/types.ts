@@ -73,7 +73,15 @@ export interface Board {
     eventType: 'crossfit' | 'hyrox';
     rule: { mode: ScoringMode; tiebreak: Tiebreak };
     totalUnit: 'PTS' | 'SOMA' | 'TEMPO';
+    /** false no placar parcial (pontos zerados); true no oficial e na visão completa. */
+    pointsVisible?: boolean;
+    view?: 'partial' | 'official';
+    /** Visão oficial sem nenhum WOD confirmado ainda. */
+    awaitingOfficial?: boolean;
   };
   generatedAt: string;
   categories: { id: number; name: string; wodTitles: string[]; rows: BoardRow[] }[];
 }
+
+/** Resultado de um WOD por equipe, com dados extras usados só no modo total_time. */
+export type WodEntry = BoardWod & { seconds?: number; splits?: { name: string; seconds: number }[] };
