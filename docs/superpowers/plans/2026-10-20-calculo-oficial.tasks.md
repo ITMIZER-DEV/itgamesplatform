@@ -13,8 +13,8 @@ Atualize a linha da tarefa e faça commit só deste arquivo ao concluir cada tar
 
 | # | Tarefa | Estado | Commits |
 |---|--------|--------|---------|
-| 1 | Motor: entradas por WOD, `buildBoard` e visões do board | pending | |
-| 2 | Modelos do cálculo oficial e regras puras de prontidão | pending | |
+| 1 | Motor: entradas por WOD, `buildBoard` e visões do board | done | 52d0215 |
+| 2 | Modelos do cálculo oficial e regras puras de prontidão | in-progress | |
 | 3 | Módulo `official`: status, prévia, confirmar, reverter, histórico e trava | pending | |
 | 4 | Trava de súmula em todos os caminhos de escrita | pending | |
 | 5 | Board por visão: parcial sem pontos, oficial e telões em modo oficial | pending | |
