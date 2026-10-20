@@ -1,9 +1,13 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import { Injectable, ForbiddenException, ConflictException } from '@nestjs/common';
+import { OfficialLockService } from '../official/official-lock.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class BackupService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly lock: OfficialLockService,
+  ) {}
 
   async exportSnapshot() {
     const users = await this.prisma.user.findMany({ include: { athleteProfile: true } });
@@ -31,7 +35,12 @@ export class BackupService {
     };
   }
 
-  async importSnapshot(data: any) {
+  async importSnapshot(data: any, actorRole?: string) {
+    // restaurar sobrescreve súmulas: com cálculo oficial ativo, só o SUPER_ADMIN pode
+    if (actorRole !== 'SUPER_ADMIN' && (await this.lock.anyConfirmedAnywhere())) {
+      throw new ConflictException('Há WODs com cálculo oficial ativo. Reverta o cálculo oficial antes de importar o backup (ou peça ao Super Admin).');
+    }
+
     if (!data || typeof data !== 'object') {
       throw new Error('Formato de snapshot JSON inválido.');
     }

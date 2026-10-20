@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LeaderboardNotifier } from '../leaderboard/leaderboard-notifier.service';
+import { OfficialLockService } from '../official/official-lock.service';
 import { CreateScoreDto } from './dto/create-score.dto';
 
 @Injectable()
@@ -8,96 +9,113 @@ export class ScoresService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly leaderboard: LeaderboardNotifier,
+    private readonly lock: OfficialLockService,
   ) {}
 
   async createOrUpdateScore(dto: CreateScoreDto, actorName: string, actorRole: string, ipAddress?: string) {
-    // Garantir que o Event correspondente exista
-    await this.prisma.event.upsert({
-      where: {
-        idEvent_game: {
+    // Tudo numa transação: a trava do WOD (FOR SHARE na linha do evento) serializa contra confirmar/reverter.
+    const { score, isNew } = await this.prisma.$transaction(async (tx) => {
+      // Garantir que o Event correspondente exista (a linha precisa existir antes da trava)
+      await tx.event.upsert({
+        where: {
+          idEvent_game: {
+            idEvent: dto.idEvent,
+            game: dto.game,
+          },
+        },
+        update: {},
+        create: {
           idEvent: dto.idEvent,
           game: dto.game,
+          category: dto.category,
+          title: `WOD ${dto.idEvent}`,
+          workout: dto.idEvent,
         },
-      },
-      update: {},
-      create: {
-        idEvent: dto.idEvent,
-        game: dto.game,
-        category: dto.category,
-        title: `WOD ${dto.idEvent}`,
-        workout: dto.idEvent,
-      },
-    });
+      });
 
-    // Buscar se já existe score para este time e evento
-    const existing = await this.prisma.score.findUnique({
-      where: {
-        team_event: {
+      // Buscar se já existe score para este time e evento
+      const existing = await tx.score.findUnique({
+        where: {
+          team_event: {
+            codeTeam: dto.codeTeam,
+            idEvent: dto.idEvent,
+            game: dto.game,
+          },
+        },
+      });
+
+      // Categorias a checar: a do corpo, a da súmula já existente e a da inscrição da equipe
+      const registration = await tx.registration.findUnique({
+        where: { code_gameCode: { code: dto.codeTeam, gameCode: dto.game } },
+        select: { categoryId: true },
+      });
+      const categories = new Set<number>([dto.category]);
+      if (existing) categories.add(existing.category);
+      if (registration) categories.add(registration.categoryId);
+      for (const category of [...categories].sort((x, y) => x - y)) {
+        await this.lock.assertUnlockedInTx(tx, dto.game, category, dto.idEvent);
+      }
+
+      const isNew = !existing;
+      const oldValue = existing ? `${existing.time || ''} ${existing.reps || ''} ${existing.weight || ''}`.trim() : null;
+      const newValue = `${dto.time || ''} ${dto.reps || ''} ${dto.weight || ''}`.trim();
+
+      const score = await tx.score.upsert({
+        where: {
+          team_event: {
+            codeTeam: dto.codeTeam,
+            idEvent: dto.idEvent,
+            game: dto.game,
+          },
+        },
+        update: {
+          time: dto.time,
+          weight: dto.weight,
+          reps: dto.reps,
+          judge: dto.judge,
+          photo: dto.photo,
+          tieBreakTime: dto.tieBreakTime,
+          penaltySeconds: dto.penaltySeconds || 0,
+          isWO: dto.isWO || false,
+          ...(dto.splits != null && { splits: dto.splits as any }),
+          dateCheck: new Date().toISOString(),
+          scoreStatus: 'approved_by_head_judge',
+        },
+        create: {
+          idEvent: dto.idEvent,
+          game: dto.game,
+          category: dto.category,
           codeTeam: dto.codeTeam,
-          idEvent: dto.idEvent,
-          game: dto.game,
+          time: dto.time,
+          weight: dto.weight,
+          reps: dto.reps,
+          judge: dto.judge,
+          photo: dto.photo,
+          tieBreakTime: dto.tieBreakTime,
+          penaltySeconds: dto.penaltySeconds || 0,
+          isWO: dto.isWO || false,
+          ...(dto.splits != null && { splits: dto.splits as any }),
+          dateScore: new Date().toISOString(),
+          dateCheck: new Date().toISOString(),
+          scoreStatus: 'approved_by_head_judge',
         },
-      },
-    });
+      });
 
-    const isNew = !existing;
-    const oldValue = existing ? `${existing.time || ''} ${existing.reps || ''} ${existing.weight || ''}`.trim() : null;
-    const newValue = `${dto.time || ''} ${dto.reps || ''} ${dto.weight || ''}`.trim();
-
-    const score = await this.prisma.score.upsert({
-      where: {
-        team_event: {
-          codeTeam: dto.codeTeam,
-          idEvent: dto.idEvent,
-          game: dto.game,
+      // Gravar Trilha de Auditoria Imutável (Audit Trail)
+      await tx.auditLog.create({
+        data: {
+          gameCode: dto.game,
+          scoreId: score.code,
+          changedBy: actorName,
+          role: actorRole,
+          action: isNew ? 'create' : 'update',
+          oldValue,
+          newValue,
+          reason: dto.auditReason || (isNew ? 'Lançamento inicial de campo' : 'Retificação auditada'),
+          ipAddress,
         },
-      },
-      update: {
-        time: dto.time,
-        weight: dto.weight,
-        reps: dto.reps,
-        judge: dto.judge,
-        photo: dto.photo,
-        tieBreakTime: dto.tieBreakTime,
-        penaltySeconds: dto.penaltySeconds || 0,
-        isWO: dto.isWO || false,
-        ...(dto.splits != null && { splits: dto.splits as any }),
-        dateCheck: new Date().toISOString(),
-        scoreStatus: 'approved_by_head_judge',
-      },
-      create: {
-        idEvent: dto.idEvent,
-        game: dto.game,
-        category: dto.category,
-        codeTeam: dto.codeTeam,
-        time: dto.time,
-        weight: dto.weight,
-        reps: dto.reps,
-        judge: dto.judge,
-        photo: dto.photo,
-        tieBreakTime: dto.tieBreakTime,
-        penaltySeconds: dto.penaltySeconds || 0,
-        isWO: dto.isWO || false,
-        ...(dto.splits != null && { splits: dto.splits as any }),
-        dateScore: new Date().toISOString(),
-        dateCheck: new Date().toISOString(),
-        scoreStatus: 'approved_by_head_judge',
-      },
-    });
-
-    // Gravar Trilha de Auditoria Imutável (Audit Trail)
-    await this.prisma.auditLog.create({
-      data: {
-        gameCode: dto.game,
-        scoreId: score.code,
-        changedBy: actorName,
-        role: actorRole,
-        action: isNew ? 'create' : 'update',
-        oldValue,
-        newValue,
-        reason: dto.auditReason || (isNew ? 'Lançamento inicial de campo' : 'Retificação auditada'),
-        ipAddress,
-      },
+      });
+      return { score, isNew };
     });
 
     this.leaderboard.changed(dto.game);

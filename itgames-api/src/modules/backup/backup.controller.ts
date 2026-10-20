@@ -2,6 +2,8 @@ import { Controller, Get, Post, Body, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
 import { BackupService } from './backup.service';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { AuthUser } from '../../common/types/auth-user';
 import { Roles } from '../../common/decorators/roles.decorator';
 
 @ApiTags('Backup & Sincronização')
@@ -25,7 +27,7 @@ export class BackupController {
   @Post('import')
   @Roles('SUPER_ADMIN', 'ORGANIZER')
   @ApiOperation({ summary: 'Restaura snapshot JSON completo no banco de dados' })
-  async importSnapshot(@Body() payload: any) {
-    return this.backupService.importSnapshot(payload);
+  async importSnapshot(@Body() payload: any, @CurrentUser() user: AuthUser) {
+    return this.backupService.importSnapshot(payload, user.role);
   }
 }

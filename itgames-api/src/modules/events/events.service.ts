@@ -13,6 +13,8 @@ import { LeaderboardNotifier } from '../leaderboard/leaderboard-notifier.service
 import { MailNotifier } from '../mail/mail-notifier.service';
 import { affectsBoard, normalizeGameScoring } from '../scoring/game-config';
 import { resolveRule } from '../scoring/rules';
+import { OfficialLockService } from '../official/official-lock.service';
+import { ruleChanged } from '../official/rule-changed';
 
 export interface CreateGameDto {
   code: string;
@@ -93,6 +95,7 @@ export class EventsService {
     private readonly notifier: MailNotifier,
     private readonly leaderboard: LeaderboardNotifier,
     private readonly screens: ScreenNotifier,
+    private readonly lock: OfficialLockService,
   ) {}
 
   private readonly organizerPublicSelect = { user: { select: { id: true, name: true } } };
@@ -220,6 +223,22 @@ export class EventsService {
     if (!existing) throw new NotFoundException('Campeonato não encontrado');
 
     const scoring = normalizeGameScoring(dto);
+    // Regra efetiva muda o cálculo oficial: só com tudo revertido (reenviar os mesmos valores é permitido)
+    const after = {
+      eventType: dto.eventType !== undefined ? dto.eventType : existing.eventType,
+      scoringMode: scoring.scoringMode !== undefined ? scoring.scoringMode : existing.scoringMode,
+      tiebreak: scoring.tiebreak !== undefined ? scoring.tiebreak : existing.tiebreak,
+      pointsTable: scoring.pointsTable !== undefined ? scoring.pointsTable : existing.pointsTable,
+      isLowestPointsBetter:
+        scoring.isLowestPointsBetter !== undefined
+          ? scoring.isLowestPointsBetter
+          : dto.isLowestPointsBetter !== undefined
+            ? dto.isLowestPointsBetter
+            : existing.isLowestPointsBetter,
+    };
+    if (ruleChanged(existing, after) && (await this.lock.anyConfirmed(code))) {
+      throw new ConflictException('Reverta o cálculo oficial dos WODs antes de mudar a regra de pontuação');
+    }
     const updated = await this.prisma.game.update({
       where: { code },
       include: { organizers: { select: this.organizerPrivateSelect } },
@@ -577,6 +596,9 @@ export class EventsService {
   }
 
   async deleteCategory(gamesId: string, categoryCode: number) {
+    if (await this.lock.anyConfirmedInCategory(gamesId, categoryCode)) {
+      throw new ConflictException('Reverta o cálculo oficial dos WODs desta categoria antes de excluir a categoria');
+    }
     return this.prisma.category.delete({
       where: {
         code_gamesId: {
@@ -961,6 +983,19 @@ export class EventsService {
         await this.assertCategoryHasRoom(tx, gameCode, existing.categoryId);
       }
       if (cancelling) {
+        // trava: nenhum par (categoria, WOD) das súmulas da equipe pode ter cálculo oficial ativo
+        const pairs = await tx.score.findMany({
+          where: { game: gameCode, codeTeam: registrationCode },
+          select: { category: true, idEvent: true },
+          orderBy: [{ idEvent: 'asc' }, { category: 'asc' }],
+        });
+        const seen = new Set<string>();
+        for (const p of pairs) {
+          const k = `${p.category}:${p.idEvent}`;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          await this.lock.assertUnlockedInTx(tx, gameCode, p.category, p.idEvent);
+        }
         // sai das baterias e as súmulas são anuladas (mantidas como histórico, com auditoria)
         await tx.laneSlot.deleteMany({ where: { gameCode, teamCode: registrationCode } });
         const scores = await tx.score.findMany({

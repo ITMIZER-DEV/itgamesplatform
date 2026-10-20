@@ -25,6 +25,12 @@ export class OfficialLockService {
     return n > 0;
   }
 
+  // Qualquer campeonato com resultado oficial ativo (usado na importação de backup, que é global)
+  async anyConfirmedAnywhere(): Promise<boolean> {
+    const n = await this.prisma.officialResult.count({ where: { activeKey: { not: null } } });
+    return n > 0;
+  }
+
   async anyConfirmedInCategory(game: string, category: number): Promise<boolean> {
     const n = await this.prisma.officialResult.count({
       where: { gameCode: game, categoryId: category, activeKey: { not: null } },
