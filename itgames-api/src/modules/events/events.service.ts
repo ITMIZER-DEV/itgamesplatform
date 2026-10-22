@@ -15,6 +15,7 @@ import { affectsBoard, normalizeGameScoring } from '../scoring/game-config';
 import { resolveRule } from '../scoring/rules';
 import { OfficialLockService } from '../official/official-lock.service';
 import { ruleChanged } from '../official/rule-changed';
+import { UpdateRegistrationAthletesDto } from './dto/update-registration-athletes.dto';
 
 export interface CreateGameDto {
   code: string;
@@ -970,7 +971,7 @@ export class EventsService {
   }
 
   async listRegistrations(gameCode: string, categoryId?: number) {
-    return this.prisma.registration.findMany({
+    const registrations = await this.prisma.registration.findMany({
       where: {
         gameCode,
         ...(categoryId && { categoryId }),
@@ -981,6 +982,35 @@ export class EventsService {
       },
       orderBy: { code: 'asc' },
     });
+
+    const cpfs = registrations
+      .flatMap((r) => r.athletes.map((a) => a.cpf))
+      .filter((cpf): cpf is string => !!cpf);
+
+    const users = cpfs.length > 0
+      ? await this.prisma.user.findMany({
+          where: { cpf: { in: cpfs } },
+          include: { athleteProfile: true },
+        })
+      : [];
+
+    const userByCpf = new Map(users.map((u) => [u.cpf as string, u]));
+
+    return registrations.map((r) => ({
+      ...r,
+      athletes: r.athletes.map((a) => {
+        const u = a.cpf ? userByCpf.get(a.cpf) : undefined;
+        return {
+          ...a,
+          email: a.email || u?.email || null,
+          boxOrGym: a.boxOrGym || u?.athleteProfile?.boxOrGym || null,
+          phonenumber: a.phonenumber || u?.phoneNumber || null,
+          gender: a.gender || u?.athleteProfile?.gender || 'M',
+          tshirtSize: a.tshirtSize || u?.athleteProfile?.tshirtSize || 'M',
+          birthDate: a.birthDate || u?.athleteProfile?.birthDate || null,
+        };
+      }),
+    }));
   }
 
   async updateRegistrationStatus(
@@ -1059,6 +1089,201 @@ export class EventsService {
       this.notifier.paymentConfirmed(gameCode, registrationCode);
     }
     return result;
+  }
+
+  // Governança de Campeonato: Edição de dados cadastrais dos atletas da inscrição (nome, email, telefone, sexo, etc.)
+  async updateRegistrationAthletes(
+    gameCode: string,
+    registrationCode: number,
+    dto: UpdateRegistrationAthletesDto,
+    actor: { name: string; role: string; ip?: string },
+  ) {
+    const existing = await this.prisma.registration.findUnique({
+      where: { code_gameCode: { code: registrationCode, gameCode } },
+      include: { athletes: true, category: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Inscrição #${registrationCode} do campeonato ${gameCode} não encontrada`);
+    }
+
+    const newTeamName = dto.teamName?.trim();
+    if (newTeamName && newTeamName !== existing.team) {
+      await this.prisma.registration.update({
+        where: { code_gameCode: { code: registrationCode, gameCode } },
+        data: { team: newTeamName },
+      });
+      await this.prisma.auditLog.create({
+        data: {
+          gameCode,
+          changedBy: actor.name,
+          role: actor.role,
+          action: 'update_team_name',
+          oldValue: existing.team,
+          newValue: newTeamName,
+          reason: `Nome da equipe alterado na inscrição #${registrationCode}`,
+          ipAddress: actor.ip,
+        },
+      });
+    }
+
+    for (const aDto of dto.athletes || []) {
+      const athlete = existing.athletes.find((a) => a.code === aDto.code);
+      if (!athlete) {
+        continue;
+      }
+
+      const athleteData: any = {};
+      const changes: Record<string, { old: any; new: any }> = {};
+
+      if (aDto.name !== undefined && aDto.name.trim() !== athlete.name) {
+        athleteData.name = aDto.name.trim();
+        changes.name = { old: athlete.name, new: athleteData.name };
+      }
+
+      if (aDto.phoneNumber !== undefined && aDto.phoneNumber.trim() !== (athlete.phonenumber || '')) {
+        athleteData.phonenumber = aDto.phoneNumber.trim();
+        changes.phoneNumber = { old: athlete.phonenumber, new: athleteData.phonenumber };
+      }
+
+      if (aDto.email !== undefined && aDto.email.trim().toLowerCase() !== (athlete.email || '').toLowerCase()) {
+        athleteData.email = aDto.email.trim().toLowerCase();
+        changes.email = { old: athlete.email, new: athleteData.email };
+      }
+
+      if (aDto.gender !== undefined) {
+        const g = aDto.gender.toUpperCase();
+        if (g === 'M' || g === 'F') {
+          if (g !== athlete.gender) {
+            athleteData.gender = g;
+            changes.gender = { old: athlete.gender, new: g };
+          }
+        }
+      }
+
+      if (aDto.tshirtSize !== undefined && aDto.tshirtSize.trim() !== (athlete.tshirtSize || '')) {
+        athleteData.tshirtSize = aDto.tshirtSize.trim().toUpperCase();
+        changes.tshirtSize = { old: athlete.tshirtSize, new: athleteData.tshirtSize };
+      }
+
+      if (aDto.boxOrAffiliate !== undefined && aDto.boxOrAffiliate.trim() !== (athlete.boxOrGym || '')) {
+        athleteData.boxOrGym = aDto.boxOrAffiliate.trim();
+        changes.boxOrGym = { old: athlete.boxOrGym, new: athleteData.boxOrGym };
+      }
+
+      if (aDto.birthDate !== undefined) {
+        const bDate = aDto.birthDate ? new Date(aDto.birthDate) : null;
+        athleteData.birthDate = bDate;
+        changes.birthDate = { old: athlete.birthDate, new: bDate };
+      }
+
+      if (aDto.cpf !== undefined) {
+        const cleanCpf = normalizeCpf(aDto.cpf);
+        if (cleanCpf && !isValidCpf(cleanCpf)) {
+          throw new BadRequestException(`CPF informado é inválido: ${aDto.cpf}`);
+        }
+        if (cleanCpf !== athlete.cpf) {
+          athleteData.cpf = cleanCpf || null;
+          changes.cpf = { old: athlete.cpf, new: cleanCpf };
+        }
+      }
+
+      if (Object.keys(athleteData).length > 0) {
+        await this.prisma.athlete.update({
+          where: { code_team: { code: athlete.code, team: registrationCode } },
+          data: athleteData,
+        });
+
+        await this.prisma.auditLog.create({
+          data: {
+            gameCode,
+            changedBy: actor.name,
+            role: actor.role,
+            action: 'update_athlete',
+            oldValue: JSON.stringify(Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v.old]))),
+            newValue: JSON.stringify(Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v.new]))),
+            reason: `Governança: Atualização dos dados do atleta ${athlete.name} (código ${athlete.code}) na inscrição #${registrationCode}`,
+            ipAddress: actor.ip,
+          },
+        });
+      }
+
+      const targetCpf = athleteData.cpf !== undefined ? athleteData.cpf : athlete.cpf;
+      const targetEmail = athleteData.email !== undefined ? athleteData.email : athlete.email;
+
+      let user = targetCpf
+        ? await this.prisma.user.findFirst({
+            where: { cpf: targetCpf },
+            include: { athleteProfile: true },
+          })
+        : null;
+
+      if (!user && targetEmail) {
+        user = await this.prisma.user.findUnique({
+          where: { email: targetEmail },
+          include: { athleteProfile: true },
+        });
+      }
+
+      if (user) {
+        const userDataToUpdate: any = {};
+        if (athleteData.name && athleteData.name !== user.name) userDataToUpdate.name = athleteData.name;
+        if (athleteData.phonenumber && athleteData.phonenumber !== user.phoneNumber) userDataToUpdate.phoneNumber = athleteData.phonenumber;
+
+        if (athleteData.email && athleteData.email !== user.email) {
+          const emailExists = await this.prisma.user.findFirst({
+            where: { email: athleteData.email, id: { not: user.id } },
+          });
+          if (!emailExists) {
+            userDataToUpdate.email = athleteData.email;
+          }
+        }
+
+        if (athleteData.cpf && athleteData.cpf !== user.cpf) {
+          const cpfExists = await this.prisma.user.findFirst({
+            where: { cpf: athleteData.cpf, id: { not: user.id } },
+          });
+          if (!cpfExists) {
+            userDataToUpdate.cpf = athleteData.cpf;
+          }
+        }
+
+        if (Object.keys(userDataToUpdate).length > 0) {
+          await this.prisma.user.update({
+            where: { id: user.id },
+            data: userDataToUpdate,
+          });
+        }
+
+        const profileDataToUpdate: any = {};
+        if (athleteData.gender) profileDataToUpdate.gender = athleteData.gender;
+        if (athleteData.birthDate) profileDataToUpdate.birthDate = athleteData.birthDate;
+        if (athleteData.tshirtSize) profileDataToUpdate.tshirtSize = athleteData.tshirtSize;
+        if (athleteData.boxOrGym) profileDataToUpdate.boxOrGym = athleteData.boxOrGym;
+
+        if (Object.keys(profileDataToUpdate).length > 0) {
+          await this.prisma.athleteProfile.upsert({
+            where: { userId: user.id },
+            create: {
+              userId: user.id,
+              ...profileDataToUpdate,
+            },
+            update: profileDataToUpdate,
+          });
+        }
+      }
+    }
+
+    if (newTeamName && newTeamName !== existing.team) {
+      this.leaderboard.changed(gameCode);
+    }
+
+    const updatedRegistration = await this.prisma.registration.findUnique({
+      where: { code_gameCode: { code: registrationCode, gameCode } },
+      include: { athletes: true, category: true },
+    });
+
+    return updatedRegistration;
   }
 
   // Organizador só exclui inscrição sem scores nem baterias; o super admin pode excluir sempre.

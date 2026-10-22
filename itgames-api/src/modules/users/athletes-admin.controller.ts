@@ -1,8 +1,9 @@
-import { Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../common/enums/role.enum';
 import { UsersService } from './users.service';
+import { UpdateAthleteDto } from './dto/update-athlete.dto';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -15,6 +16,12 @@ export class AthletesAdminController {
   @ApiOperation({ summary: 'Super Admin: buscar atletas por nome, e-mail ou CPF (CPF mascarado)' })
   async list(@Query('q') q?: string) {
     return this.usersService.listAthletes(q);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Super Admin: atualizar dados cadastrais do atleta (nome, email, telefone, sexo, etc.)' })
+  async update(@Param('id') id: string, @Body() dto: UpdateAthleteDto) {
+    return this.usersService.updateAthlete(id, dto);
   }
 
   @Post(':id/reset-password')

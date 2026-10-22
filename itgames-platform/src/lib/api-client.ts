@@ -45,6 +45,11 @@ export interface AthleteAdminRow {
   email: string;
   phoneNumber: string | null;
   cpfMasked: string | null;
+  cpfRaw?: string | null;
+  gender?: 'M' | 'F' | string | null;
+  birthDate?: string | null;
+  tshirtSize?: string | null;
+  boxOrGym?: string | null;
   mustChangePassword: boolean;
   createdAt: string;
 }
@@ -226,6 +231,25 @@ export class ApiClient {
 
   async resetAthletePassword(id: string): Promise<{ user: AthleteAdminRow; temporaryPassword: string }> {
     return this.strict(`/users/athletes/${id}/reset-password`, { method: 'POST' });
+  }
+
+  async updateAthleteAdmin(
+    id: string,
+    data: {
+      name?: string;
+      email?: string;
+      phoneNumber?: string;
+      cpf?: string;
+      gender?: string;
+      birthDate?: string;
+      tshirtSize?: string;
+      boxOrGym?: string;
+    },
+  ): Promise<AthleteAdminRow> {
+    return this.strict<AthleteAdminRow>(`/users/athletes/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
   }
 
   // Recuperação de senha (público)
@@ -490,6 +514,31 @@ export class ApiClient {
   async updateRegistrationStatus(gameCode: string, regCode: number | string, data: { status?: string; check?: boolean; amount?: number }) {
     const cleanRegCode = String(regCode).replace(/\D/g, '');
     return this.strict<any>(`/events/${gameCode}/registrations/${cleanRegCode}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateRegistrationAthletes(
+    gameCode: string,
+    regCode: number | string,
+    data: {
+      teamName?: string;
+      athletes: {
+        code: number;
+        name?: string;
+        email?: string;
+        phoneNumber?: string;
+        gender?: 'M' | 'F' | string;
+        cpf?: string;
+        birthDate?: string;
+        tshirtSize?: string;
+        boxOrAffiliate?: string;
+      }[];
+    },
+  ) {
+    const cleanRegCode = String(regCode).replace(/\D/g, '');
+    return this.strict<any>(`/events/${gameCode}/registrations/${cleanRegCode}/athletes`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });

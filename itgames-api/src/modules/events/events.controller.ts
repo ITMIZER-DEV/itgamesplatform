@@ -13,6 +13,7 @@ import { BoardService } from '../scoring/board.service';
 import { AddOrganizerDto } from './dto/add-organizer.dto';
 import { SetOrganizerActiveDto } from './dto/set-organizer-active.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
+import { UpdateRegistrationAthletesDto } from './dto/update-registration-athletes.dto';
 import {
   CreateCategoryDto,
   CreateGameDto,
@@ -234,6 +235,26 @@ export class EventsController {
   ) {
     await this.access.assertCanManage(user, code);
     return this.eventsService.updateRegistrationStatus(code, parseInt(regCode, 10), dto, {
+      name: user.name,
+      role: user.role.toLowerCase(),
+      ip: req.ip,
+    });
+  }
+
+  @Roles(UserRole.ORGANIZER)
+  @Patch(':code/registrations/:regCode/athletes')
+  @ApiOperation({
+    summary: 'Governança do campeonato: editar dados dos atletas de uma inscrição (nome, email, telefone, sexo, etc.)',
+  })
+  async updateRegistrationAthletes(
+    @Param('code') code: string,
+    @Param('regCode') regCode: string,
+    @Body() dto: UpdateRegistrationAthletesDto,
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+  ) {
+    await this.access.assertCanManage(user, code);
+    return this.eventsService.updateRegistrationAthletes(code, parseInt(regCode, 10), dto, {
       name: user.name,
       role: user.role.toLowerCase(),
       ip: req.ip,

@@ -1,11 +1,12 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { UserRole } from '../../common/enums/role.enum';
-import { maskCpf, normalizeCpf } from '../../common/utils/cpf';
+import { isValidCpf, maskCpf, normalizeCpf } from '../../common/utils/cpf';
 import { generateTemporaryPassword } from '../../common/utils/temporary-password';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrganizerDto } from './dto/create-organizer.dto';
 import { UpdateOrganizerDto } from './dto/update-organizer.dto';
+import { UpdateAthleteDto } from './dto/update-athlete.dto';
 
 const ORGANIZER_SELECT = {
   id: true,
@@ -25,12 +26,28 @@ const ATHLETE_SELECT = {
   cpf: true,
   mustChangePassword: true,
   createdAt: true,
+  athleteProfile: {
+    select: {
+      gender: true,
+      birthDate: true,
+      tshirtSize: true,
+      boxOrGym: true,
+    },
+  },
 } as const;
 
-// Nunca devolve o CPF inteiro nem o hash: o super admin identifica o atleta pelos 2 últimos dígitos
-function presentAthlete<T extends { cpf: string | null }>(user: T) {
-  const { cpf, ...rest } = user;
-  return { ...rest, cpfMasked: cpf ? maskCpf(cpf) : null };
+// Identifica o atleta pelos últimos dígitos do CPF e expõe dados de perfil para governança
+function presentAthlete<T extends { cpf: string | null; athleteProfile?: any }>(user: T) {
+  const { cpf, athleteProfile, ...rest } = user;
+  return {
+    ...rest,
+    cpfMasked: cpf ? maskCpf(cpf) : null,
+    cpfRaw: cpf,
+    gender: athleteProfile?.gender || null,
+    birthDate: athleteProfile?.birthDate || null,
+    tshirtSize: athleteProfile?.tshirtSize || null,
+    boxOrGym: athleteProfile?.boxOrGym || null,
+  };
 }
 
 @Injectable()
@@ -151,5 +168,77 @@ export class UsersService {
     });
 
     return { user, temporaryPassword };
+  }
+
+  async updateAthlete(id: string, dto: UpdateAthleteDto) {
+    const existing = await this.prisma.user.findFirst({
+      where: { id, role: UserRole.ATHLETE },
+      include: { athleteProfile: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('Atleta não encontrado');
+    }
+
+    const email = dto.email?.toLowerCase().trim();
+    if (email && email !== existing.email) {
+      const taken = await this.prisma.user.findUnique({ where: { email } });
+      if (taken) {
+        throw new ConflictException('Já existe um usuário cadastrado com este e-mail');
+      }
+    }
+
+    const cpf = dto.cpf ? normalizeCpf(dto.cpf) : undefined;
+    if (cpf) {
+      if (!isValidCpf(cpf)) {
+        throw new BadRequestException('CPF inválido');
+      }
+      if (cpf !== existing.cpf) {
+        const taken = await this.prisma.user.findFirst({ where: { cpf, id: { not: id } } });
+        if (taken) {
+          throw new ConflictException('Já existe um usuário cadastrado com este CPF');
+        }
+      }
+    }
+
+    const userData: any = {};
+    if (dto.name !== undefined) userData.name = dto.name.trim();
+    if (email !== undefined) userData.email = email;
+    if (dto.phoneNumber !== undefined) userData.phoneNumber = dto.phoneNumber.trim();
+    if (cpf !== undefined) userData.cpf = cpf;
+
+    if (Object.keys(userData).length > 0) {
+      await this.prisma.user.update({
+        where: { id },
+        data: userData,
+      });
+    }
+
+    const profileData: any = {};
+    if (dto.gender !== undefined) {
+      const g = dto.gender.toUpperCase();
+      if (g === 'M' || g === 'F') profileData.gender = g;
+    }
+    if (dto.birthDate !== undefined) {
+      profileData.birthDate = dto.birthDate ? new Date(dto.birthDate) : null;
+    }
+    if (dto.tshirtSize !== undefined) profileData.tshirtSize = dto.tshirtSize.trim().toUpperCase();
+    if (dto.boxOrGym !== undefined) profileData.boxOrGym = dto.boxOrGym.trim();
+
+    if (Object.keys(profileData).length > 0) {
+      await this.prisma.athleteProfile.upsert({
+        where: { userId: id },
+        create: {
+          userId: id,
+          ...profileData,
+        },
+        update: profileData,
+      });
+    }
+
+    const updated = await this.prisma.user.findUnique({
+      where: { id },
+      select: ATHLETE_SELECT,
+    });
+    return presentAthlete(updated!);
   }
 }

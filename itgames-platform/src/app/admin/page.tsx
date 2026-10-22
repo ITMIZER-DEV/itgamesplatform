@@ -34,7 +34,8 @@ import {
   Copy,
   ExternalLink,
   Pencil,
-  Shirt
+  Shirt,
+  UserCog
 } from 'lucide-react';
 import { storage } from '@/lib/storage';
 import { GameEvent, Category, WorkoutRule, TeamRegistration, ScoreEntry, OrganizationTenant, AuditLogEntry, ContestTicket, JudgeStaff } from '@/types';
@@ -50,6 +51,7 @@ import { MailSettingsPanel } from '@/components/admin/MailSettingsPanel';
 import { AthletesPanel } from '@/components/admin/AthletesPanel';
 import { GameOrganizersModal } from '@/components/admin/GameOrganizersModal';
 import { BackupRestoreModal } from '@/components/admin/BackupRestoreModal';
+import { EditTeamAthletesModal } from '@/components/admin/EditTeamAthletesModal';
 import { toast } from 'sonner';
 import { AclGuard } from '@/components/auth/AclGuard';
 
@@ -65,6 +67,7 @@ export default function AdminDashboardPage() {
   const [contestTickets, setContestTickets] = useState<ContestTicket[]>([]);
   const [judges, setJudges] = useState<JudgeStaff[]>([]);
   const [selectedProofTeam, setSelectedProofTeam] = useState<TeamRegistration | null>(null);
+  const [editingTeamAthletes, setEditingTeamAthletes] = useState<TeamRegistration | null>(null);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
 
   // Perfil Ativo: Super Admin (Plataforma Global & Liberações) vs Organizador (Meus Campeonatos)
@@ -1672,12 +1675,23 @@ export default function AdminDashboardPage() {
                         </td>
 
                         <td className="py-3 px-4">
-                          <div className="font-bold text-white text-sm">{t.teamName}</div>
+                          <div className="flex items-center gap-1.5">
+                            <div className="font-bold text-white text-sm">{t.teamName}</div>
+                            <button
+                              type="button"
+                              onClick={() => setEditingTeamAthletes(t)}
+                              className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-amber-400 transition-colors"
+                              title="Editar dados dos atletas da equipe (nome, e-mail, telefone, sexo)"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                           <div className="text-[11px] text-zinc-400">
                             {t.athletes.map(a => a.name).join(', ')}
                           </div>
                           <div className="text-[10px] text-zinc-500 mt-0.5">
                             Box: {t.athletes[0]?.boxOrAffiliate || 'Box Filiada'} • Tel: {t.athletes[0]?.phone || '—'}
+                            {t.athletes[0]?.email && ` • ${t.athletes[0].email}`}
                           </div>
                         </td>
 
@@ -1759,7 +1773,16 @@ export default function AdminDashboardPage() {
                             )}
                           </button>
                           )}
-                          <div className="flex items-center justify-center gap-1.5">
+                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => setEditingTeamAthletes(t)}
+                              className="px-2.5 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 text-[11px] font-bold flex items-center gap-1 transition-all"
+                              title="Editar dados dos atletas (nome, email, telefone, sexo, kit)"
+                            >
+                              <UserCog className="w-3 h-3 text-blue-400" />
+                              <span>Editar Atletas</span>
+                            </button>
                             {t.paymentStatus === 'cancelled' ? (
                               <button
                                 onClick={() => handleCancelRegistration(t, true)}
@@ -3074,6 +3097,19 @@ export default function AdminDashboardPage() {
         onClose={() => setIsBackupModalOpen(false)}
         onSuccess={() => loadData()}
       />
+
+      {editingTeamAthletes && (
+        <EditTeamAthletesModal
+          isOpen={!!editingTeamAthletes}
+          team={editingTeamAthletes}
+          gameCode={activeGame?.code || activeGame?.id || 'ITGAMES2026'}
+          onClose={() => setEditingTeamAthletes(null)}
+          onSuccess={(updatedTeam) => {
+            setTeams((prev) => prev.map((t) => (t.id === updatedTeam.id ? updatedTeam : t)));
+            loadData();
+          }}
+        />
+      )}
       </div>
     </AclGuard>
   );

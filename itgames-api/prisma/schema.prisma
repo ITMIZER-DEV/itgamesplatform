@@ -174,6 +174,8 @@ model Athlete {
   tshirtSize    String?        // PP, P, M, G, GG, XG, XGG
   birthDate     DateTime?
   gender        String?        // M, F
+  email         String?
+  boxOrGym      String?
   
   registration  Registration   @relation(fields: [team, game], references: [code, gameCode], onDelete: Cascade)
 

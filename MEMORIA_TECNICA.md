@@ -45,6 +45,11 @@
    - Na aba **"Campeonatos & Liberações"**, o Super Admin revisa os dados e clica em **"Liberar Execução"** (`PATCH /events/:code/status` para `live`).
 4. **Exclusão em Cascata**:
    - O Super Admin pode clicar em **"Excluir Cascata"** com confirmação de segurança para purgar todo o campeonato e seus dependentes do banco.
+5. **Governança & Edição Cadastral de Atletas (`PATCH /events/:code/registrations/:regCode/athletes`)**:
+   - Na aba **"Inscrições & Financeiro"** (`/admin`), organizadores e super admins podem editar os dados cadastrais completos dos competidores de qualquer inscrição (individual, dupla, trio ou quarteto).
+   - Dados editáveis: **Nome Completo**, **E-mail**, **Telefone/WhatsApp**, **Sexo (M/F)**, **CPF**, **Data de Nascimento (com cálculo automático de idade)**, **Tamanho da Camiseta do Kit (PP a XGG)**, **Box/Centro de Treinamento** e **Nome da Equipe**.
+   - **Sincronização Bidirecional**: A alteração atualiza o registro do campeonato (`games_register_athletes`) e sincroniza com a conta do usuário (`users`) e perfil (`athlete_profiles`), mantendo histórico em auditoria (`audit_logs`).
+   - Na aba global **"Atletas"** (`/admin`), o Super Admin também possui modal de edição individual de qualquer atleta da base (`PATCH /users/athletes/:id`).
 
 
 ### ⏱️ Juiz de Arena (Judge App - `/judge`)
