@@ -29,7 +29,7 @@ function formatCpf(value: string): string {
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9, 11)}`;
 }
 
-// Aba "Atletas" do admin (só super admin): busca, edição cadastral e geração de senha temporária
+// Aba "Atletas" do admin (super admin e organizadores): busca, edição cadastral e geração de senha temporária
 export function AthletesPanel() {
   const [term, setTerm] = useState('');
   const [query, setQuery] = useState('');

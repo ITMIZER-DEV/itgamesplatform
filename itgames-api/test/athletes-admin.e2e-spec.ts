@@ -33,10 +33,17 @@ describe('Administração de atletas pelo super admin (e2e)', () => {
       ['get', () => '/users/athletes'],
       ['post', () => `/users/athletes/${athId}/reset-password`],
     ];
-    it.each(routes)('%s: anônimo 401; atleta e organizador 403', async (method, path) => {
+    it.each(routes)('%s: anônimo 401; atleta 403', async (method, path) => {
       await (http() as any)[method](path()).expect(401);
       await (http() as any)[method](path()).set(bearer(tAth)).expect(403);
-      await (http() as any)[method](path()).set(bearer(tOrg)).expect(403);
+    });
+
+    it('organizador tem acesso para listar atletas e resetar senha', async () => {
+      const listRes = await http().get('/users/athletes').set(bearer(tOrg)).expect(200);
+      expect(listRes.body.map((a: any) => a.email).sort()).toEqual(['ana@t.com', 'bruno@t.com']);
+
+      const resetRes = await http().post(`/users/athletes/${athId}/reset-password`).set(bearer(tOrg)).expect(201);
+      expect(resetRes.body.temporaryPassword).toBeTruthy();
     });
   });
 

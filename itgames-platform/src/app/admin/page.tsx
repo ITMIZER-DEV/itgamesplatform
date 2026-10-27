@@ -35,10 +35,16 @@ import {
   ExternalLink,
   Pencil,
   Shirt,
-  UserCog
+  UserCog,
+  FileSpreadsheet,
+  Layers,
+  Trophy,
+  Printer,
+  Dumbbell
 } from 'lucide-react';
 import { storage } from '@/lib/storage';
-import { GameEvent, Category, WorkoutRule, TeamRegistration, ScoreEntry, OrganizationTenant, AuditLogEntry, ContestTicket, JudgeStaff } from '@/types';
+import { GameEvent, Category, WorkoutRule, TeamRegistration, ScoreEntry, OrganizationTenant, AuditLogEntry, ContestTicket, JudgeStaff, SumulaTemplate } from '@/types';
+import { OFFICIAL_WOD_PRESETS } from '@/lib/wod-presets';
 import {
   DEFAULT_POINTS_TABLE, MAX_POINTS_TABLE_ITEMS, parsePointsInput, formatPointsInput, tiebreakToForm, formToTiebreak, scoringDefaultsForEventType,
   type ScoringMode, type TiebreakKind,
@@ -131,12 +137,21 @@ export default function AdminDashboardPage() {
   const [auditNewPoints, setAuditNewPoints] = useState<number>(0);
   const [auditReason, setAuditReason] = useState<string>('');
 
-  // Modal de Criação de Prova/Workout (WOD)
+  // Templates de Súmula para vinculação ao WOD
+  const [sumulaTemplates, setSumulaTemplates] = useState<SumulaTemplate[]>([]);
+
+  // Modal de Criação / Edição de Prova/Workout (WOD) com Vinculação
   const [isWodModalOpen, setIsWodModalOpen] = useState(false);
+  const [editingWod, setEditingWod] = useState<WorkoutRule | null>(null);
   const [wodTitle, setWodTitle] = useState('');
   const [wodType, setWodType] = useState<WorkoutRule['type']>('for_time');
   const [wodTimeCapMins, setWodTimeCapMins] = useState(10);
   const [wodDesc, setWodDesc] = useState('');
+  const [wodGameId, setWodGameId] = useState('');
+  const [wodCategoryIds, setWodCategoryIds] = useState<string[]>([]);
+  const [wodSumulaTemplateId, setWodSumulaTemplateId] = useState('crossfit-for-time');
+  const [wodTieBreak, setWodTieBreak] = useState<'time' | 'reps' | 'none'>('time');
+  const [wodStandards, setWodStandards] = useState('');
 
   // Modal de Cadastro de Juiz / Arbitragem
   const [isJudgeModalOpen, setIsJudgeModalOpen] = useState(false);
@@ -157,7 +172,7 @@ export default function AdminDashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (userRole !== 'SUPER_ADMIN' && (adminTab === 'organizers_mgmt' || adminTab === 'saas_owner' || adminTab === 'email' || adminTab === 'athletes_mgmt')) {
+    if (userRole !== 'SUPER_ADMIN' && (adminTab === 'organizers_mgmt' || adminTab === 'saas_owner' || adminTab === 'email')) {
       setAdminTab('championships');
     }
   }, [userRole, adminTab]);
@@ -282,6 +297,7 @@ export default function AdminDashboardPage() {
       setAuditLogs(storage.getAuditLogs(game.id));
       setContestTickets(storage.getContestTickets(game.id));
       setJudges(storage.getJudges(game.id));
+      setSumulaTemplates(storage.getSumulaTemplates());
     }
   };
 
@@ -735,30 +751,126 @@ export default function AdminDashboardPage() {
     toast.success(`Check-in de ${team.teamName} atualizado!`);
   };
 
-  const handleCreateWorkout = () => {
-    if (!activeGame || !categories[0]) return;
+  const handleOpenCreateWod = () => {
+    setEditingWod(null);
+    setWodTitle('');
+    setWodType('for_time');
+    setWodTimeCapMins(10);
+    setWodDesc('');
+    setWodGameId(activeGame?.id || activeGame?.code || (games[0]?.id ?? ''));
+    setWodCategoryIds(categories.map(c => c.id));
+    setWodSumulaTemplateId(sumulaTemplates[0]?.id || 'crossfit-for-time');
+    setWodTieBreak('time');
+    setWodStandards('');
+    setIsWodModalOpen(true);
+  };
+
+  const handleOpenEditWod = (wod: WorkoutRule) => {
+    setEditingWod(wod);
+    setWodTitle(wod.title);
+    setWodType(wod.type);
+    setWodTimeCapMins(Math.max(1, Math.floor((wod.timeCapSeconds || 600) / 60)));
+    setWodDesc(wod.description || '');
+    setWodGameId(wod.gameId || activeGame?.id || '');
+    const catIds = wod.categoryIds && wod.categoryIds.length > 0
+      ? wod.categoryIds
+      : (wod.categoryId ? [wod.categoryId] : []);
+    setWodCategoryIds(catIds);
+    setWodSumulaTemplateId(wod.sumulaTemplateId || 'crossfit-for-time');
+    setWodTieBreak(wod.tieBreakMetric || 'time');
+    setWodStandards(wod.movementStandards?.join('\n') || '');
+    setIsWodModalOpen(true);
+  };
+
+  const handleDeleteWod = async (wod: WorkoutRule) => {
+    if (!confirm(`Tem certeza que deseja remover o WOD "${wod.title}"?`)) return;
+
+    try {
+      storage.deleteWorkout(wod.id);
+      if (activeGame) {
+        setWorkouts(storage.getWorkouts(activeGame.id));
+      }
+      const codeNum = parseInt(wod.id.replace(/\D/g, ''), 10);
+      if (!isNaN(codeNum) && wod.gameId) {
+        await apiClient.deleteWorkout(wod.gameId, codeNum).catch(() => {});
+      }
+      toast.success(`WOD "${wod.title}" removido com sucesso!`);
+    } catch {
+      toast.error('Erro ao remover WOD');
+    }
+  };
+
+  const handleApplyPreset = (preset: any) => {
+    setWodTitle(preset.defaultTitle);
+    setWodType(preset.type);
+    setWodTimeCapMins(preset.defaultTimeCapMinutes);
+    setWodDesc(preset.description);
+    setWodStandards(preset.standards ? preset.standards.join('\n') : '');
+    if (preset.suggestedSumulaTemplateId) {
+      setWodSumulaTemplateId(preset.suggestedSumulaTemplateId);
+    }
+    toast.success(`Preset "${preset.name}" carregado!`);
+  };
+
+  const handleSaveWorkout = async () => {
     if (!wodTitle.trim()) {
       toast.error('Informe o título do workout');
       return;
     }
 
-    const newWod: WorkoutRule = {
-      id: `wod_${Date.now()}`,
-      gameId: activeGame.id,
-      categoryId: categories[0].id,
-      title: wodTitle,
+    const targetGameId = wodGameId || activeGame?.id || (games[0]?.id ?? '');
+    const targetGame = games.find(g => g.id === targetGameId || g.code === targetGameId);
+
+    const selectedCats = categories.filter(c => wodCategoryIds.includes(c.id));
+    const firstCatId = wodCategoryIds[0] || (categories[0]?.id ?? '1');
+    const selectedTemplate = sumulaTemplates.find(t => t.id === wodSumulaTemplateId);
+
+    const wodId = editingWod ? editingWod.id : `wod_${Date.now()}`;
+    const cleanNumericCode = parseInt(wodId.replace(/\D/g, '').slice(-6), 10) || Math.floor(Math.random() * 900000) + 100000;
+
+    const savedWod: WorkoutRule = {
+      id: wodId,
+      gameId: targetGameId,
+      gameName: targetGame?.name || activeGame?.name || targetGameId,
+      categoryId: firstCatId,
+      categoryIds: wodCategoryIds.length > 0 ? wodCategoryIds : [firstCatId],
+      categoryNames: selectedCats.length > 0 ? selectedCats.map(c => c.name) : (wodCategoryIds.length === 0 ? ['Todas as Categorias'] : [firstCatId]),
+      categoryName: selectedCats.length === 1 ? selectedCats[0].name : (selectedCats.length > 1 ? `${selectedCats.length} categorias vinculadas` : 'Todas as Categorias'),
+      sumulaTemplateId: wodSumulaTemplateId,
+      sumulaTemplateName: selectedTemplate?.name || 'Súmula Padrão A4',
+      title: wodTitle.trim(),
       type: wodType,
-      timeCapSeconds: wodTimeCapMins * 60,
-      description: wodDesc || 'Conforme briefing da organização',
-      movementStandards: []
+      timeCapSeconds: Math.max(1, wodTimeCapMins) * 60,
+      description: wodDesc.trim() || 'Conforme briefing da organização',
+      movementStandards: wodStandards.split('\n').map(s => s.trim()).filter(Boolean),
+      tieBreakMetric: wodTieBreak,
+      pointsScale: 'standard_100',
     };
 
-    storage.saveWorkout(newWod);
-    setWorkouts(storage.getWorkouts(activeGame.id));
+    storage.saveWorkout(savedWod);
+    if (activeGame) {
+      setWorkouts(storage.getWorkouts(activeGame.id));
+    }
+
+    try {
+      const catCode = parseInt(firstCatId, 10) || 1;
+      await apiClient.createWorkout(targetGameId, {
+        code: cleanNumericCode,
+        game: targetGameId,
+        category: catCode,
+        categories: wodCategoryIds.map(c => parseInt(c, 10)).filter(n => !isNaN(n)),
+        title: savedWod.title,
+        type: savedWod.type,
+        timeCap: `${wodTimeCapMins}:00`,
+        description: savedWod.description,
+        sumulaTemplate: wodSumulaTemplateId,
+      }).catch((e) => console.log('[Admin] Api createWorkout fallback:', e));
+    } catch {
+      // offline / mock fallback
+    }
+
     setIsWodModalOpen(false);
-    setWodTitle('');
-    setWodDesc('');
-    toast.success(`WOD "${newWod.title}" adicionado com sucesso!`);
+    toast.success(editingWod ? `WOD "${savedWod.title}" atualizado com sucesso!` : `WOD "${savedWod.title}" adicionado e vinculado com sucesso!`);
   };
 
   const handleCreateJudge = (e: React.FormEvent) => {
@@ -1100,6 +1212,17 @@ export default function AdminDashboardPage() {
           >
             Auditoria & Súmulas c/ Foto
           </button>
+          <button
+            onClick={() => setAdminTab('athletes_mgmt')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+              adminTab === 'athletes_mgmt'
+                ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Atletas</span>
+          </button>
           {userRole === 'SUPER_ADMIN' && (
             <>
               <button
@@ -1123,16 +1246,6 @@ export default function AdminDashboardPage() {
                 E-mails
               </button>
               <button
-                onClick={() => setAdminTab('athletes_mgmt')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
-                  adminTab === 'athletes_mgmt'
-                    ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                Atletas
-              </button>
-              <button
                 onClick={() => setAdminTab('saas_owner')}
                 className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
                   adminTab === 'saas_owner'
@@ -1152,7 +1265,7 @@ export default function AdminDashboardPage() {
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {adminTab === 'organizers_mgmt' && userRole === 'SUPER_ADMIN' && <OrganizersPanel />}
       {adminTab === 'email' && userRole === 'SUPER_ADMIN' && <MailSettingsPanel />}
-      {adminTab === 'athletes_mgmt' && userRole === 'SUPER_ADMIN' && <AthletesPanel />}
+      {adminTab === 'athletes_mgmt' && <AthletesPanel />}
 
       {adminTab === 'championships' && (
         <div className="space-y-6">
@@ -1446,39 +1559,138 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          {/* WORKOUTS CADASTRADOS */}
+          {/* WORKOUTS CADASTRADOS COM VINCULAÇÃO A CAMPEONATO, CATEGORIA E SÚMULA */}
           <div className="glass-panel rounded-3xl p-6 border border-zinc-800 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Flame className="w-5 h-5 text-amber-400" />
-                <h3 className="text-lg font-bold text-white">Workouts & Provas do Evento</h3>
+                <div>
+                  <h3 className="text-lg font-bold text-white">Workouts & Provas do Evento</h3>
+                  <p className="text-xs text-zinc-400">Provas oficiais vinculadas a campeonatos, categorias e modelos de súmula A4</p>
+                </div>
               </div>
               <button
-                onClick={() => setIsWodModalOpen(true)}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs shadow-lg shadow-amber-500/20"
+                onClick={handleOpenCreateWod}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs shadow-lg shadow-amber-500/20 transition-all hover:scale-105 active:scale-95"
               >
                 <Plus className="w-4 h-4" />
                 <span>+ Adicionar Novo WOD</span>
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {workouts.map((wod) => (
-                <div key={wod.id} className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-zinc-800 text-amber-400">
-                      {wod.type.replace('_', ' ').toUpperCase()}
-                    </span>
-                    <span className="text-xs text-zinc-400 font-mono">
-                      CAP: {Math.floor(wod.timeCapSeconds / 60)}:00
-                    </span>
-                  </div>
+            {workouts.length === 0 ? (
+              <div className="p-8 rounded-2xl bg-zinc-950/50 border border-dashed border-zinc-800 text-center space-y-3">
+                <Dumbbell className="w-8 h-8 text-zinc-600 mx-auto" />
+                <div className="text-sm font-bold text-zinc-300">Nenhum WOD cadastrado ainda</div>
+                <p className="text-xs text-zinc-500 max-w-md mx-auto">
+                  Crie os workouts do evento e vincule-os às categorias e templates de súmula para impressão e pontuação dos árbitros.
+                </p>
+                <button
+                  onClick={handleOpenCreateWod}
+                  className="px-4 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-bold transition-colors inline-flex items-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Cadastrar Primeiro WOD</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {workouts.map((wod) => {
+                  const linkedGame = games.find(g => g.id === wod.gameId || g.code === wod.gameId) || (activeGame?.id === wod.gameId ? activeGame : null);
+                  const linkedCats = categories.filter(c =>
+                    wod.categoryIds?.includes(c.id) || wod.categoryId === c.id
+                  );
+                  const linkedTemplate = sumulaTemplates.find(t => t.id === wod.sumulaTemplateId);
+                  const timeCapDisplay = wod.timeCapSeconds ? `${Math.floor(wod.timeCapSeconds / 60)}:00` : 'Livre';
 
-                  <h4 className="font-bold text-white text-sm">{wod.title}</h4>
-                  <p className="text-xs text-zinc-400 line-clamp-2">{wod.description}</p>
-                </div>
-              ))}
-            </div>
+                  return (
+                    <div key={wod.id} className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 hover:border-zinc-700 transition-all flex flex-col justify-between space-y-3 shadow-md">
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                            {wod.type.replace('_', ' ').toUpperCase()}
+                          </span>
+                          <span className="text-xs text-zinc-400 font-mono font-bold bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">
+                            CAP: {timeCapDisplay}
+                          </span>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-white text-sm">{wod.title}</h4>
+                          <p className="text-xs text-zinc-400 line-clamp-2 mt-0.5">{wod.description}</p>
+                        </div>
+
+                        {/* VÍNCULOS: CAMPEONATO, CATEGORIA E SÚMULA */}
+                        <div className="pt-2.5 border-t border-zinc-800/80 space-y-2 text-[11px]">
+                          {/* Campeonato Vinculado */}
+                          <div className="flex items-center gap-1.5 text-zinc-300">
+                            <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span className="font-bold text-zinc-400">Campeonato:</span>
+                            <span className="truncate text-white font-semibold">{linkedGame?.name || wod.gameName || wod.gameId || 'Geral'}</span>
+                          </div>
+
+                          {/* Categorias Vinculadas */}
+                          <div className="flex items-start gap-1.5 text-zinc-300">
+                            <Layers className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                              <span className="font-bold text-zinc-400 mr-1">Categorias:</span>
+                              {linkedCats.length > 0 ? (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {linkedCats.map((cat) => (
+                                    <span key={cat.id} className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 text-[10px] font-semibold">
+                                      {cat.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-zinc-400 italic">Todas as categorias</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Súmula Vinculada */}
+                          <div className="flex items-center justify-between gap-1 text-zinc-300 pt-0.5">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              <span className="font-bold text-zinc-400">Súmula:</span>
+                              <span className="truncate text-emerald-300 font-medium">
+                                {linkedTemplate?.name || wod.sumulaTemplateName || 'Padrão For Time A4'}
+                              </span>
+                            </div>
+                            <a
+                              href={`/sumulas?workoutId=${wod.id}&categoryId=${wod.categoryId || ''}&templateId=${wod.sumulaTemplateId || ''}`}
+                              className="px-2 py-0.5 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 text-[10px] font-bold flex items-center gap-1 transition-colors shrink-0"
+                              title="Gerar e imprimir súmula oficial deste WOD"
+                            >
+                              <Printer className="w-3 h-3" />
+                              <span>Súmula A4</span>
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* AÇÕES: EDITAR E REMOVER */}
+                      <div className="pt-2 border-t border-zinc-800 flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleOpenEditWod(wod)}
+                          className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 text-xs font-semibold flex items-center gap-1 transition-colors"
+                        >
+                          <Pencil className="w-3 h-3 text-amber-400" />
+                          <span>Editar WOD</span>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteWod(wod)}
+                          className="px-2.5 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-semibold flex items-center gap-1 transition-colors"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Remover</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* LISTA DE INSCRIÇÕES & CHECK-IN */}
@@ -2079,20 +2291,165 @@ export default function AdminDashboardPage() {
       )}
 
       {/* ────────────────────────────────────────────────────────────────────────── */}
-      {/* MODAL: ADICIONAR NOVO WOD */}
+      {/* MODAL: ADICIONAR / EDITAR WOD COM VINCULAÇÃO A CAMPEONATO, CATEGORIA E SÚMULA */}
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {isWodModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-150 overflow-y-auto">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-5 my-8 max-h-[90vh] overflow-y-auto">
+            {/* Cabeçalho */}
             <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
-              <div className="flex items-center gap-2">
-                <Flame className="w-5 h-5 text-amber-400" />
-                <h3 className="font-bold text-white text-base">Novo Workout / WOD do Evento</h3>
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <Flame className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base">
+                    {editingWod ? `Editar WOD: ${editingWod.title}` : 'Novo Workout / WOD do Evento'}
+                  </h3>
+                  <p className="text-xs text-zinc-400">Vincule a prova oficial ao campeonato, categorias e modelo de súmula A4</p>
+                </div>
               </div>
-              <button onClick={() => setIsWodModalOpen(false)} className="text-zinc-500 hover:text-white">✕</button>
+              <button
+                onClick={() => setIsWodModalOpen(false)}
+                className="text-zinc-500 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-colors"
+              >
+                ✕
+              </button>
             </div>
 
+            {/* Presets Rápidos */}
+            {!editingWod && (
+              <div className="p-3 rounded-2xl bg-zinc-950/70 border border-zinc-800 space-y-2">
+                <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wide flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Carregar Preset Oficial Rápido:
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {OFFICIAL_WOD_PRESETS.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handleApplyPreset(p)}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 text-[11px] font-semibold flex items-center gap-1.5 transition-colors"
+                    >
+                      <span>{p.name.split('•')[1]?.trim() || p.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* VINCULAÇÕES PRINCIPAIS */}
+            <div className="p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800/90 space-y-4">
+              <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-zinc-800 pb-2">
+                <Layers className="w-4 h-4 text-blue-400" />
+                <span>1. Vinculações do WOD (Campeonato, Categorias e Súmula)</span>
+              </div>
+
+              {/* Vínculo de Campeonato */}
+              <div>
+                <label className="text-xs font-bold text-zinc-300 block mb-1 flex items-center gap-1.5">
+                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                  Campeonato Vinculado:
+                </label>
+                <select
+                  value={wodGameId}
+                  onChange={(e) => setWodGameId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white font-medium focus:outline-none focus:border-amber-500"
+                >
+                  {games.map((g) => (
+                    <option key={g.id || g.code} value={g.id || g.code}>
+                      {g.name} ({g.code || g.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Vínculo de Categorias (Multi-seleção com botão Todas) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-blue-400" />
+                    Categorias que realizam este WOD:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (wodCategoryIds.length === categories.length) {
+                        setWodCategoryIds([]);
+                      } else {
+                        setWodCategoryIds(categories.map(c => c.id));
+                      }
+                    }}
+                    className="text-[10px] font-bold text-blue-400 hover:text-blue-300 underline"
+                  >
+                    {wodCategoryIds.length === categories.length ? 'Desmarcar Todas' : 'Selecionar Todas'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto p-2 rounded-xl bg-zinc-900/80 border border-zinc-800">
+                  {categories.map((cat) => {
+                    const isSelected = wodCategoryIds.includes(cat.id);
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) {
+                            setWodCategoryIds(wodCategoryIds.filter(id => id !== cat.id));
+                          } else {
+                            setWodCategoryIds([...wodCategoryIds, cat.id]);
+                          }
+                        }}
+                        className={`px-2.5 py-1.5 rounded-lg text-left text-xs font-semibold flex items-center justify-between border transition-all ${
+                          isSelected
+                            ? 'bg-blue-600/20 border-blue-500/50 text-blue-200'
+                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        <span className="truncate">{cat.name}</span>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-blue-400 shrink-0 ml-1" />}
+                      </button>
+                    );
+                  })}
+                </div>
+                {wodCategoryIds.length === 0 && (
+                  <p className="text-[10px] text-amber-400 mt-1">
+                    * Nenhuma categoria específica selecionada: será exibido como &quot;Todas as categorias&quot;.
+                  </p>
+                )}
+              </div>
+
+              {/* Vínculo de Súmula Template */}
+              <div>
+                <label className="text-xs font-bold text-zinc-300 block mb-1 flex items-center gap-1.5">
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                  Modelo de Súmula Oficial Vinculado:
+                </label>
+                <select
+                  value={wodSumulaTemplateId}
+                  onChange={(e) => setWodSumulaTemplateId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white font-medium focus:outline-none focus:border-amber-500"
+                >
+                  {sumulaTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.type === 'hyrox' ? 'HYROX' : 'CrossFit'} • {t.workoutType})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-zinc-500 mt-1">
+                  Define o cabeçalho, tabelas e grade de notas A4 impressas para os juízes neste WOD.
+                </p>
+              </div>
+            </div>
+
+            {/* ESPECIFICAÇÕES DA PROVA */}
             <div className="space-y-4">
+              <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-zinc-800 pb-2">
+                <Flame className="w-4 h-4 text-amber-400" />
+                <span>2. Especificações da Prova</span>
+              </div>
+
               <div>
                 <label className="text-xs font-bold text-zinc-300 block mb-1">Título do WOD</label>
                 <input
@@ -2101,20 +2458,20 @@ export default function AdminDashboardPage() {
                   value={wodTitle}
                   onChange={(e) => setWodTitle(e.target.value)}
                   placeholder="Ex: WOD 1 - THE SNATCH LADDER"
-                  className="w-full px-3 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                  className="w-full px-3 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500 font-bold"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs font-bold text-zinc-300 block mb-1">Tipo de Prova</label>
                   <select
                     value={wodType}
                     onChange={(e) => setWodType(e.target.value as any)}
-                    className="w-full px-3 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500 font-semibold"
                   >
                     <option value="for_time">For Time (Menor Tempo)</option>
-                    <option value="amrap">AMRAP (Mais Repetições)</option>
+                    <option value="amrap">AMRAP (Mais Reps)</option>
                     <option value="max_load">Max Load (Carga Máxima)</option>
                     <option value="complex">Complex LPO</option>
                     <option value="hyrox_standard">HYROX Standard (8 Estações)</option>
@@ -2125,37 +2482,67 @@ export default function AdminDashboardPage() {
                   <label className="text-xs font-bold text-zinc-300 block mb-1">Time Cap (Minutos)</label>
                   <input
                     type="number"
+                    min="1"
+                    max="180"
                     value={wodTimeCapMins}
-                    onChange={(e) => setWodTimeCapMins(parseInt(e.target.value, 10))}
-                    className="w-full px-3 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                    onChange={(e) => setWodTimeCapMins(parseInt(e.target.value, 10) || 10)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500 font-mono font-bold"
                   />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-zinc-300 block mb-1">Critério Desempate</label>
+                  <select
+                    value={wodTieBreak}
+                    onChange={(e) => setWodTieBreak(e.target.value as any)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500 font-semibold"
+                  >
+                    <option value="time">Tempo de Split</option>
+                    <option value="reps">Reps Válidas</option>
+                    <option value="none">Sem Desempate</option>
+                  </select>
                 </div>
               </div>
 
               <div>
                 <label className="text-xs font-bold text-zinc-300 block mb-1">Descrição dos Exercícios & Cargas</label>
                 <textarea
-                  rows={4}
+                  rows={3}
                   value={wodDesc}
                   onChange={(e) => setWodDesc(e.target.value)}
                   placeholder="21-15-9 Snatch (60/40kg) + Burpee Over Bar..."
                   className="w-full px-3 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
                 />
               </div>
+
+              <div>
+                <label className="text-xs font-bold text-zinc-300 block mb-1">Padrões de Movimento & Critérios de No-Rep</label>
+                <textarea
+                  rows={2}
+                  value={wodStandards}
+                  onChange={(e) => setWodStandards(e.target.value)}
+                  placeholder="Extensão completa de joelhos e quadril no topo do snatch..."
+                  className="w-full px-3 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
             </div>
 
+            {/* Rodapé com Ações */}
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-800">
               <button
+                type="button"
                 onClick={() => setIsWodModalOpen(false)}
                 className="px-4 py-2.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white"
               >
                 Cancelar
               </button>
               <button
-                onClick={handleCreateWorkout}
-                className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black text-xs shadow-lg shadow-amber-500/20"
+                type="button"
+                onClick={handleSaveWorkout}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition-all active:scale-95"
               >
-                Salvar WOD
+                <Check className="w-4 h-4" />
+                <span>{editingWod ? 'Atualizar WOD' : 'Salvar & Vincular WOD'}</span>
               </button>
             </div>
           </div>

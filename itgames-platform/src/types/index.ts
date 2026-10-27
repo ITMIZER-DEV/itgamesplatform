@@ -90,7 +90,13 @@ export interface HyroxStation {
 export interface WorkoutRule {
   id: string;
   gameId: string;
+  gameName?: string;
   categoryId: string;
+  categoryIds?: string[];
+  categoryNames?: string[];
+  categoryName?: string;
+  sumulaTemplateId?: string;
+  sumulaTemplateName?: string;
   title: string;
   type: WorkoutType;
   timeCapSeconds: number;

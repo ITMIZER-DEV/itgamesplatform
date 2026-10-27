@@ -61,10 +61,12 @@ export interface CreateWorkoutDto {
   code: number;
   game: string;
   category: number;
+  categories?: number[];
   title: string;
   type: string;
   timeCap?: string;
   description?: string;
+  sumulaTemplate?: string;
 }
 
 // Cada integrante é identificado só pelo CPF (e e-mail opcional): os dados vêm do cadastro de atleta
@@ -667,8 +669,21 @@ export class EventsService {
   }
 
   async createWorkout(dto: CreateWorkoutDto) {
-    const workout = await this.prisma.workout.create({
-      data: {
+    const workout = await this.prisma.workout.upsert({
+      where: {
+        code_game: {
+          code: dto.code,
+          game: dto.game,
+        },
+      },
+      update: {
+        category: dto.category,
+        title: dto.title,
+        type: dto.type,
+        timeCap: dto.timeCap,
+        description: dto.description,
+      },
+      create: {
         code: dto.code,
         game: dto.game,
         category: dto.category,
@@ -691,6 +706,7 @@ export class EventsService {
         description: dto.description,
         category: dto.category,
         workout: dto.code,
+        ...(dto.sumulaTemplate !== undefined && { sumulaTemplate: dto.sumulaTemplate }),
       },
       create: {
         idEvent: dto.code,
@@ -699,19 +715,48 @@ export class EventsService {
         title: dto.title,
         description: dto.description,
         workout: dto.code,
+        sumulaTemplate: dto.sumulaTemplate,
       },
     });
 
-    return workout;
+    return { ...workout, sumulaTemplate: dto.sumulaTemplate };
   }
 
   async listWorkouts(game: string, categoryId?: number) {
-    return this.prisma.workout.findMany({
+    const [workouts, events] = await Promise.all([
+      this.prisma.workout.findMany({
+        where: {
+          game,
+          ...(categoryId && { category: categoryId }),
+        },
+        orderBy: { code: 'asc' },
+      }),
+      this.prisma.event.findMany({
+        where: { game },
+        select: { idEvent: true, workout: true, sumulaTemplate: true },
+      }),
+    ]);
+
+    const eventByWorkout = new Map(events.map((e) => [e.workout ?? e.idEvent, e]));
+
+    return workouts.map((w) => ({
+      ...w,
+      sumulaTemplate: eventByWorkout.get(w.code)?.sumulaTemplate ?? null,
+    }));
+  }
+
+  async deleteWorkout(game: string, workoutCode: number) {
+    await this.prisma.event.deleteMany({
       where: {
         game,
-        ...(categoryId && { category: categoryId }),
+        OR: [{ idEvent: workoutCode }, { workout: workoutCode }],
       },
-      orderBy: { code: 'asc' },
+    });
+    return this.prisma.workout.deleteMany({
+      where: {
+        game,
+        code: workoutCode,
+      },
     });
   }
 

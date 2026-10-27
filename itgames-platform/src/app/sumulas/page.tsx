@@ -110,6 +110,35 @@ export default function SumulasStudioPage() {
           setEditingCategoryId(defaultTmpl.categoryId || '');
           setEditingWorkoutId(defaultTmpl.workoutId || '');
         }
+
+        // Pré-seleção via URL Query Params (vindo do painel de governança /admin)
+        if (typeof window !== 'undefined') {
+          const params = new URLSearchParams(window.location.search);
+          const qWod = params.get('workoutId');
+          const qCat = params.get('categoryId');
+          const qTmpl = params.get('templateId');
+
+          if (qWod && wods.some(w => w.id === qWod)) {
+            setSelectedWorkoutId(qWod);
+            const targetWod = wods.find(w => w.id === qWod);
+            if (targetWod) {
+              if (targetWod.categoryId && cats.some(c => c.id === targetWod.categoryId)) {
+                setSelectedCategoryId(targetWod.categoryId);
+                setWodCategoryId(targetWod.categoryId);
+              }
+              if (targetWod.sumulaTemplateId && tmpls.some(t => t.id === targetWod.sumulaTemplateId)) {
+                setSelectedTemplateId(targetWod.sumulaTemplateId);
+              }
+            }
+          }
+          if (qCat && cats.some(c => c.id === qCat)) {
+            setSelectedCategoryId(qCat);
+            setWodCategoryId(qCat);
+          }
+          if (qTmpl && tmpls.some(t => t.id === qTmpl)) {
+            setSelectedTemplateId(qTmpl);
+          }
+        }
       }
     };
 
@@ -581,9 +610,18 @@ export default function SumulasStudioPage() {
                   onChange={(e) => {
                     const newWodId = e.target.value;
                     setSelectedWorkoutId(newWodId);
-                    // Sugerir template vinculado ao WOD se houver
-                    const bound = templates.find(t => t.workoutId === newWodId);
-                    if (bound) setSelectedTemplateId(bound.id);
+                    const targetWod = workouts.find(w => w.id === newWodId);
+                    if (targetWod) {
+                      if (targetWod.categoryId && categories.some(c => c.id === targetWod.categoryId)) {
+                        setSelectedCategoryId(targetWod.categoryId);
+                      }
+                      if (targetWod.sumulaTemplateId && templates.some(t => t.id === targetWod.sumulaTemplateId)) {
+                        setSelectedTemplateId(targetWod.sumulaTemplateId);
+                      } else {
+                        const bound = templates.find(t => t.workoutId === newWodId);
+                        if (bound) setSelectedTemplateId(bound.id);
+                      }
+                    }
                   }}
                   className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-medium text-white focus:outline-none focus:border-amber-500"
                 >

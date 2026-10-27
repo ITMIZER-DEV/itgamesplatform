@@ -194,10 +194,22 @@ export class EventsController {
 
   @Roles(UserRole.ORGANIZER)
   @Post(':code/workouts')
-  @ApiOperation({ summary: 'Criar WOD / Workout para categoria' })
+  @ApiOperation({ summary: 'Criar ou atualizar WOD / Workout para categoria' })
   async createWorkout(@Param('code') code: string, @Body() dto: CreateWorkoutDto, @CurrentUser() user: AuthUser) {
     await this.access.assertCanManage(user, code);
     return this.eventsService.createWorkout({ ...dto, game: code });
+  }
+
+  @Roles(UserRole.ORGANIZER)
+  @Delete(':code/workouts/:workoutCode')
+  @ApiOperation({ summary: 'Remover WOD / Workout do campeonato' })
+  async deleteWorkout(
+    @Param('code') code: string,
+    @Param('workoutCode') workoutCode: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    await this.access.assertCanManage(user, code);
+    return this.eventsService.deleteWorkout(code, parseInt(workoutCode, 10));
   }
 
   // 5. Inscrições

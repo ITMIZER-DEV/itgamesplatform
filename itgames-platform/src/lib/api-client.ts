@@ -498,6 +498,13 @@ export class ApiClient {
     });
   }
 
+  async deleteWorkout(gameCode: string, workoutCode: number | string) {
+    const cleanCode = String(workoutCode).replace(/\D/g, '');
+    return this.request<any>(`/events/${gameCode}/workouts/${cleanCode}`, {
+      method: 'DELETE',
+    });
+  }
+
   // 4. Inscrições de Atletas
   async listRegistrations(gameCode: string, categoryId?: number): Promise<any[] | null> {
     const query = categoryId ? `?categoryId=${categoryId}` : '';

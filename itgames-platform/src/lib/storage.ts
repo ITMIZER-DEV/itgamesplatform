@@ -154,6 +154,11 @@ class DataStorage {
     this.setItem(STORAGE_KEYS.WORKOUTS, list);
   }
 
+  public deleteWorkout(id: string): void {
+    const list = this.getWorkouts().filter(w => w.id !== id);
+    this.setItem(STORAGE_KEYS.WORKOUTS, list);
+  }
+
   // Teams / Registrations
   public getTeams(gameId?: string): TeamRegistration[] {
     const list = this.getItem<TeamRegistration[]>(STORAGE_KEYS.TEAMS, []);

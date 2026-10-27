@@ -1,7 +1,7 @@
 # 🧠 Memória Técnica Contínua — ITGAMES Arena Platform
 
-**Data de Atualização:** 19/10/2026 19:40  
-**Versão:** 1.5.0 (SemVer)  
+**Data de Atualização:** 27/10/2026 15:10  
+**Versão:** 1.5.1 (SemVer)  
 **Ambiente:** Docker Desktop Multi-Container (`itgames-postgres`, `itgames-api`, `itgames-platform`)  
 **Deploy Remoto:** Portainer Stack CE com Auto-Sync Prisma (`docker-compose.portainer.yml`, `PORTAINER_DEPLOY_GUIDE.md`)  
 **Banco de Dados:** PostgreSQL 18 (Alpine) na porta `5433:5432`  
@@ -49,7 +49,7 @@
    - Na aba **"Inscrições & Financeiro"** (`/admin`), organizadores e super admins podem editar os dados cadastrais completos dos competidores de qualquer inscrição (individual, dupla, trio ou quarteto).
    - Dados editáveis: **Nome Completo**, **E-mail**, **Telefone/WhatsApp**, **Sexo (M/F)**, **CPF**, **Data de Nascimento (com cálculo automático de idade)**, **Tamanho da Camiseta do Kit (PP a XGG)**, **Box/Centro de Treinamento** e **Nome da Equipe**.
    - **Sincronização Bidirecional**: A alteração atualiza o registro do campeonato (`games_register_athletes`) e sincroniza com a conta do usuário (`users`) e perfil (`athlete_profiles`), mantendo histórico em auditoria (`audit_logs`).
-   - Na aba global **"Atletas"** (`/admin`), o Super Admin também possui modal de edição individual de qualquer atleta da base (`PATCH /users/athletes/:id`).
+   - Na aba global **"Atletas"** (`/admin`), **Super Admins e Organizadores** têm acesso à consulta de atletas (busca por nome/email/CPF mascarado), modal de edição cadastral (`PATCH /users/athletes/:id`) e emissão de senha temporária (`POST /users/athletes/:id/reset-password`).
 
 
 ### ⏱️ Juiz de Arena (Judge App - `/judge`)
