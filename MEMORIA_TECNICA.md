@@ -1,7 +1,7 @@
 # 🧠 Memória Técnica Contínua — ITGAMES Arena Platform
 
-**Data de Atualização:** 27/10/2026 15:10  
-**Versão:** 1.5.1 (SemVer)  
+**Data de Atualização:** 03/11/2026 15:40  
+**Versão:** 1.5.2 (SemVer)  
 **Ambiente:** Docker Desktop Multi-Container (`itgames-postgres`, `itgames-api`, `itgames-platform`)  
 **Deploy Remoto:** Portainer Stack CE com Auto-Sync Prisma (`docker-compose.portainer.yml`, `PORTAINER_DEPLOY_GUIDE.md`)  
 **Banco de Dados:** PostgreSQL 18 (Alpine) na porta `5433:5432`  
@@ -106,3 +106,17 @@
 | **PostgreSQL 18** | `localhost:5433` | 5432 | Banco `itgames_db` |
 
 
+
+
+### 📊 Relatório Analítico da Competição (.Excel / XLS) & Gestão de Ocupação por Categoria (v1.5.2)
+- **Correção de Truncamento de Inscrições**:
+  - Resolução do bug de exportação em que identificadores BIB contendo caractere `#` (ex: `#2168`) causavam truncamento prematuro de dados no download via data URI.
+  - Migração de data URI para download via `Blob` binário seguro com encoding UTF-8, garantindo 100% dos dados preservados.
+- **Planilha Executiva Multi-Abas em Excel (.XLS / SpreadsheetML)**:
+  - **Aba 1 (Resumo Executivo)**: Banner oficial, metadados do evento, consolidação financeira (Arrecadado, A Receber, Receita Projetada e Potencial Máximo), indicadores de participação geral e grade completa de camisetas/kits (PP a XGG).
+  - **Aba 2 (Ocupação por Categoria)**: Matriz analítica contendo nome da categoria, formato, composição/gênero, valor da inscrição, limite de vagas, confirmadas/pagas, pendentes, total inscrito, vagas livres restantes, **taxa de ocupação (%)**, status de demanda (Esgotado, Alta Demanda, Aberta), contagem de competidores e receita por categoria com linha de total consolidado.
+  - **Aba 3 (Inscrições Detalhadas)**: Tabela com BIB, equipe, categoria, status de pagamento, valor em R$, check-in, box/afiliação, integrantes, camisetas, telefone de contato, e-mail e data de inscrição.
+  - **Aba 4 (Grade Nominal de Atletas e Kits)**: Mapeamento atleta a atleta com BIB, equipe, categoria, nome completo, CPF, gênero, tamanho de kit/camiseta, check-in individual e box para suporte à pesagem e entrega de kits.
+- **Painel Visual de Ocupação no Painel Admin**:
+  - Cards visuais em tempo real na aba *Inscrições & Financeiro* exibindo a taxa de ocupação percentual com barras de progresso dinâmicas (verde, âmbar, vermelho de esgotado), vagas livres e contagem de pagas/pendentes por categoria.
+- **Exportação Alternativa em CSV**: Suporte simultâneo para exportação em CSV estruturado com padrão brasileiro (ponto-e-vírgula `;` e BOM UTF-8).

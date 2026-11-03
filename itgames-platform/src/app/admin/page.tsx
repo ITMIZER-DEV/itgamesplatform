@@ -60,6 +60,7 @@ import { BackupRestoreModal } from '@/components/admin/BackupRestoreModal';
 import { EditTeamAthletesModal } from '@/components/admin/EditTeamAthletesModal';
 import { toast } from 'sonner';
 import { AclGuard } from '@/components/auth/AclGuard';
+import { exportCompetitionAnalyticsExcel, exportRegistrationsCSV } from '@/lib/competition-report';
 
 export default function AdminDashboardPage() {
   const [activeGame, setActiveGame] = useState<GameEvent | null>(null);
@@ -1049,38 +1050,35 @@ export default function AdminDashboardPage() {
     toast.success(`Inscrição de "${team.teamName}" excluída.`);
   };
 
-  // 3. Exportar Relatório de Inscrições e Pagamentos em CSV
+  // 3. Exportar Relatório Analítico Completo em Excel (.XLS Multi-Abas)
+  const handleExportAnalyticExcel = () => {
+    if (!teams || teams.length === 0) {
+      toast.error('Nenhuma inscrição encontrada para exportar');
+      return;
+    }
+    try {
+      exportCompetitionAnalyticsExcel(activeGame, categories, teams);
+      toast.success('📊 Relatório analítico completo em Excel exportado com sucesso (4 abas: Resumo, Ocupação por Categoria, Inscrições e Atletas)!');
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Erro ao gerar relatório Excel: ' + (err?.message || 'Falha desconhecida'));
+    }
+  };
+
+  // Exportar Inscrições em CSV Estruturado (Padrão BR / Excel com Blob seguro)
   const handleExportRegistrationsCSV = () => {
     if (!teams || teams.length === 0) {
       toast.error('Nenhuma inscrição encontrada para exportar');
       return;
     }
-
-    const headers = ['BIB', 'Equipe/Atleta', 'Categoria', 'Box/Afiliação', 'Valor (R$)', 'Status Pagamento', 'Check-in', 'Integrantes', 'Camisetas (Kits)', 'Data Inscrição'];
-    const rows = teams.map(t => [
-      t.registerNumber,
-      `"${t.teamName.replace(/"/g, '""')}"`,
-      `"${(t.categoryName || t.categoryId).replace(/"/g, '""')}"`,
-      `"${(t.athletes[0]?.boxOrAffiliate || '—').replace(/"/g, '""')}"`,
-      (t.amountPaid || 0).toFixed(2),
-      t.paymentStatus === 'paid' ? 'PAGO' : 'PENDENTE',
-      t.checkedIn ? 'CONFIRMADO' : 'PENDENTE',
-      `"${t.athletes.map(a => a.name).join('; ').replace(/"/g, '""')}"`,
-      `"${t.athletes.map(a => `${a.name} (${a.tshirtSize || 'M'})`).join('; ').replace(/"/g, '""')}"`,
-      t.registeredAt ? new Date(t.registeredAt).toLocaleDateString('pt-BR') : ''
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `inscricoes_${activeGame?.code || 'campeonato'}_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('📊 Relatório completo de inscrições e pagamentos exportado com sucesso!');
+    try {
+      exportRegistrationsCSV(activeGame, categories, teams);
+      toast.success('📄 Inscrições exportadas em CSV estruturado com sucesso!');
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Erro ao gerar CSV: ' + (err?.message || 'Falha desconhecida'));
+    }
   };
-
 
   return (
     <AclGuard resource="admin" requiredRoleLabel="Organizadores e Administradores">
@@ -1703,6 +1701,81 @@ export default function AdminDashboardPage() {
               <span className="text-xs text-zinc-400">Clique para alternar o status de presença na arena</span>
             </div>
 
+            {/* PAINEL DE OCUPAÇÃO POR CATEGORIA */}
+            <div className="p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-zinc-300 uppercase tracking-wide flex items-center gap-2">
+                  <Flame className="w-4 h-4 text-amber-400" />
+                  <span>Ocupação por Categoria &amp; Vagas</span>
+                </span>
+                <span className="text-[11px] text-zinc-400">
+                  {categories.length} categoria{categories.length !== 1 ? 's' : ''} configurada{categories.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {categories.map((cat) => {
+                  const catTeams = teams.filter(t => t.categoryId === String(cat.id) || t.categoryName?.trim().toLowerCase() === cat.name.trim().toLowerCase());
+                  const paidCount = catTeams.filter(t => t.paymentStatus === 'paid' || t.paymentStatus === 'free').length;
+                  const pendingCount = catTeams.filter(t => t.paymentStatus === 'pending').length;
+                  const totalCount = catTeams.length;
+                  const maxRegs = cat.maxRegistrations ?? (cat as any).spotsTotal ?? null;
+                  const pct = maxRegs ? Math.min(100, Math.round((totalCount / maxRegs) * 100)) : null;
+                  const isSoldOut = maxRegs !== null && totalCount >= maxRegs;
+                  const price = (cat as any).priceBrl ?? cat.price ?? 150;
+
+                  return (
+                    <div key={cat.id} className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <h4 className="font-bold text-white text-xs truncate" title={cat.name}>{cat.name}</h4>
+                          <span className="text-[10px] text-zinc-400">
+                            R$ {price.toFixed(2)} • {((cat as any).gender === 'male' || cat.genderComposition === 'male' ? 'Masc' : (cat as any).gender === 'female' || cat.genderComposition === 'female' ? 'Fem' : 'Misto')}
+                          </span>
+                        </div>
+                        {isSoldOut ? (
+                          <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/40 text-[9px] font-black uppercase shrink-0">
+                            Esgotado
+                          </span>
+                        ) : maxRegs ? (
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 ${pct && pct >= 80 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}`}>
+                            {pct}% Ocupado
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[9px] font-medium shrink-0">
+                            Sem limite
+                          </span>
+                        )}
+                      </div>
+
+                      {maxRegs ? (
+                        <div className="space-y-1">
+                          <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                            <div 
+                              className={`h-full rounded-full transition-all ${isSoldOut ? 'bg-red-500' : pct && pct >= 80 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] text-zinc-400 font-mono">
+                            <span>Vagas: <strong className="text-zinc-200">{totalCount}</strong>/{maxRegs}</span>
+                            <span>Livres: <strong className="text-zinc-200">{Math.max(0, maxRegs - totalCount)}</strong></span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-[10px] text-zinc-400 font-mono">
+                          Inscritos: <strong className="text-zinc-200">{totalCount}</strong> equipes
+                        </div>
+                      )}
+
+                      <div className="pt-1.5 border-t border-zinc-800/60 flex items-center justify-between text-[10px]">
+                        <span className="text-emerald-400 font-semibold">{paidCount} paga{paidCount !== 1 ? 's' : ''}</span>
+                        {pendingCount > 0 && <span className="text-amber-400 font-semibold">{pendingCount} pendente{pendingCount !== 1 ? 's' : ''}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
@@ -1849,13 +1922,24 @@ export default function AdminDashboardPage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
+                  type="button"
+                  onClick={handleExportAnalyticExcel}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold flex items-center gap-2 transition-all shadow-md shadow-emerald-950/40 border border-emerald-400/40 cursor-pointer active:scale-95"
+                  title="Baixa a planilha analítica oficial em Excel com 4 abas: Resumo Executivo, Ocupação por Categoria, Inscrições Detalhadas e Grade de Atletas/Kits"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-200" />
+                  <span>Baixar Relatório Analítico (.Excel)</span>
+                </button>
+                <button
+                  type="button"
                   onClick={handleExportRegistrationsCSV}
-                  className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold border border-zinc-700 flex items-center gap-1.5 transition-colors shadow-md"
+                  className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold border border-zinc-700 flex items-center gap-1.5 transition-colors shadow-md cursor-pointer"
+                  title="Baixar lista de inscrições em formato .CSV estruturado"
                 >
                   <Download className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Baixar Planilha (.CSV / Excel)</span>
+                  <span>CSV</span>
                 </button>
               </div>
             </div>
