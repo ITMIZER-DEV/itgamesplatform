@@ -18,7 +18,7 @@ import {
 import { Category, TeamRegistration, Athlete } from '@/types';
 import { apiClient, ApiError } from '@/lib/api-client';
 import { storage } from '@/lib/storage';
-import { validateTeamAgainstCategoryRules, calculateAge } from '@/lib/team-validation';
+import { validateTeamAgainstCategoryRules, calculateAge, resolveCategoryRules } from '@/lib/team-validation';
 import { toast } from 'sonner';
 
 interface MigrateCategoryModalProps {
@@ -99,11 +99,8 @@ export function MigrateCategoryModal({
       };
     }
 
-    const targetMaxAthletes = targetCategory.teamFormat === 'individual' ? 1 
-      : targetCategory.teamFormat === 'duo' ? 2 
-      : targetCategory.teamFormat === 'trio' ? 3 
-      : targetCategory.teamFormat === 'quartet' ? 4 
-      : targetCategory.maxAthletesPerTeam || (targetCategory as any).maxAthlete || 1;
+    const rules = resolveCategoryRules(targetCategory);
+    const targetMaxAthletes = rules.maxAthletes;
 
     // 1. Compatibilidade de Formato
     const formatOk = teamAthletesDomain.length === targetMaxAthletes;
@@ -115,16 +112,16 @@ export function MigrateCategoryModal({
     let genderOk = true;
     let genderMsg = '';
 
-    if (targetCategory.genderComposition === 'male' && females > 0) {
+    if (rules.gender === 'male' && females > 0) {
       genderOk = false;
       genderMsg = 'A categoria destino é exclusivamente Masculina.';
-    } else if (targetCategory.genderComposition === 'female' && males > 0) {
+    } else if (rules.gender === 'female' && males > 0) {
       genderOk = false;
       genderMsg = 'A categoria destino é exclusivamente Feminina.';
-    } else if (targetCategory.genderComposition === 'mixed_1m_1f' && (males !== 1 || females !== 1)) {
+    } else if (rules.gender === 'mixed_1m_1f' && (males !== 1 || females !== 1)) {
       genderOk = false;
       genderMsg = 'A Dupla Mista exige obrigatoriamente 1 Homem e 1 Mulher.';
-    } else if (targetCategory.genderComposition === 'mixed_2m_2f' && (males !== 2 || females !== 2)) {
+    } else if (rules.gender === 'mixed_2m_2f' && (males !== 2 || females !== 2)) {
       genderOk = false;
       genderMsg = 'O Quarteto Misto exige obrigatoriamente 2 Homens e 2 Mulheres.';
     }
@@ -136,22 +133,22 @@ export function MigrateCategoryModal({
     let ageOk = true;
     let ageMsg = '';
 
-    if (targetCategory.ageRule === 'sum_team_age' && targetCategory.minSumTeamAge) {
-      if (calculatedAgeSum < targetCategory.minSumTeamAge) {
+    if (rules.minSumTeamAge) {
+      if (calculatedAgeSum < rules.minSumTeamAge) {
         ageOk = false;
-        ageMsg = `Soma das idades atual é de ${calculatedAgeSum} anos (mínimo exigido: ${targetCategory.minSumTeamAge} anos — faltam ${targetCategory.minSumTeamAge - calculatedAgeSum} anos).`;
+        ageMsg = `Soma das idades atual é de ${calculatedAgeSum} anos (mínimo exigido: ${rules.minSumTeamAge} anos — faltam ${rules.minSumTeamAge - calculatedAgeSum} anos).`;
       }
-    } else if (targetCategory.ageRule === 'min_individual_age' && targetCategory.minIndividualAge) {
-      const underAgeAthlete = teamAthletesDomain.find((a) => (a.age || calculateAge(a.birthDate)) < targetCategory.minIndividualAge!);
+    } else if (rules.minIndividualAge) {
+      const underAgeAthlete = teamAthletesDomain.find((a) => (a.age || calculateAge(a.birthDate)) < rules.minIndividualAge!);
       if (underAgeAthlete) {
         ageOk = false;
-        ageMsg = `O atleta "${underAgeAthlete.name}" possui ${underAgeAthlete.age || calculateAge(underAgeAthlete.birthDate)} anos (mínimo exigido: ${targetCategory.minIndividualAge} anos).`;
+        ageMsg = `O atleta "${underAgeAthlete.name}" possui ${underAgeAthlete.age || calculateAge(underAgeAthlete.birthDate)} anos (mínimo exigido: ${rules.minIndividualAge} anos).`;
       }
-    } else if (targetCategory.ageRule === 'max_individual_age' && targetCategory.maxIndividualAge) {
-      const overAgeAthlete = teamAthletesDomain.find((a) => (a.age || calculateAge(a.birthDate)) > targetCategory.maxIndividualAge!);
+    } else if (rules.maxIndividualAge) {
+      const overAgeAthlete = teamAthletesDomain.find((a) => (a.age || calculateAge(a.birthDate)) > rules.maxIndividualAge!);
       if (overAgeAthlete) {
         ageOk = false;
-        ageMsg = `O atleta "${overAgeAthlete.name}" possui ${overAgeAthlete.age || calculateAge(overAgeAthlete.birthDate)} anos (máximo permitido: ${targetCategory.maxIndividualAge} anos).`;
+        ageMsg = `O atleta "${overAgeAthlete.name}" possui ${overAgeAthlete.age || calculateAge(overAgeAthlete.birthDate)} anos (máximo permitido: ${rules.maxIndividualAge} anos).`;
       }
     }
 

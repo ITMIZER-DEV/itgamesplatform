@@ -24,7 +24,7 @@ import {
 import { Category, TeamRegistration, Athlete } from '@/types';
 import { apiClient, AthleteAdminRow, ApiError } from '@/lib/api-client';
 import { storage } from '@/lib/storage';
-import { validateTeamAgainstCategoryRules, calculateAge } from '@/lib/team-validation';
+import { validateTeamAgainstCategoryRules, calculateAge, resolveCategoryRules } from '@/lib/team-validation';
 import { toast } from 'sonner';
 
 interface AdminNewRegistrationModalProps {
@@ -89,15 +89,12 @@ export function AdminNewRegistrationModal({
     return categories.find((c) => String(c.id) === selectedCatId) || categories[0] || null;
   }, [categories, selectedCatId]);
 
-  // Determinar quantidade de atletas requeridos pela categoria
-  const requiredAthletesCount = useMemo(() => {
-    if (!selectedCategory) return 1;
-    if (selectedCategory.teamFormat === 'individual') return 1;
-    if (selectedCategory.teamFormat === 'duo') return 2;
-    if (selectedCategory.teamFormat === 'trio') return 3;
-    if (selectedCategory.teamFormat === 'quartet') return 4;
-    return selectedCategory.maxAthletesPerTeam || (selectedCategory as any).maxAthlete || 1;
+  // Determinar regras resolvidas da categoria
+  const categoryRules = useMemo(() => {
+    return resolveCategoryRules(selectedCategory);
   }, [selectedCategory]);
+
+  const requiredAthletesCount = categoryRules.maxAthletes;
 
   // Inicializar formulário ao abrir
   useEffect(() => {
@@ -131,7 +128,7 @@ export function AdminNewRegistrationModal({
             cpf: '',
             email: '',
             phone: '',
-            gender: selectedCategory.genderComposition === 'female' ? 'F' : 'M',
+            gender: categoryRules.gender === 'female' ? 'F' : 'M',
             birthDate: '',
             tshirtSize: 'M',
             boxOrAffiliate: '',
@@ -395,11 +392,11 @@ export function AdminNewRegistrationModal({
 
               {selectedCategory && (
                 <div className="p-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 text-[11px] text-zinc-400 flex flex-wrap gap-x-4 gap-y-1">
-                  <span>Formato: <strong className="text-zinc-200 uppercase">{selectedCategory.teamFormat} ({requiredAthletesCount} atleta{requiredAthletesCount !== 1 ? 's' : ''})</strong></span>
-                  <span>Gênero: <strong className="text-zinc-200 uppercase">{selectedCategory.genderComposition}</strong></span>
-                  {((selectedCategory.minTeamSumAge || selectedCategory.minSumTeamAge) || selectedCategory.minIndividualAge || selectedCategory.maxIndividualAge) && (
+                  <span>Formato: <strong className="text-zinc-200 uppercase">{categoryRules.maxAthletes === 1 ? 'INDIVIDUAL' : categoryRules.maxAthletes === 2 ? 'DUPLA' : categoryRules.maxAthletes === 3 ? 'TRIO' : 'QUARTETO'} ({requiredAthletesCount} atleta{requiredAthletesCount !== 1 ? 's' : ''})</strong></span>
+                  <span>Gênero: <strong className="text-zinc-200 uppercase">{categoryRules.genderLabel}</strong></span>
+                  {(categoryRules.minSumTeamAge || categoryRules.minIndividualAge || categoryRules.maxIndividualAge) && (
                     <span className="text-amber-400">
-                      Regra de Idade: {(selectedCategory.minTeamSumAge || selectedCategory.minSumTeamAge) ? `Soma ${(selectedCategory.minTeamSumAge || selectedCategory.minSumTeamAge)}+ anos` : selectedCategory.minIndividualAge ? `Mín ${selectedCategory.minIndividualAge} anos` : `Até ${selectedCategory.maxIndividualAge} anos`}
+                      Regra de Idade: {categoryRules.minSumTeamAge ? `Soma ${categoryRules.minSumTeamAge}+ anos` : categoryRules.minIndividualAge ? `Mín ${categoryRules.minIndividualAge} anos` : `Até ${categoryRules.maxIndividualAge} anos`}
                     </span>
                   )}
                 </div>

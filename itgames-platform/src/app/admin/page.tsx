@@ -233,24 +233,35 @@ export default function AdminDashboardPage() {
       try {
         const apiCats = await apiClient.listCategories(game.code || game.id);
         if (apiCats && apiCats.length > 0) {
-          const mappedCats = apiCats.map(c => ({
-            id: String(c.code),
-            gameId: c.gamesId,
-            name: c.name,
-            gender: c.genderRule || 'open',
-            teamFormat: c.teamType || 'individual',
-            maxAthletes: c.maxAthlete || 1,
-            priceBrl: c.amount || 0,
-            description: c.description || '',
-            standards: c.standards || '',
-            ageRule: {
-              minAge: c.minIndividualAge,
-              maxAge: c.maxIndividualAge,
-              sumAge: c.minTeamSumAge
-            },
-            maxRegistrations: c.maxRegistrations ?? null,
-            registrationsCount: c.registrationsCount ?? 0
-          }));
+          const mappedCats = apiCats.map(c => {
+            const rawFormat = (c.teamType || 'individual').toLowerCase();
+            const formatCount = rawFormat === 'duo' ? 2 : rawFormat === 'trio' ? 3 : rawFormat === 'quartet' ? 4 : (c.maxAthlete || 1);
+            return {
+              id: String(c.code),
+              gameId: c.gamesId,
+              name: c.name,
+              gender: c.genderRule || 'open',
+              genderRule: c.genderRule || 'open',
+              genderComposition: c.genderRule || 'open',
+              teamFormat: c.teamType || 'individual',
+              maxAthletes: formatCount,
+              maxAthlete: formatCount,
+              maxAthletesPerTeam: formatCount,
+              price: c.amount || 0,
+              priceBrl: c.amount || 0,
+              description: c.description || '',
+              standards: c.standards || '',
+              ageRule: c.minTeamSumAge ? 'sum_team_age' : c.minIndividualAge ? 'min_individual_age' : c.maxIndividualAge ? 'max_individual_age' : 'none',
+              minIndividualAge: c.minIndividualAge,
+              maxIndividualAge: c.maxIndividualAge,
+              minSumTeamAge: c.minTeamSumAge,
+              minTeamSumAge: c.minTeamSumAge,
+              spotsTotal: c.maxRegistrations || 100,
+              spotsFilled: c.registrationsCount || 0,
+              maxRegistrations: c.maxRegistrations ?? null,
+              registrationsCount: c.registrationsCount ?? 0
+            };
+          });
           setCategories(mappedCats as any);
         } else {
           setCategories(storage.getCategories(game.id));
@@ -322,24 +333,35 @@ export default function AdminDashboardPage() {
       try {
         const apiCats = await apiClient.listCategories(game.code || game.id);
         if (apiCats && apiCats.length > 0) {
-          const mappedCats = apiCats.map(c => ({
-            id: String(c.code),
-            gameId: c.gamesId,
-            name: c.name,
-            gender: c.genderRule || 'open',
-            teamFormat: c.teamType || 'individual',
-            maxAthletes: c.maxAthlete || 1,
-            priceBrl: c.amount || 0,
-            description: c.description || '',
-            standards: c.standards || '',
-            ageRule: {
-              minAge: c.minIndividualAge,
-              maxAge: c.maxIndividualAge,
-              sumAge: c.minTeamSumAge
-            },
-            maxRegistrations: c.maxRegistrations ?? null,
-            registrationsCount: c.registrationsCount ?? 0
-          }));
+          const mappedCats = apiCats.map(c => {
+            const rawFormat = (c.teamType || 'individual').toLowerCase();
+            const formatCount = rawFormat === 'duo' ? 2 : rawFormat === 'trio' ? 3 : rawFormat === 'quartet' ? 4 : (c.maxAthlete || 1);
+            return {
+              id: String(c.code),
+              gameId: c.gamesId,
+              name: c.name,
+              gender: c.genderRule || 'open',
+              genderRule: c.genderRule || 'open',
+              genderComposition: c.genderRule || 'open',
+              teamFormat: c.teamType || 'individual',
+              maxAthletes: formatCount,
+              maxAthlete: formatCount,
+              maxAthletesPerTeam: formatCount,
+              price: c.amount || 0,
+              priceBrl: c.amount || 0,
+              description: c.description || '',
+              standards: c.standards || '',
+              ageRule: c.minTeamSumAge ? 'sum_team_age' : c.minIndividualAge ? 'min_individual_age' : c.maxIndividualAge ? 'max_individual_age' : 'none',
+              minIndividualAge: c.minIndividualAge,
+              maxIndividualAge: c.maxIndividualAge,
+              minSumTeamAge: c.minTeamSumAge,
+              minTeamSumAge: c.minTeamSumAge,
+              spotsTotal: c.maxRegistrations || 100,
+              spotsFilled: c.registrationsCount || 0,
+              maxRegistrations: c.maxRegistrations ?? null,
+              registrationsCount: c.registrationsCount ?? 0
+            };
+          });
           setCategories(mappedCats as any);
         } else {
           setCategories(storage.getCategories(game.id));
