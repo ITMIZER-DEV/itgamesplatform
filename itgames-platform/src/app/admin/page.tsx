@@ -2094,6 +2094,15 @@ export default function AdminDashboardPage() {
                               <UserCog className="w-3 h-3 text-blue-400" />
                               <span>Editar Atletas</span>
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => setMigratingTeam(t)}
+                              className="px-2.5 py-1 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 text-[11px] font-bold flex items-center gap-1 transition-all"
+                              title="Migrar equipe para outra categoria obedecendo às regras de elegibilidade"
+                            >
+                              <ArrowRightLeft className="w-3 h-3 text-purple-400" />
+                              <span>Migrar</span>
+                            </button>
                             {t.paymentStatus === 'cancelled' ? (
                               <button
                                 onClick={() => handleCancelRegistration(t, true)}
@@ -3591,6 +3600,40 @@ export default function AdminDashboardPage() {
           gameCode={activeGame?.code || activeGame?.id || 'ITGAMES2026'}
           onClose={() => setEditingTeamAthletes(null)}
           onSuccess={(updatedTeam) => {
+            setTeams((prev) => prev.map((t) => (t.id === updatedTeam.id ? updatedTeam : t)));
+            loadData();
+          }}
+          onOpenMigrate={() => {
+            const current = editingTeamAthletes;
+            setEditingTeamAthletes(null);
+            setMigratingTeam(current);
+          }}
+        />
+      )}
+
+      {isNewRegistrationModalOpen && (
+        <AdminNewRegistrationModal
+          isOpen={isNewRegistrationModalOpen}
+          categories={categories}
+          gameCode={activeGame?.code || activeGame?.id || 'ITGAMES2026'}
+          onClose={() => setIsNewRegistrationModalOpen(false)}
+          onSuccess={(newTeam) => {
+            setIsNewRegistrationModalOpen(false);
+            setTeams((prev) => [newTeam, ...prev]);
+            loadData();
+          }}
+        />
+      )}
+
+      {migratingTeam && (
+        <MigrateCategoryModal
+          isOpen={!!migratingTeam}
+          team={migratingTeam}
+          categories={categories}
+          gameCode={activeGame?.code || activeGame?.id || 'ITGAMES2026'}
+          onClose={() => setMigratingTeam(null)}
+          onSuccess={(updatedTeam) => {
+            setMigratingTeam(null);
             setTeams((prev) => prev.map((t) => (t.id === updatedTeam.id ? updatedTeam : t)));
             loadData();
           }}
