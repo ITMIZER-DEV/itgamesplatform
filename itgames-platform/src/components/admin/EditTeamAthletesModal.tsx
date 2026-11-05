@@ -2,7 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  X, 
+  X,
+  ArrowRightLeft,
+  Search,
+  UserPlus,
+  RefreshCw, 
   User, 
   Mail, 
   Phone, 
@@ -17,7 +21,7 @@ import {
   Users
 } from 'lucide-react';
 import { TeamRegistration, Athlete } from '@/types';
-import { apiClient, ApiError } from '@/lib/api-client';
+import { apiClient, ApiError, AthleteAdminRow } from '@/lib/api-client';
 import { storage } from '@/lib/storage';
 import { toast } from 'sonner';
 
@@ -27,6 +31,7 @@ interface EditTeamAthletesModalProps {
   team: TeamRegistration | null;
   gameCode: string;
   onSuccess: (updatedTeam: TeamRegistration) => void;
+  onOpenMigrate?: () => void;
 }
 
 interface EditableAthlete {
@@ -79,12 +84,69 @@ export function EditTeamAthletesModal({
   team,
   gameCode,
   onSuccess,
+  onOpenMigrate,
 }: EditTeamAthletesModalProps) {
   const [activeAthleteIndex, setActiveAthleteIndex] = useState(0);
   const [teamName, setTeamName] = useState('');
   const [athletesList, setAthletesList] = useState<EditableAthlete[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubstitutorOpen, setIsSubstitutorOpen] = useState(false);
+  const [substituteSearchQuery, setSubstituteSearchQuery] = useState('');
+  const [subSearchResults, setSubSearchResults] = useState<AthleteAdminRow[]>([]);
+  const [isSearchingSub, setIsSearchingSub] = useState(false);
+
+  useEffect(() => {
+    if (!substituteSearchQuery.trim() || substituteSearchQuery.trim().length < 2) {
+      setSubSearchResults([]);
+      setIsSearchingSub(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsSearchingSub(true);
+      try {
+        const results = await apiClient.listAthletes(substituteSearchQuery.trim());
+        setSubSearchResults(results || []);
+      } catch {
+        setSubSearchResults([]);
+      } finally {
+        setIsSearchingSub(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [substituteSearchQuery]);
+
+  const handleSelectSubstitute = (ath: AthleteAdminRow) => {
+    let bDate = '';
+    if (ath.birthDate) {
+      try {
+        const d = new Date(ath.birthDate);
+        if (!isNaN(d.getTime())) bDate = d.toISOString().split('T')[0];
+      } catch {
+        bDate = '';
+      }
+    }
+    setAthletesList((prev) =>
+      prev.map((a, idx) => {
+        if (idx !== activeAthleteIndex) return a;
+        return {
+          ...a,
+          name: ath.name || '',
+          email: ath.email || '',
+          phone: ath.phoneNumber || '',
+          cpf: ath.cpfRaw || ath.cpfMasked || '',
+          gender: (ath.gender === 'F' ? 'F' : 'M') as 'M' | 'F',
+          birthDate: bDate,
+          tshirtSize: (TSHIRT_SIZES.includes(ath.tshirtSize as any) ? ath.tshirtSize : a.tshirtSize) as any,
+          boxOrAffiliate: ath.boxOrGym || a.boxOrAffiliate || '',
+        };
+      })
+    );
+    setIsSubstitutorOpen(false);
+    setSubstituteSearchQuery('');
+    setSubSearchResults([]);
+    toast.success(`Atleta substituído por "${ath.name}"! Salve para confirmar na governança.`);
+  };
 
   useEffect(() => {
     if (!team) return;

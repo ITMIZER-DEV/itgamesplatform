@@ -14,6 +14,9 @@ import { AddOrganizerDto } from './dto/add-organizer.dto';
 import { SetOrganizerActiveDto } from './dto/set-organizer-active.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { UpdateRegistrationAthletesDto } from './dto/update-registration-athletes.dto';
+import { AdminCreateRegistrationDto } from './dto/admin-create-registration.dto';
+import { MigrateCategoryDto } from './dto/migrate-category.dto';
+import { SubstituteAthleteDto } from './dto/substitute-athlete.dto';
 import {
   CreateCategoryDto,
   CreateGameDto,
@@ -287,6 +290,59 @@ export class EventsController {
       name: user.name,
       role: user.role.toLowerCase(),
       role_is_super_admin: user.role === UserRole.SUPER_ADMIN,
+      ip: req.ip,
+    });
+  }
+
+  @Roles(UserRole.ORGANIZER, UserRole.SUPER_ADMIN)
+  @Post(':code/admin/registrations')
+  @ApiOperation({ summary: 'Governança: registrar nova equipe/competidor diretamente pela gestão do campeonato' })
+  async adminRegisterTeam(
+    @Param('code') code: string,
+    @Body() dto: AdminCreateRegistrationDto,
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+  ) {
+    await this.access.assertCanManage(user, code);
+    return this.eventsService.adminRegisterTeam(code, dto, {
+      name: user.name,
+      role: user.role.toLowerCase(),
+      ip: req.ip,
+    });
+  }
+
+  @Roles(UserRole.ORGANIZER, UserRole.SUPER_ADMIN)
+  @Patch(':code/registrations/:regCode/category')
+  @ApiOperation({ summary: 'Governança: migrar equipe de categoria obedecendo às regras da categoria destino' })
+  async migrateRegistrationCategory(
+    @Param('code') code: string,
+    @Param('regCode') regCode: string,
+    @Body() dto: MigrateCategoryDto,
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+  ) {
+    await this.access.assertCanManage(user, code);
+    return this.eventsService.migrateRegistrationCategory(code, parseInt(regCode, 10), dto, {
+      name: user.name,
+      role: user.role.toLowerCase(),
+      ip: req.ip,
+    });
+  }
+
+  @Roles(UserRole.ORGANIZER, UserRole.SUPER_ADMIN)
+  @Post(':code/registrations/:regCode/substitute-athlete')
+  @ApiOperation({ summary: 'Governança: substituir atleta na equipe obedecendo às regras da categoria' })
+  async substituteAthlete(
+    @Param('code') code: string,
+    @Param('regCode') regCode: string,
+    @Body() dto: SubstituteAthleteDto,
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+  ) {
+    await this.access.assertCanManage(user, code);
+    return this.eventsService.substituteAthlete(code, parseInt(regCode, 10), dto, {
+      name: user.name,
+      role: user.role.toLowerCase(),
       ip: req.ip,
     });
   }

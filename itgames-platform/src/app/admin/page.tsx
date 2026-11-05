@@ -16,6 +16,8 @@ import {
   CheckCircle2, 
   XCircle,
   Download,
+  ArrowRightLeft,
+  UserPlus,
   Filter,
   Sparkles,
   TrendingUp,
@@ -58,6 +60,8 @@ import { AthletesPanel } from '@/components/admin/AthletesPanel';
 import { GameOrganizersModal } from '@/components/admin/GameOrganizersModal';
 import { BackupRestoreModal } from '@/components/admin/BackupRestoreModal';
 import { EditTeamAthletesModal } from '@/components/admin/EditTeamAthletesModal';
+import { AdminNewRegistrationModal } from '@/components/admin/AdminNewRegistrationModal';
+import { MigrateCategoryModal } from '@/components/admin/MigrateCategoryModal';
 import { toast } from 'sonner';
 import { AclGuard } from '@/components/auth/AclGuard';
 import { exportCompetitionAnalyticsExcel, exportRegistrationsCSV } from '@/lib/competition-report';
@@ -75,6 +79,8 @@ export default function AdminDashboardPage() {
   const [judges, setJudges] = useState<JudgeStaff[]>([]);
   const [selectedProofTeam, setSelectedProofTeam] = useState<TeamRegistration | null>(null);
   const [editingTeamAthletes, setEditingTeamAthletes] = useState<TeamRegistration | null>(null);
+  const [isNewRegistrationModalOpen, setIsNewRegistrationModalOpen] = useState(false);
+  const [migratingTeam, setMigratingTeam] = useState<TeamRegistration | null>(null);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
 
   // Perfil Ativo: Super Admin (Plataforma Global & Liberações) vs Organizador (Meus Campeonatos)
@@ -1923,6 +1929,15 @@ export default function AdminDashboardPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsNewRegistrationModalOpen(true)}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shadow-blue-950/40 border border-blue-400/40 cursor-pointer active:scale-95"
+                  title="Cadastrar nova equipe ou competidor diretamente pela governança"
+                >
+                  <UserPlus className="w-3.5 h-3.5 text-blue-200" />
+                  <span>+ Nova Inscrição (Governança)</span>
+                </button>
                 <button
                   type="button"
                   onClick={handleExportAnalyticExcel}

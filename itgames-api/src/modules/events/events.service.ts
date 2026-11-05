@@ -16,6 +16,9 @@ import { resolveRule } from '../scoring/rules';
 import { OfficialLockService } from '../official/official-lock.service';
 import { ruleChanged } from '../official/rule-changed';
 import { UpdateRegistrationAthletesDto } from './dto/update-registration-athletes.dto';
+import { AdminCreateRegistrationDto } from './dto/admin-create-registration.dto';
+import { MigrateCategoryDto } from './dto/migrate-category.dto';
+import { SubstituteAthleteDto } from './dto/substitute-athlete.dto';
 
 export interface CreateGameDto {
   code: string;
@@ -1373,5 +1376,341 @@ export class EventsService {
     });
 
     return { success: true, message: `Inscrição #${registrationCode} excluída` };
+  }
+
+  public assertRosterMatchesCategory(
+    category: {
+      name: string;
+      maxAthlete?: number | null;
+      genderRule?: string | null;
+      minTeamSumAge?: number | null;
+      minIndividualAge?: number | null;
+      maxIndividualAge?: number | null;
+    },
+    athletes: Array<{
+      name?: string;
+      gender?: string | null;
+      birthDate?: Date | string | null;
+    }>,
+  ) {
+    if (category.maxAthlete && athletes.length !== category.maxAthlete) {
+      throw new BadRequestException(
+        `A categoria "${category.name}" exige exatamente ${category.maxAthlete} atleta(s). Atualmente há ${athletes.length} atleta(s).`,
+      );
+    }
+
+    const currentYear = new Date().getFullYear();
+    const athleteAges = athletes.map((a) => {
+      if (!a.birthDate) return 25;
+      const birth = typeof a.birthDate === 'string' ? new Date(a.birthDate) : a.birthDate;
+      if (isNaN(birth.getTime())) return 25;
+      const today = new Date();
+      let age = today.getFullYear() - birth.getFullYear();
+      const monthDiff = today.getMonth() - birth.getMonth();
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+        age--;
+      }
+      return Math.max(0, age);
+    });
+
+    if (category.minTeamSumAge) {
+      const sumAge = athleteAges.reduce((acc, age) => acc + age, 0);
+      if (sumAge < category.minTeamSumAge) {
+        throw new BadRequestException(
+          `A soma das idades dos atletas (${sumAge} anos) não atinge o mínimo exigido de ${category.minTeamSumAge} anos para a categoria "${category.name}" (Faltam ${category.minTeamSumAge - sumAge} anos).`,
+        );
+      }
+    }
+
+    if (category.minIndividualAge) {
+      const underAgeIdx = athleteAges.findIndex((age) => age < (category.minIndividualAge as number));
+      if (underAgeIdx !== -1) {
+        const ath = athletes[underAgeIdx];
+        const age = athleteAges[underAgeIdx];
+        throw new BadRequestException(
+          `O atleta "${ath.name || `Atleta #${underAgeIdx + 1}`}" tem ${age} anos, mas a categoria "${category.name}" exige idade mínima de ${category.minIndividualAge} anos.`,
+        );
+      }
+    }
+
+    if (category.maxIndividualAge) {
+      const overAgeIdx = athleteAges.findIndex((age) => age > (category.maxIndividualAge as number));
+      if (overAgeIdx !== -1) {
+        const ath = athletes[overAgeIdx];
+        const age = athleteAges[overAgeIdx];
+        throw new BadRequestException(
+          `O atleta "${ath.name || `Atleta #${overAgeIdx + 1}`}" tem ${age} anos, mas a categoria "${category.name}" permite idade máxima de até ${category.maxIndividualAge} anos.`,
+        );
+      }
+    }
+
+    const males = athletes.filter((a) => (a.gender || 'M').toUpperCase() === 'M').length;
+    const females = athletes.filter((a) => (a.gender || '').toUpperCase() === 'F').length;
+
+    if (category.genderRule === 'male') {
+      if (females > 0) {
+        throw new BadRequestException(`A categoria "${category.name}" é exclusivamente Masculina.`);
+      }
+    } else if (category.genderRule === 'female') {
+      if (males > 0) {
+        throw new BadRequestException(`A categoria "${category.name}" é exclusivamente Feminina.`);
+      }
+    } else if (category.genderRule === 'mixed_1m_1f') {
+      if (males !== 1 || females !== 1) {
+        throw new BadRequestException(`A categoria "${category.name}" exige exatamente 1 atleta masculino e 1 atleta feminino.`);
+      }
+    } else if (category.genderRule === 'mixed_2m_2f') {
+      if (males !== 2 || females !== 2) {
+        throw new BadRequestException(`A categoria "${category.name}" exige exatamente 2 atletas masculinos e 2 femininos.`);
+      }
+    }
+  }
+
+  async adminRegisterTeam(
+    gameCode: string,
+    dto: AdminCreateRegistrationDto,
+    actor: { name: string; role: string; ip?: string },
+  ) {
+    const game = await this.prisma.game.findUnique({
+      where: { code: gameCode },
+      select: { status: true },
+    });
+    if (!game) {
+      throw new NotFoundException('Campeonato não encontrado');
+    }
+
+    const category = await this.prisma.category.findUnique({
+      where: { code_gamesId: { code: dto.categoryId, gamesId: gameCode } },
+    });
+    if (!category) {
+      throw new NotFoundException('Categoria não encontrada');
+    }
+
+    this.assertRosterMatchesCategory(category, dto.athletes);
+
+    const existingRegistrations = await this.prisma.registration.findMany({
+      where: { gameCode },
+      select: { code: true },
+    });
+    const existingCodes = new Set(existingRegistrations.map((r) => r.code));
+    const catPrefix = Number(dto.categoryId) || 1;
+    let uniqueCode = catPrefix * 1000 + Math.floor(100 + Math.random() * 900);
+    for (let attempt = 0; attempt < 1000; attempt++) {
+      const candidateCode = catPrefix * 1000 + Math.floor(100 + Math.random() * 900);
+      if (!existingCodes.has(candidateCode)) {
+        uniqueCode = candidateCode;
+        break;
+      }
+    }
+
+    const registration = await this.prisma.$transaction(async (tx) => {
+      return tx.registration.create({
+        data: {
+          code: uniqueCode,
+          gameCode,
+          categoryId: dto.categoryId,
+          team: dto.teamName.trim(),
+          amount: dto.amount !== undefined ? dto.amount : (category.amount || 0),
+          status: dto.status || 'paid',
+          number: `#${uniqueCode}`,
+          athletes: {
+            create: dto.athletes.map((a, idx) => {
+              const cleanCpf = a.cpf ? normalizeCpf(a.cpf) : null;
+              return {
+                code: idx + 1,
+                name: a.name.trim(),
+                cpf: cleanCpf,
+                email: a.email?.trim().toLowerCase() || null,
+                phonenumber: a.phoneNumber?.trim() || null,
+                category: dto.categoryId,
+                tshirtSize: a.tshirtSize?.toUpperCase() || 'M',
+                gender: a.gender?.toUpperCase() || 'M',
+                birthDate: a.birthDate ? new Date(a.birthDate) : null,
+                boxOrGym: a.boxOrGym?.trim() || null,
+              };
+            }),
+          },
+        },
+        include: { athletes: true, category: true },
+      });
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        gameCode,
+        changedBy: actor.name,
+        role: actor.role,
+        action: 'admin_create_registration',
+        oldValue: null,
+        newValue: `Inscrição #${uniqueCode} - ${dto.teamName} na categoria ${category.name}`,
+        reason: 'Inscrição registrada manualmente pela governança do campeonato',
+        ipAddress: actor.ip,
+      },
+    });
+
+    this.leaderboard.changed(gameCode);
+
+    return {
+      success: true,
+      message: 'Inscrição registrada pela governança com sucesso!',
+      registration,
+    };
+  }
+
+  async migrateRegistrationCategory(
+    gameCode: string,
+    registrationCode: number,
+    dto: MigrateCategoryDto,
+    actor: { name: string; role: string; ip?: string },
+  ) {
+    const existing = await this.prisma.registration.findUnique({
+      where: { code_gameCode: { code: registrationCode, gameCode } },
+      include: { athletes: true, category: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Inscrição #${registrationCode} não encontrada no campeonato ${gameCode}`);
+    }
+
+    if (existing.categoryId === dto.targetCategoryId) {
+      throw new BadRequestException('A equipe já está cadastrada nesta categoria.');
+    }
+
+    const targetCategory = await this.prisma.category.findUnique({
+      where: { code_gamesId: { code: dto.targetCategoryId, gamesId: gameCode } },
+    });
+
+    if (!targetCategory) {
+      throw new NotFoundException(`Categoria de destino #${dto.targetCategoryId} não encontrada neste campeonato.`);
+    }
+
+    // 1. Validar se os atletas atuais atendem às regras da categoria de destino
+    this.assertRosterMatchesCategory(targetCategory, existing.athletes);
+
+    // 2. Transação atômica para migração
+    const result = await this.prisma.$transaction(async (tx) => {
+      if (!dto.overrideLimit && existing.status !== 'cancelled') {
+        await this.lockCategory(tx, gameCode, dto.targetCategoryId);
+        await this.assertCategoryHasRoom(tx, gameCode, dto.targetCategoryId);
+      }
+
+      await tx.laneSlot.deleteMany({ where: { gameCode, teamCode: registrationCode } });
+
+      await tx.score.updateMany({
+        where: { game: gameCode, codeTeam: registrationCode },
+        data: { category: dto.targetCategoryId },
+      });
+
+      await tx.athlete.updateMany({
+        where: { game: gameCode, team: registrationCode },
+        data: { category: dto.targetCategoryId },
+      });
+
+      const updated = await tx.registration.update({
+        where: { code_gameCode: { code: registrationCode, gameCode } },
+        data: {
+          categoryId: dto.targetCategoryId,
+        },
+        include: { athletes: true, category: true },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          gameCode,
+          changedBy: actor.name,
+          role: actor.role,
+          action: 'migrate_category',
+          oldValue: `Categoria ${existing.category?.name || existing.categoryId} (#${existing.categoryId})`,
+          newValue: `Categoria ${targetCategory.name} (#${targetCategory.code})`,
+          reason: dto.reason || `Governança: Migração de categoria da inscrição #${registrationCode} (${existing.team})`,
+          ipAddress: actor.ip,
+        },
+      });
+
+      return updated;
+    });
+
+    this.leaderboard.changed(gameCode);
+    this.notifier.categoryFullIfReached(gameCode, dto.targetCategoryId);
+
+    return {
+      success: true,
+      message: `Equipe "${existing.team}" migrada com sucesso para "${targetCategory.name}"!`,
+      registration: result,
+    };
+  }
+
+  async substituteAthlete(
+    gameCode: string,
+    registrationCode: number,
+    dto: SubstituteAthleteDto,
+    actor: { name: string; role: string; ip?: string },
+  ) {
+    const existing = await this.prisma.registration.findUnique({
+      where: { code_gameCode: { code: registrationCode, gameCode } },
+      include: { athletes: true, category: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Inscrição #${registrationCode} não encontrada no campeonato ${gameCode}`);
+    }
+
+    const athleteToReplace = existing.athletes.find((a) => a.code === dto.athleteCode);
+    if (!athleteToReplace) {
+      throw new NotFoundException(`Atleta com código ${dto.athleteCode} não encontrado na equipe.`);
+    }
+
+    const simulatedRoster = existing.athletes.map((a) => {
+      if (a.code === dto.athleteCode) {
+        return {
+          name: dto.newAthlete.name.trim(),
+          gender: dto.newAthlete.gender,
+          birthDate: dto.newAthlete.birthDate ? new Date(dto.newAthlete.birthDate) : null,
+        };
+      }
+      return a;
+    });
+
+    if (existing.category) {
+      this.assertRosterMatchesCategory(existing.category, simulatedRoster);
+    }
+
+    const cleanCpf = dto.newAthlete.cpf ? normalizeCpf(dto.newAthlete.cpf) : null;
+    if (cleanCpf && !isValidCpf(cleanCpf)) {
+      throw new BadRequestException(`CPF do novo atleta é inválido: ${dto.newAthlete.cpf}`);
+    }
+
+    const updatedAthlete = await this.prisma.athlete.update({
+      where: { code_team: { code: dto.athleteCode, team: registrationCode } },
+      data: {
+        name: dto.newAthlete.name.trim(),
+        cpf: cleanCpf || null,
+        email: dto.newAthlete.email?.trim().toLowerCase() || null,
+        phonenumber: dto.newAthlete.phoneNumber?.trim() || null,
+        gender: dto.newAthlete.gender.toUpperCase(),
+        birthDate: dto.newAthlete.birthDate ? new Date(dto.newAthlete.birthDate) : null,
+        tshirtSize: dto.newAthlete.tshirtSize?.toUpperCase() || athleteToReplace.tshirtSize || 'M',
+        boxOrGym: dto.newAthlete.boxOrGym?.trim() || athleteToReplace.boxOrGym,
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        gameCode,
+        changedBy: actor.name,
+        role: actor.role,
+        action: 'substitute_athlete',
+        oldValue: `${athleteToReplace.name} (CPF: ${athleteToReplace.cpf ? maskCpf(athleteToReplace.cpf) : '—'})`,
+        newValue: `${dto.newAthlete.name.trim()} (CPF: ${cleanCpf ? maskCpf(cleanCpf) : '—'})`,
+        reason: dto.reason || `Substituição de atleta na equipe "${existing.team}" (#${registrationCode})`,
+        ipAddress: actor.ip,
+      },
+    });
+
+    return {
+      success: true,
+      message: `Atleta ${athleteToReplace.name} substituído por ${dto.newAthlete.name} com sucesso!`,
+      athlete: updatedAthlete,
+    };
   }
 }

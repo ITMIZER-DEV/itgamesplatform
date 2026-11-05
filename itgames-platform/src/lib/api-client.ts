@@ -552,6 +552,37 @@ export class ApiClient {
   }
 
 
+  async adminCreateRegistration(gameCode: string, data: any) {
+    return this.strict<any>(`/events/${gameCode}/admin/registrations`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async migrateRegistrationCategory(
+    gameCode: string,
+    regCode: number | string,
+    data: { targetCategoryId: number; reason?: string; overrideLimit?: boolean },
+  ) {
+    const cleanRegCode = String(regCode).replace(/\D/g, '');
+    return this.strict<any>(`/events/${gameCode}/registrations/${cleanRegCode}/category`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async substituteAthlete(
+    gameCode: string,
+    regCode: number | string,
+    data: { athleteCode: number; newAthlete: any; reason?: string },
+  ) {
+    const cleanRegCode = String(regCode).replace(/\D/g, '');
+    return this.strict<any>(`/events/${gameCode}/registrations/${cleanRegCode}/substitute-athlete`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   async deleteRegistration(gameCode: string, regCode: number | string) {
     const cleanRegCode = String(regCode).replace(/\D/g, '');
     return this.strict<any>(`/events/${gameCode}/registrations/${cleanRegCode}`, { method: 'DELETE' });

@@ -120,3 +120,28 @@
 - **Painel Visual de Ocupação no Painel Admin**:
   - Cards visuais em tempo real na aba *Inscrições & Financeiro* exibindo a taxa de ocupação percentual com barras de progresso dinâmicas (verde, âmbar, vermelho de esgotado), vagas livres e contagem de pagas/pendentes por categoria.
 - **Exportação Alternativa em CSV**: Suporte simultâneo para exportação em CSV estruturado com padrão brasileiro (ponto-e-vírgula `;` e BOM UTF-8).
+
+### 🛡️ Governança de Inscrições: Registro Administrativo, Substituição e Migração de Categorias (v1.6.0)
+- **Registro Direto de Equipes/Competidores pela Governança (`POST /events/:code/admin/registrations`)**:
+  - Permite que organizadores e árbitros da governança inscrevam times e competidores diretamente pelo painel administrativo (`AdminNewRegistrationModal.tsx`), sem a restrição de que o usuário logado deva ser capitão/membro da equipe.
+  - Vínculo direto de atletas já existentes no ecossistema (busca via CPF/Nome e auto-preenchimento) ou cadastro de novos atletas no ato da inscrição.
+  - Verificação dinâmica e em tempo real dos requisitos da categoria selecionada (formato individual/dupla/trio/quarteto, regras de gênero e limites de idade).
+  - Suporte resiliente a persistência via API NestJS com fallback automático em LocalStorage (`storage.saveTeam`).
+- **Substituição de Atletas com Vínculo (`POST /events/:code/registrations/:regCode/substitute-athlete`)**:
+  - Modal de edição de atletas (`EditTeamAthletesModal.tsx`) aprimorado com funcionalidade de busca e vinculação de competidores cadastrados na base.
+  - Re-validação rigorosa de conformidade do time com a categoria após a substituição (quantidade de membros, regras de gênero, idade individual mínima/máxima e soma de idades da equipe).
+  - Trilha de auditoria automática com registro de data/hora, organizador responsável e dados do atleta substituído.
+- **Migração Segura de Categoria com Validador de Regras (`PATCH /events/:code/registrations/:regCode/category`)**:
+  - Interface dedicada de migração (`MigrateCategoryModal.tsx`) com matriz de conformidade visual em tempo real comparando categoria de origem e destino:
+    - Verificação de formato e número de vagas por equipe.
+    - Validação de gênero / composição da equipe (Masculino, Feminino, Misto).
+    - Validação de idades individuais (mínima e máxima) e soma de idades do time (ex: categorias Masters).
+    - Verificação de capacidade e disponibilidade de vagas na categoria destino (bloqueio de migração caso a categoria esteja esgotada).
+  - Cálculo automático de diferença financeira entre as categorias.
+  - Execução atômica no banco de dados via transação Prisma:
+    - Atualização do código de categoria da inscrição (`registration.categoryCode`).
+    - Atualização da categoria de todos os atletas vinculados (`athlete.category`).
+    - Atualização dos registros de pontuação (`score.category`).
+    - Desassociação e liberação segura de raias/baterias anteriores (`LaneSlot`), prevenindo inconsistências de chaveamento de baterias.
+    - Registro de log de auditoria com justificativa da migração e organizador executor.
+

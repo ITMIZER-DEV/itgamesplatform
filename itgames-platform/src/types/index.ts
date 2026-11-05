@@ -72,6 +72,7 @@ export interface Category {
   minIndividualAge?: number; // Ex: 35 (Master 35+)
   maxIndividualAge?: number; // Ex: 18 (Teen até 18 anos)
   minSumTeamAge?: number;    // Ex: 110 (Time Master somando idade mínima de 110 anos)
+  minTeamSumAge?: number;    // Alias retornado pelo backend NestJS
   
   spotsTotal: number; // Limite de vagas
   spotsFilled: number;
