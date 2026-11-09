@@ -1189,7 +1189,7 @@ export class EventsService {
         changes.name = { old: athlete.name, new: athleteData.name };
       }
 
-      if (aDto.phoneNumber !== undefined && aDto.phoneNumber.trim() !== (athlete.phonenumber || '')) {
+      if (aDto.phoneNumber !== undefined && !aDto.phoneNumber.includes('*') && aDto.phoneNumber.trim() !== (athlete.phonenumber || '')) {
         athleteData.phonenumber = aDto.phoneNumber.trim();
         changes.phoneNumber = { old: athlete.phonenumber, new: athleteData.phonenumber };
       }
@@ -1226,13 +1226,15 @@ export class EventsService {
       }
 
       if (aDto.cpf !== undefined) {
-        const cleanCpf = normalizeCpf(aDto.cpf);
-        if (cleanCpf && !isValidCpf(cleanCpf)) {
-          throw new BadRequestException(`CPF informado é inválido: ${aDto.cpf}`);
-        }
-        if (cleanCpf !== athlete.cpf) {
-          athleteData.cpf = cleanCpf || null;
-          changes.cpf = { old: athlete.cpf, new: cleanCpf };
+        if (!aDto.cpf.includes('*')) {
+          const cleanCpf = normalizeCpf(aDto.cpf);
+          if (cleanCpf && !isValidCpf(cleanCpf)) {
+            throw new BadRequestException(`CPF informado é inválido: ${aDto.cpf}`);
+          }
+          if (cleanCpf !== athlete.cpf) {
+            athleteData.cpf = cleanCpf || null;
+            changes.cpf = { old: athlete.cpf, new: cleanCpf };
+          }
         }
       }
 

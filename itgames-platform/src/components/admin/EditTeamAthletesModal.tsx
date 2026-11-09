@@ -228,8 +228,9 @@ export function EditTeamAthletesModal({
       if (a.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a.email.trim())) {
         newErrors[`${idx}_email`] = 'E-mail inválido';
       }
+      const isMaskedCpf = a.cpf.includes('*');
       const rawCpf = a.cpf.replace(/\D/g, '');
-      if (rawCpf && rawCpf.length !== 11) {
+      if (rawCpf && !isMaskedCpf && rawCpf.length !== 11) {
         newErrors[`${idx}_cpf`] = 'CPF deve conter 11 dígitos';
       }
     });
@@ -252,17 +253,31 @@ export function EditTeamAthletesModal({
 
       const payload = {
         teamName: teamName.trim(),
-        athletes: athletesList.map((a) => ({
-          code: a.code,
-          name: a.name.trim(),
-          email: a.email.trim() || undefined,
-          phoneNumber: a.phone.trim() || undefined,
-          gender: a.gender,
-          cpf: a.cpf.replace(/\D/g, '') || undefined,
-          birthDate: a.birthDate || undefined,
-          tshirtSize: a.tshirtSize,
-          boxOrAffiliate: a.boxOrAffiliate.trim() || undefined,
-        })),
+        athletes: athletesList.map((a, idx) => {
+          const original = team.athletes?.[idx];
+          const hasMaskedCpf = a.cpf.includes('*');
+          const cleanCpf = a.cpf.replace(/\D/g, '');
+          const finalCpf = hasMaskedCpf
+            ? (original?.cpf && !original.cpf.includes('*') ? original.cpf.replace(/\D/g, '') : undefined)
+            : (cleanCpf || undefined);
+
+          const hasMaskedPhone = a.phone.includes('*');
+          const finalPhone = hasMaskedPhone
+            ? (original?.phone && !original.phone.includes('*') ? original.phone : undefined)
+            : (a.phone.trim() || undefined);
+
+          return {
+            code: a.code,
+            name: a.name.trim(),
+            email: a.email.trim() || undefined,
+            phoneNumber: finalPhone,
+            gender: a.gender,
+            cpf: finalCpf,
+            birthDate: a.birthDate || undefined,
+            tshirtSize: a.tshirtSize,
+            boxOrAffiliate: a.boxOrAffiliate.trim() || undefined,
+          };
+        }),
       };
 
       // Tenta salvar via API Backend
@@ -468,10 +483,26 @@ export function EditTeamAthletesModal({
                 <input
                   type="text"
                   value={currentAthlete?.phone || ''}
-                  onChange={(e) => updateCurrentAthlete('phone', formatPhone(e.target.value))}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val.includes('*')) {
+                      updateCurrentAthlete('phone', val);
+                    } else {
+                      updateCurrentAthlete('phone', formatPhone(val));
+                    }
+                  }}
                   placeholder="(11) 98765-4321"
                   className="w-full bg-zinc-950 border border-zinc-700/80 focus:border-amber-500 text-xs text-white rounded-xl px-3 py-2.5 focus:outline-none transition-colors"
                 />
+                {currentAthlete?.phone?.includes('*') && (
+                  <button
+                    type="button"
+                    onClick={() => updateCurrentAthlete('phone', '')}
+                    className="text-[10px] text-amber-400 hover:text-amber-300 font-bold underline transition-colors cursor-pointer block"
+                  >
+                    Clique para redigitar telefone completo
+                  </button>
+                )}
               </div>
 
               {/* CPF */}
@@ -483,12 +514,28 @@ export function EditTeamAthletesModal({
                 <input
                   type="text"
                   value={currentAthlete?.cpf || ''}
-                  onChange={(e) => updateCurrentAthlete('cpf', formatCpf(e.target.value))}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val.includes('*')) {
+                      updateCurrentAthlete('cpf', val);
+                    } else {
+                      updateCurrentAthlete('cpf', formatCpf(val));
+                    }
+                  }}
                   placeholder="000.000.000-00"
                   className={`w-full bg-zinc-950 border ${
                     errors[`${activeAthleteIndex}_cpf`] ? 'border-rose-500' : 'border-zinc-700/80'
                   } focus:border-amber-500 text-xs text-white rounded-xl px-3 py-2.5 focus:outline-none transition-colors`}
                 />
+                {currentAthlete?.cpf?.includes('*') && (
+                  <button
+                    type="button"
+                    onClick={() => updateCurrentAthlete('cpf', '')}
+                    className="text-[10px] text-amber-400 hover:text-amber-300 font-bold underline transition-colors cursor-pointer block"
+                  >
+                    Clique para redigitar CPF completo
+                  </button>
+                )}
                 {errors[`${activeAthleteIndex}_cpf`] && (
                   <span className="text-[10px] text-rose-400 flex items-center gap-1">
                     <AlertCircle className="w-3 h-3" />

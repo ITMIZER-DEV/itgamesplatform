@@ -145,3 +145,16 @@
     - Desassociação e liberação segura de raias/baterias anteriores (`LaneSlot`), prevenindo inconsistências de chaveamento de baterias.
     - Registro de log de auditoria com justificativa da migração e organizador executor.
 
+### 🔓 Acesso Desmascarado para Governança & Edição Resiliente de Atletas (v1.6.1)
+- **Desmascaramento de Dados para a Governança no Backend (`LgpdMaskInterceptor`)**:
+  - Ajuste no interceptor global LGPD do NestJS para verificar o papel do usuário autenticado (`req.user.role`).
+  - Usuários com papéis de governança (`SUPER_ADMIN`, `ORGANIZER`) agora recebem os dados cadastrais completos e desmascarados (CPF real de 11 dígitos, telefone/WhatsApp completo e dados de kit), viabilizando conferência documental, pesagem e edição oficial sem bloqueios.
+  - O mascaramento LGPD permanece 100% ativo para rotas públicas e usuários não autorizados.
+  - Atualização na função `presentAthlete` (`users.service.ts`) para expor o campo `cpf` completo na busca administrativa de atletas.
+- **Edição e Validação Resiliente no Frontend (`EditTeamAthletesModal.tsx`)**:
+  - Validação de CPF aprimorada para não travar com *"CPF deve conter 11 dígitos"* caso o registro contenha asteriscos ou formatação legada.
+  - Suporte à edição parcial: se o organizador alterar apenas tamanho de camiseta, nome, gênero ou box, o CPF e telefone existentes são preservados integralmente sem perda de dados.
+  - Adicionado botão de atalho para redigitar CPF ou telefone completo diretamente no modal.
+  - No backend (`updateRegistrationAthletes`), adicionada salvaguarda que ignora valores com `*`, assegurando que o CPF real gravado no PostgreSQL jamais seja sobrescrito por strings mascaradas.
+
+

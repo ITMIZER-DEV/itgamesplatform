@@ -1,6 +1,7 @@
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
+import { UserRole } from '../enums/role.enum';
 
 function maskCpf(cpf?: string): string {
   if (!cpf) return '***.***.***-**';
@@ -46,6 +47,15 @@ function sanitizeData(data: any): any {
 @Injectable()
 export class LgpdMaskInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+    const req = context.switchToHttp().getRequest();
+    const role = req?.user?.role;
+
+    // Governança (SUPER_ADMIN, ORGANIZER) tem prerrogativa legal e operacional
+    // de visualizar dados cadastrais completos (CPF, telefone, kit) para gestão do campeonato
+    if (role === UserRole.SUPER_ADMIN || role === UserRole.ORGANIZER || role === 'SUPER_ADMIN' || role === 'ORGANIZER') {
+      return next.handle();
+    }
+
     return next.handle().pipe(
       map(data => sanitizeData(data)),
     );

@@ -41,6 +41,7 @@ function presentAthlete<T extends { cpf: string | null; athleteProfile?: any }>(
   const { cpf, athleteProfile, ...rest } = user;
   return {
     ...rest,
+    cpf: cpf || null,
     cpfMasked: cpf ? maskCpf(cpf) : null,
     cpfRaw: cpf,
     gender: athleteProfile?.gender || null,
