@@ -30,6 +30,7 @@ import { useGames } from '@/lib/use-games';
 import { GameEvent, Category, WorkoutRule, TeamRegistration, Heat, ScoreEntry, JudgeStaff } from '@/types';
 import { formatSecondsToTime } from '@/lib/scoring';
 import { apiClient, ApiError } from '@/lib/api-client';
+import { sortWorkoutsNaturally } from '@/lib/board';
 import { toast } from 'sonner';
 import { AclGuard } from '@/components/auth/AclGuard';
 
@@ -51,6 +52,7 @@ export default function JudgeAppPage() {
   const [teams, setTeams] = useState<TeamRegistration[]>([]);
 
   // Seleções do Juiz
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string>('');
   const [selectedHeatNumber, setSelectedHeatNumber] = useState<number>(1);
   const [selectedLaneNumber, setSelectedLaneNumber] = useState<number>(1);
@@ -113,8 +115,17 @@ export default function JudgeAppPage() {
           }
         }
 
-        if (wods.length > 0 && !selectedWorkoutId) {
-          setSelectedWorkoutId(wods[0].id);
+        if (cats.length > 0 && !selectedCategoryId) {
+          const firstCat = cats[0];
+          setSelectedCategoryId(firstCat.id);
+          const firstWods = sortWorkoutsNaturally(
+            wods.filter(w => !w.categoryId || w.categoryId === firstCat.id || w.categoryIds?.includes(firstCat.id))
+          );
+          if (firstWods.length > 0 && !selectedWorkoutId) {
+            setSelectedWorkoutId(firstWods[0].id);
+          }
+        } else if (wods.length > 0 && !selectedWorkoutId) {
+          setSelectedWorkoutId(sortWorkoutsNaturally(wods)[0].id);
         }
       }
     };
@@ -139,12 +150,28 @@ export default function JudgeAppPage() {
     };
   }, [isTimerRunning]);
 
-  const currentWorkout = workouts.find(w => w.id === selectedWorkoutId) || workouts[0];
-  const currentHeat = heats.find(
-    h => h.workoutId === currentWorkout?.id && h.heatNumber === Number(selectedHeatNumber)
+  const activeCategory = categories.find(c => c.id === selectedCategoryId) || categories[0];
+  const categoryWorkouts = sortWorkoutsNaturally(
+    workouts.filter(
+      w => !activeCategory || !w.categoryId || w.categoryId === activeCategory.id || w.categoryIds?.includes(activeCategory.id)
+    )
   );
+  const currentWorkout = categoryWorkouts.find(w => w.id === selectedWorkoutId) || categoryWorkouts[0] || workouts[0];
+  const workoutHeats = heats.filter(
+    h => h.workoutId === currentWorkout?.id && (!activeCategory || !h.categoryId || h.categoryId === activeCategory.id)
+  );
+  const currentHeat = workoutHeats.find(h => h.heatNumber === Number(selectedHeatNumber)) || workoutHeats[0];
   const laneAssignment = currentHeat?.laneAssignments.find(l => l.lane === Number(selectedLaneNumber));
   const currentTeam = teams.find(t => t.id === laneAssignment?.registrationId);
+
+  const handleSelectCategory = (catId: string) => {
+    setSelectedCategoryId(catId);
+    const nextWods = sortWorkoutsNaturally(
+      workouts.filter(w => !w.categoryId || w.categoryId === catId || w.categoryIds?.includes(catId))
+    );
+    setSelectedWorkoutId(nextWods[0]?.id || '');
+    setSelectedHeatNumber(1);
+  };
 
   // Manipulação de Foto da Súmula
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -338,17 +365,35 @@ export default function JudgeAppPage() {
       </div>
 
       {/* SELETOR DE POSTO DO JUIZ */}
-      <div className="glass-panel rounded-2xl p-4 border border-zinc-800 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="glass-panel rounded-2xl p-4 border border-zinc-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <div>
           <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">
-            Workout / Prova
+            1. Categoria
           </label>
           <select
-            value={selectedWorkoutId}
-            onChange={(e) => setSelectedWorkoutId(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-semibold text-white focus:outline-none focus:border-red-500"
+            value={activeCategory?.id || ''}
+            onChange={(e) => handleSelectCategory(e.target.value)}
+            className="w-full px-3 py-2.5 min-h-[42px] rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-semibold text-white focus:outline-none focus:border-red-500"
           >
-            {workouts.map(w => (
+            {categories.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">
+            2. Workout / Prova
+          </label>
+          <select
+            value={currentWorkout?.id || ''}
+            onChange={(e) => {
+              setSelectedWorkoutId(e.target.value);
+              setSelectedHeatNumber(1);
+            }}
+            className="w-full px-3 py-2.5 min-h-[42px] rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-semibold text-white focus:outline-none focus:border-red-500"
+          >
+            {categoryWorkouts.map(w => (
               <option key={w.id} value={w.id}>{w.title}</option>
             ))}
           </select>
@@ -356,15 +401,15 @@ export default function JudgeAppPage() {
 
         <div>
           <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">
-            Bateria (Heat)
+            3. Bateria (Heat)
           </label>
           <select
             value={selectedHeatNumber}
             onChange={(e) => setSelectedHeatNumber(Number(e.target.value))}
-            className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-semibold text-white focus:outline-none focus:border-red-500"
+            className="w-full px-3 py-2.5 min-h-[42px] rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-semibold text-white focus:outline-none focus:border-red-500"
           >
-            {heats.filter(h => h.workoutId === currentWorkout?.id).length > 0 ? (
-              heats.filter(h => h.workoutId === currentWorkout?.id).map(h => (
+            {workoutHeats.length > 0 ? (
+              workoutHeats.map(h => (
                 <option key={h.id} value={h.heatNumber}>
                   Bateria #{h.heatNumber} ({h.startTime})
                 </option>
@@ -381,12 +426,12 @@ export default function JudgeAppPage() {
 
         <div>
           <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">
-            Minha Raia (Lane)
+            4. Minha Raia (Lane)
           </label>
           <select
             value={selectedLaneNumber}
             onChange={(e) => setSelectedLaneNumber(Number(e.target.value))}
-            className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-semibold text-white focus:outline-none focus:border-red-500"
+            className="w-full px-3 py-2.5 min-h-[42px] rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-semibold text-white focus:outline-none focus:border-red-500"
           >
             {Array.from({ length: 8 }, (_, i) => i + 1).map(lane => (
               <option key={lane} value={lane}>Raia #{lane}</option>
@@ -494,20 +539,29 @@ export default function JudgeAppPage() {
             <div className="text-5xl font-black text-emerald-400">{repsCount}</div>
             <div className="grid grid-cols-3 gap-2">
               <button
-                onClick={() => setRepsCount(prev => Math.max(0, prev - 1))}
-                className="py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-black text-lg active:scale-95"
+                onClick={() => {
+                  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') navigator.vibrate(25);
+                  setRepsCount(prev => Math.max(0, prev - 1));
+                }}
+                className="py-5 sm:py-3 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-black text-xl active:scale-95 min-h-[56px]"
               >
                 -1
               </button>
               <button
-                onClick={() => setRepsCount(prev => prev + 1)}
-                className="py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-lg active:scale-95 shadow-lg shadow-emerald-500/20"
+                onClick={() => {
+                  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') navigator.vibrate(35);
+                  setRepsCount(prev => prev + 1);
+                }}
+                className="py-5 sm:py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-2xl sm:text-xl active:scale-95 shadow-lg shadow-emerald-500/20 min-h-[56px]"
               >
                 +1
               </button>
               <button
-                onClick={() => setRepsCount(prev => prev + 5)}
-                className="py-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-black text-lg active:scale-95"
+                onClick={() => {
+                  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') navigator.vibrate([30, 30, 30]);
+                  setRepsCount(prev => prev + 5);
+                }}
+                className="py-5 sm:py-3 rounded-2xl bg-emerald-700 hover:bg-emerald-600 text-white font-black text-xl active:scale-95 min-h-[56px]"
               >
                 +5
               </button>
@@ -519,18 +573,22 @@ export default function JudgeAppPage() {
             <div className="text-5xl font-black text-red-500">{noRepsCount}</div>
             <div className="flex items-center justify-center gap-2">
               <button
-                onClick={() => setIsNoRepModalOpen(true)}
-                className="flex-1 py-3 rounded-xl bg-red-600/90 hover:bg-red-600 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-500/20 active:scale-95"
+                onClick={() => {
+                  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') navigator.vibrate([60, 40, 60]);
+                  setIsNoRepModalOpen(true);
+                }}
+                className="flex-1 py-4 sm:py-3 rounded-2xl bg-red-600/90 hover:bg-red-600 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-500/20 active:scale-95 min-h-[52px]"
               >
                 <AlertTriangle className="w-4 h-4" />
                 <span>NO-REP (+1 Motivo)</span>
               </button>
               <button
                 onClick={() => {
+                  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') navigator.vibrate(45);
                   setPenaltySeconds(prev => prev + 5);
                   toast.info('+5s de penalidade adicionada');
                 }}
-                className="py-3 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-bold text-xs"
+                className="py-4 sm:py-3 px-4 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-bold text-xs min-h-[52px]"
               >
                 +{penaltySeconds}s Penalidade
               </button>

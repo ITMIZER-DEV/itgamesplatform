@@ -22,6 +22,7 @@ import { Category, WorkoutRule, TeamRegistration, Heat } from '@/types';
 import { apiClient, ApiError } from '@/lib/api-client';
 import { useGames } from '@/lib/use-games';
 import { mapCategory, mapHeat, mapRegistration, mapWorkout } from '@/lib/arena-data';
+import { parseWodTitle, sortWorkoutsNaturally } from '@/lib/board';
 import { toast } from 'sonner';
 import { AclGuard } from '@/components/auth/AclGuard';
 
@@ -59,12 +60,13 @@ export default function HeatsPage() {
   const [pickedWorkoutId, setSelectedWorkoutId] = useState<string>('');
   const currentCategory = categories.find((c) => c.id === pickedCategoryId) || categories[0];
   const selectedCategoryId = currentCategory?.id ?? '';
-  const workouts = allWorkouts.filter((w) => w.categoryId === selectedCategoryId);
+  const workouts = sortWorkoutsNaturally(allWorkouts.filter((w) => w.categoryId === selectedCategoryId));
   const currentWorkout = workouts.find((w) => w.id === pickedWorkoutId) || workouts[0];
   const selectedWorkoutId = currentWorkout?.id ?? '';
 
   // Gerador
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [generateScope, setGenerateScope] = useState<'single_wod' | 'category_all_wods' | 'game_all'>('category_all_wods');
   const [totalLanes, setTotalLanes] = useState(8);
   const [startHour, setStartHour] = useState('09:00');
   const [intervalMinutes, setIntervalMinutes] = useState(15);
@@ -154,30 +156,81 @@ export default function HeatsPage() {
       toast.error('Apenas o organizador do campeonato pode gerar baterias.');
       return;
     }
+    if (activeGame?.lanesCount && activeGame.lanesCount > 0) {
+      setTotalLanes(activeGame.lanesCount);
+    }
     setIsModalOpen(true);
   };
 
+  const addMinutesToHour = (baseTime: string, addMinutes: number): string => {
+    const [hStr, mStr] = (baseTime || '09:00').split(':');
+    const total = (Number(hStr) || 9) * 60 + (Number(mStr) || 0) + addMinutes;
+    const norm = ((total % 1440) + 1440) % 1440;
+    const hh = String(Math.floor(norm / 60)).padStart(2, '0');
+    const mm = String(norm % 60).padStart(2, '0');
+    return `${hh}:${mm}`;
+  };
+
   const handleGenerateHeats = async () => {
-    if (isGenerating || !activeGame || !currentWorkout || !currentCategory) return;
+    if (isGenerating || !activeGame) return;
+    if (generateScope === 'single_wod' && (!currentWorkout || !currentCategory)) return;
+    if (generateScope === 'category_all_wods' && (!currentCategory || workouts.length === 0)) return;
+    if (generateScope === 'game_all' && (categories.length === 0 || allWorkouts.length === 0)) return;
+
     setIsGenerating(true);
     try {
-      const res = await apiClient.generateHeats({
-        gameCode: activeGame.code,
-        categoryId: Number(currentCategory.id),
-        workoutCode: Number(currentWorkout.id),
-        totalLanes,
-        startHour,
-        intervalMinutes,
-        isFinalSeeding,
-      });
-      if (!res?.success) {
-        // ex.: nenhuma equipe inscrita nesta categoria
-        toast.error(res?.message || 'Não foi possível gerar as baterias.');
+      const targets: { categoryId: string; workoutId: string }[] = [];
+
+      if (generateScope === 'single_wod' && currentCategory && currentWorkout) {
+        targets.push({ categoryId: currentCategory.id, workoutId: currentWorkout.id });
+      } else if (generateScope === 'category_all_wods' && currentCategory) {
+        workouts.forEach((w) => targets.push({ categoryId: currentCategory.id, workoutId: w.id }));
+      } else {
+        categories.forEach((cat) => {
+          const catWods = sortWorkoutsNaturally(allWorkouts.filter((w) => w.categoryId === cat.id));
+          catWods.forEach((w) => targets.push({ categoryId: cat.id, workoutId: w.id }));
+        });
+      }
+
+      let generatedWorkouts = 0;
+      let totalHeatsCreated = 0;
+      let minuteOffset = 0;
+      const warnings: string[] = [];
+
+      for (const target of targets) {
+        const res = await apiClient.generateHeats({
+          gameCode: activeGame.code,
+          categoryId: Number(target.categoryId),
+          workoutCode: Number(target.workoutId),
+          totalLanes,
+          startHour: addMinutesToHour(startHour, minuteOffset),
+          intervalMinutes,
+          isFinalSeeding,
+        });
+        if (res?.success) {
+          generatedWorkouts += 1;
+          const count = Number(res.totalHeats) || 0;
+          totalHeatsCreated += count;
+          minuteOffset += Math.max(count, 1) * intervalMinutes;
+        } else if (res?.message) {
+          warnings.push(res.message);
+        }
+      }
+
+      if (generatedWorkouts === 0) {
+        toast.error(warnings[0] || 'Não foi possível gerar as baterias.');
         return;
       }
+
       setIsModalOpen(false);
       reload();
-      toast.success(`${res.totalHeats} baterias geradas com sucesso para ${categoryTeams.length} atletas!`);
+      if (generateScope === 'single_wod') {
+        toast.success(`${totalHeatsCreated} baterias geradas com sucesso para ${categoryTeams.length} equipes!`);
+      } else {
+        toast.success(
+          `${totalHeatsCreated} baterias geradas em ${generatedWorkouts} WOD(s)${warnings.length > 0 ? ` (${warnings.length} categoria(s) sem inscritos)` : ''}!`,
+        );
+      }
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Não foi possível gerar as baterias.');
     } finally {
@@ -251,10 +304,10 @@ export default function HeatsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto">
           <button
             onClick={() => window.print()}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold text-xs border border-zinc-700 transition-colors"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold text-xs border border-zinc-700 transition-colors"
           >
             <Printer className="w-4 h-4 text-blue-400" />
             <span>Imprimir Quadro</span>
@@ -262,7 +315,7 @@ export default function HeatsPage() {
 
           <button
             onClick={openGenerator}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-blue-500/20 transition-transform active:scale-95"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 min-h-[44px] rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-blue-500/20 transition-transform active:scale-95"
           >
             <Sparkles className="w-4 h-4" />
             <span>GERAR BATERIAS AUTOMÁTICAS</span>
@@ -311,40 +364,118 @@ export default function HeatsPage() {
         </div>
       )}
 
-      {/* FILTROS DE CATEGORIA E WORKOUT */}
-      <div className="glass-panel rounded-2xl p-4 border border-zinc-800 flex flex-wrap items-center gap-4 no-print">
-        <div className="flex-1 min-w-[200px]">
-          <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">
-            Categoria
-          </label>
-          <select
-            value={selectedCategoryId}
-            onChange={(e) => setSelectedCategoryId(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-medium text-white focus:outline-none focus:border-blue-500"
-          >
-            {categories.map(cat => (
-              <option key={cat.id} value={cat.id}>{cat.name}</option>
-            ))}
-          </select>
-        </div>
+      {/* FILTROS FLUIDOS POR CATEGORIA E WORKOUT */}
+      <div className="glass-panel rounded-2xl p-4 sm:p-5 border border-zinc-800 space-y-4 no-print">
+        {/* Nível 1: Abas rápidas de Categoria */}
+        {categories.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+                1. Categoria
+              </span>
+              <span className="text-xs text-zinc-400 font-medium">
+                Equipes: <strong className="text-white">{categoryTeams.length}</strong> | Baterias: <strong className="text-blue-400">{filteredHeats.length}</strong>
+              </span>
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap">
+              {categories.map((cat) => {
+                const isCatActive = cat.id === selectedCategoryId;
+                const catWodCount = allWorkouts.filter((w) => w.categoryId === cat.id).length;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategoryId(cat.id);
+                      setSelectedWorkoutId('');
+                    }}
+                    className={`shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold border transition-colors min-h-[40px] flex items-center gap-2 ${
+                      isCatActive
+                        ? 'bg-blue-600 text-white border-blue-500 shadow-sm shadow-blue-500/20'
+                        : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-blue-500/60'
+                    }`}
+                  >
+                    <span>{cat.name}</span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-black ${
+                        isCatActive ? 'bg-black/25 text-white' : 'bg-zinc-800 text-zinc-400'
+                      }`}
+                    >
+                      {catWodCount} WODs
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
-        <div className="flex-1 min-w-[200px]">
-          <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">
-            Workout / Prova
-          </label>
-          <select
-            value={selectedWorkoutId}
-            onChange={(e) => setSelectedWorkoutId(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-medium text-white focus:outline-none focus:border-blue-500"
-          >
-            {workouts.map(wod => (
-              <option key={wod.id} value={wod.id}>{wod.title}</option>
-            ))}
-          </select>
-        </div>
+        {/* Nível 2: Pílulas rápidas de WOD da Categoria Selecionada */}
+        {workouts.length > 0 && (
+          <div className="space-y-1.5">
+            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block">
+              2. Prova / WOD ({currentCategory?.name})
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              {workouts.map((wod, idx) => {
+                const isWodActive = wod.id === selectedWorkoutId;
+                const { shortTitle, subtitle } = parseWodTitle(wod.title, idx);
+                return (
+                  <button
+                    key={wod.id}
+                    type="button"
+                    onClick={() => setSelectedWorkoutId(wod.id)}
+                    className={`p-2.5 rounded-xl text-left border transition-all min-h-[54px] flex flex-col justify-center ${
+                      isWodActive
+                        ? 'bg-amber-500 text-black border-amber-500 shadow-sm'
+                        : 'bg-zinc-900 text-zinc-200 border-zinc-800 hover:border-amber-500/50'
+                    }`}
+                  >
+                    <span className="text-xs font-black">{shortTitle}</span>
+                    <span className={`text-[11px] font-semibold truncate ${isWodActive ? 'text-black/80' : 'text-zinc-400'}`}>
+                      {subtitle || wod.title}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
-        <div className="pt-5 text-xs text-zinc-400 font-medium">
-          Total de Atletas: <strong className="text-white">{categoryTeams.length}</strong> | Baterias: <strong className="text-blue-400">{filteredHeats.length}</strong>
+        {/* Fallback selects acessíveis */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-zinc-800/70">
+          <div>
+            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider block mb-1">
+              Seleção direta — Categoria
+            </label>
+            <select
+              value={selectedCategoryId}
+              onChange={(e) => {
+                setSelectedCategoryId(e.target.value);
+                setSelectedWorkoutId('');
+              }}
+              className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-medium text-white focus:outline-none focus:border-blue-500"
+            >
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider block mb-1">
+              Seleção direta — Workout / Prova
+            </label>
+            <select
+              value={selectedWorkoutId}
+              onChange={(e) => setSelectedWorkoutId(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-medium text-white focus:outline-none focus:border-blue-500"
+            >
+              {workouts.map(wod => (
+                <option key={wod.id} value={wod.id}>{wod.title}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -508,6 +639,65 @@ export default function HeatsPage() {
             </div>
 
             <div className="space-y-4 text-xs">
+              <div>
+                <label className="text-zinc-300 font-semibold block mb-1.5">
+                  Escopo da Geração Automática:
+                </label>
+                <div className="grid grid-cols-1 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setGenerateScope('category_all_wods')}
+                    className={`p-2.5 rounded-xl border text-left transition-colors flex items-center justify-between ${
+                      generateScope === 'category_all_wods'
+                        ? 'bg-blue-600/20 border-blue-500 text-white'
+                        : 'bg-zinc-800/60 border-zinc-700 text-zinc-300 hover:border-zinc-600'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-bold">Toda a Categoria Atual ({currentCategory?.name})</div>
+                      <div className="text-[11px] text-zinc-400">
+                        Gera baterias em sequência para todos os {workouts.length} WODs desta categoria
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded bg-blue-500/20 text-blue-300">
+                      Recomendado
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setGenerateScope('game_all')}
+                    className={`p-2.5 rounded-xl border text-left transition-colors flex items-center justify-between ${
+                      generateScope === 'game_all'
+                        ? 'bg-amber-500/20 border-amber-500 text-white'
+                        : 'bg-zinc-800/60 border-zinc-700 text-zinc-300 hover:border-zinc-600'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-bold">Campeonato Inteiro ({categories.length} categorias)</div>
+                      <div className="text-[11px] text-zinc-400">
+                        Distribui todas as categorias em {allWorkouts.length} provas com cronograma contínuo
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setGenerateScope('single_wod')}
+                    className={`p-2.5 rounded-xl border text-left transition-colors ${
+                      generateScope === 'single_wod'
+                        ? 'bg-blue-600/20 border-blue-500 text-white'
+                        : 'bg-zinc-800/60 border-zinc-700 text-zinc-300 hover:border-zinc-600'
+                    }`}
+                  >
+                    <div className="font-bold">Apenas este WOD ({currentWorkout?.title || 'WOD atual'})</div>
+                    <div className="text-[11px] text-zinc-400">
+                      Regera somente a prova atualmente selecionada acima
+                    </div>
+                  </button>
+                </div>
+              </div>
+
               <div>
                 <label className="text-zinc-300 font-semibold block mb-1">
                   1. Quantidade de Raias Disponíveis na Arena:

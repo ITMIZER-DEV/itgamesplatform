@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toLeaderboardRanks, chooseBoardGameCode, BoardResponse } from '../board';
+import { toLeaderboardRanks, chooseBoardGameCode, parseWodTitle, BoardResponse } from '../board';
 
 type Category = BoardResponse['categories'][number];
 
@@ -105,5 +105,34 @@ describe('chooseBoardGameCode', () => {
   it('código desconhecido cai para o próximo critério', () => {
     expect(chooseBoardGameCode(games, { requested: 'X', fromUrl: 'Y', stored: 'B' })).toBe('B');
     expect(chooseBoardGameCode(games, { requested: 'X' })).toBe('A');
+  });
+});
+
+describe('parseWodTitle', () => {
+  it('separa títulos compostos com em-dash para WOD 1-A e subtítulo', () => {
+    const res = parseWodTitle('WOD 1-A — 800m ROW', 0);
+    expect(res.shortTitle).toBe('WOD 1-A');
+    expect(res.subtitle).toBe('800m ROW');
+  });
+
+  it('separa títulos compostos para WOD 1-B e WOD 2', () => {
+    const resB = parseWodTitle('WOD 1-B — DEATH BY', 1);
+    expect(resB.shortTitle).toBe('WOD 1-B');
+    expect(resB.subtitle).toBe('DEATH BY');
+
+    const res2 = parseWodTitle('WOD 2 — SYNC & BURN', 2);
+    expect(res2.shortTitle).toBe('WOD 2');
+    expect(res2.subtitle).toBe('SYNC & BURN');
+  });
+
+  it('lida com títulos simples sem subtítulo', () => {
+    const res = parseWodTitle('WOD 3', 2);
+    expect(res.shortTitle).toBe('WOD 3');
+    expect(res.subtitle).toBeUndefined();
+  });
+
+  it('usa fallback em títulos nulos ou vazios', () => {
+    expect(parseWodTitle('', 0)).toEqual({ shortTitle: 'WOD 1' });
+    expect(parseWodTitle(null, 1)).toEqual({ shortTitle: 'WOD 2' });
   });
 });

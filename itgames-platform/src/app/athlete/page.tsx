@@ -494,8 +494,8 @@ export default function AthletePortalPage() {
           </div>
         </div>
 
-        {/* NAVEGAÇÃO POR ABAS DO PORTAL */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800/80 pb-2">
+        {/* NAVEGAÇÃO POR ABAS DO PORTAL (RESPONSIVA MOBILE) */}
+        <div className="flex overflow-x-auto no-scrollbar sm:flex-wrap items-center gap-2 border-b border-zinc-800/80 pb-2 w-full [&>*]:shrink-0 [&>*]:whitespace-nowrap">
           <button
             onClick={() => setActiveTab('credential')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${

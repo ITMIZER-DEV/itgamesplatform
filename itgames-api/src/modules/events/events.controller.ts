@@ -13,6 +13,7 @@ import { BoardService } from '../scoring/board.service';
 import { AddOrganizerDto } from './dto/add-organizer.dto';
 import { SetOrganizerActiveDto } from './dto/set-organizer-active.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
+import { UpdateRegistrationLockDto } from './dto/update-registration-lock.dto';
 import { UpdateRegistrationAthletesDto } from './dto/update-registration-athletes.dto';
 import { AdminCreateRegistrationDto } from './dto/admin-create-registration.dto';
 import { MigrateCategoryDto } from './dto/migrate-category.dto';
@@ -116,6 +117,18 @@ export class EventsController {
   @ApiOperation({ summary: 'Super Admin: excluir campeonato em cascata' })
   async deleteGame(@Param('code') code: string) {
     return this.eventsService.deleteGameCascade(code);
+  }
+
+  @Roles(UserRole.ORGANIZER)
+  @Patch(':code/registration-lock')
+  @ApiOperation({ summary: 'Organizador / Super Admin: bloquear ou liberar inscrições por flag manual ou janela de datas' })
+  async updateRegistrationLock(
+    @Param('code') code: string,
+    @Body() dto: UpdateRegistrationLockDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    await this.access.assertCanManage(user, code);
+    return this.eventsService.updateRegistrationLock(code, dto);
   }
 
   // 2. Organizadores do campeonato

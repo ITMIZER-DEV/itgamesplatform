@@ -21,7 +21,7 @@ export default function RootLayout({
       </head>
       <body className="bg-[var(--background)] text-[var(--foreground)] min-h-screen flex flex-col antialiased selection:bg-amber-500 selection:text-black">
         <Navbar />
-        <main className="flex-1">
+        <main className="flex-1 pb-24 lg:pb-0">
           {children}
         </main>
         <footer className="border-t border-zinc-800/80 py-6 text-center text-xs text-zinc-500 no-print">

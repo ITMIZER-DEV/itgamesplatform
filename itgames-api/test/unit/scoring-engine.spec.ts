@@ -288,4 +288,13 @@ describe.each(['points_table', 'rank_sum', 'total_time'])('computeBoard — dese
     const none = fixtureC(mode, 'split:Wall Balls');
     expect(ranks(none)).toEqual([1, 1, 1]);
   });
+
+  it('best_ranks (Summer Games): compara sucessivamente as melhores colocações (1º, 2º, 3º...) e desempata na última prova', () => {
+    // Equipe 1: [1º, 2º] -> melhores colocações [1, 2]
+    // Equipe 2: [2º, 1º] -> melhores colocações [1, 2] (idênticas; última prova define: Equipe 2 venceu a última prova, fica à frente)
+    // Equipe 3: [2º, 2º] -> melhores colocações [2, 2] (perde no 1º lugar)
+    const input = fixtureC(mode, 'best_ranks');
+    expect(order(input)).toEqual([3, 1, 2]);
+    expect(ranks(input)).toEqual([1, 2, 3]);
+  });
 });

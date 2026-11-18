@@ -137,6 +137,11 @@ class DataStorage {
     this.setItem(STORAGE_KEYS.CATEGORIES, list);
   }
 
+  public setCategoriesForGame(gameId: string, categories: Category[]): void {
+    const others = this.getCategories().filter(c => c.gameId !== gameId);
+    this.setItem(STORAGE_KEYS.CATEGORIES, [...others, ...categories]);
+  }
+
   // Workouts
   public getWorkouts(gameId?: string): WorkoutRule[] {
     const list = this.getItem<WorkoutRule[]>(STORAGE_KEYS.WORKOUTS, []);
@@ -181,6 +186,20 @@ class DataStorage {
     this.setItem(STORAGE_KEYS.TEAMS, list);
   }
 
+  public setTeamsForGame(gameId: string, teams: TeamRegistration[]): void {
+    const others = this.getTeams().filter(t => t.gameId !== gameId);
+    this.setItem(STORAGE_KEYS.TEAMS, [...others, ...teams]);
+  }
+
+  public clearGameCache(gameId: string): void {
+    this.setTeamsForGame(gameId, []);
+    this.setCategoriesForGame(gameId, []);
+    const otherWorkouts = this.getWorkouts().filter(w => w.gameId !== gameId);
+    this.setItem(STORAGE_KEYS.WORKOUTS, otherWorkouts);
+    const otherScores = this.getScores().filter(s => s.gameId !== gameId);
+    this.setItem(STORAGE_KEYS.SCORES, otherScores);
+  }
+
   // Scores
   public getScores(gameId?: string): ScoreEntry[] {
     const list = this.getItem<ScoreEntry[]>(STORAGE_KEYS.SCORES, []);
@@ -219,6 +238,35 @@ class DataStorage {
       reason: reason || (isNew ? 'Lançamento de score de campo' : 'Retificação / Auditoria de pontuação'),
       timestamp: new Date().toISOString(),
       ipOrDevice: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 40) : 'Sistema Central'
+    });
+  }
+
+  public saveBatchScores(updatedScores: ScoreEntry[], actorName: string = 'Head Judge Oficial', reason?: string): void {
+    if (!this.isBrowser() || updatedScores.length === 0) return;
+    const list = this.getScores();
+    const byId = new Map(updatedScores.map((s) => [s.id, s]));
+    const merged = list.map((existing) => byId.get(existing.id) ?? existing);
+    for (const s of updatedScores) {
+      if (!list.some((existing) => existing.id === s.id)) {
+        merged.push(s);
+      }
+    }
+    this.setItem(STORAGE_KEYS.SCORES, merged);
+
+    const sample = updatedScores[0];
+    this.addAuditLog({
+      id: `audit_batch_${Date.now()}`,
+      scoreId: sample.id,
+      gameId: sample.gameId,
+      workoutId: sample.workoutId,
+      registrationId: sample.registrationId,
+      changedBy: actorName,
+      role: 'head_judge',
+      action: 'update',
+      newValue: `${updatedScores.length} scores recalculados`,
+      reason: reason || 'Rodagem oficial de classificação e pontuação',
+      timestamp: new Date().toISOString(),
+      ipOrDevice: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 40) : 'Sistema Central',
     });
   }
 

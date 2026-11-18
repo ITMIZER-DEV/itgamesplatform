@@ -42,9 +42,14 @@ import {
   Layers,
   Trophy,
   Printer,
-  Dumbbell
+  Dumbbell,
+  FileCheck,
+  Lock,
+  Unlock,
+  Calendar
 } from 'lucide-react';
 import { storage } from '@/lib/storage';
+import { evaluateRegistrationAvailability, saveLocalRegistrationLock, toDatetimeLocalInput, fromDatetimeLocalInput } from '@/lib/registration-lock';
 import { GameEvent, Category, WorkoutRule, TeamRegistration, ScoreEntry, OrganizationTenant, AuditLogEntry, ContestTicket, JudgeStaff, SumulaTemplate } from '@/types';
 import { OFFICIAL_WOD_PRESETS } from '@/lib/wod-presets';
 import {
@@ -52,6 +57,7 @@ import {
   type ScoringMode, type TiebreakKind,
 } from '@/lib/scoring-form';
 import { apiClient, ApiError, assetUrl } from '@/lib/api-client';
+import { sortWorkoutsNaturally } from '@/lib/board';
 import { BANNER_MAX_ORIGINAL_BYTES, prepareBanner } from '@/lib/banner-image';
 import { getCurrentUserSession } from '@/lib/acl';
 import { OrganizersPanel } from '@/components/admin/OrganizersPanel';
@@ -91,6 +97,7 @@ export default function AdminDashboardPage() {
 
   // Abas do Painel: championships (Gestão de Campeonatos & Liberações), organizer (WODs & Categorias), registrations_financial (Inscrições, Pagamentos & Kits), judges_staff (Escala de Juízes), audit_center (Homologação de Súmulas), saas_owner (Monetização)
   const [adminTab, setAdminTab] = useState<'championships' | 'organizer' | 'registrations_financial' | 'judges_staff' | 'audit_center' | 'saas_owner' | 'organizers_mgmt' | 'email' | 'athletes_mgmt'>('championships');
+  const [wodFilterCategoryId, setWodFilterCategoryId] = useState<string>('all');
 
   // Modal de Criação / Edição de Campeonato Completo
   const [isNewGameModalOpen, setIsNewGameModalOpen] = useState(false);
@@ -119,6 +126,9 @@ export default function AdminDashboardPage() {
   const [newGameFile, setNewGameFile] = useState<File | null>(null);
   const [newGamePreview, setNewGamePreview] = useState('');
   const [newGameBannerInfo, setNewGameBannerInfo] = useState<{ summary: string; warning?: string } | null>(null);
+  const [newGameRegLocked, setNewGameRegLocked] = useState(false);
+  const [newGameRegStartAt, setNewGameRegStartAt] = useState('');
+  const [newGameRegCloseAt, setNewGameRegCloseAt] = useState('');
 
   // Modal de Criação / Edição de Categoria Real
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -207,6 +217,9 @@ export default function AdminDashboardPage() {
       foto: g.foto || '',
       pixKey: g.pixKey || '',
       pixBeneficiary: g.pixBeneficiary || '',
+      registrationLocked: Boolean(g.registrationLocked),
+      registrationStartAt: g.registrationStartAt || null,
+      registrationCloseAt: g.registrationCloseAt || null,
       organizers: g.organizers || [],
       lanesCount: g.lanesCount || 8,
       scoringRules: {
@@ -263,6 +276,7 @@ export default function AdminDashboardPage() {
             };
           });
           setCategories(mappedCats as any);
+          storage.setCategoriesForGame(game.id, mappedCats as any);
         } else {
           setCategories(storage.getCategories(game.id));
         }
@@ -273,7 +287,7 @@ export default function AdminDashboardPage() {
       let loadedTeams = storage.getTeams(game.id);
       try {
         const apiRegs = await apiClient.listRegistrations(game.code || game.id);
-        if (apiRegs && apiRegs.length > 0) {
+        if (apiRegs) {
           const apiMapped: TeamRegistration[] = apiRegs.map(r => ({
             id: `reg_${r.code}`,
             gameId: r.gameCode,
@@ -298,12 +312,8 @@ export default function AdminDashboardPage() {
             }))
           }));
 
-          const existingBibs = new Set(loadedTeams.map(t => t.registerNumber));
-          apiMapped.forEach(m => {
-            if (!existingBibs.has(m.registerNumber)) {
-              loadedTeams.push(m);
-            }
-          });
+          loadedTeams = apiMapped;
+          storage.setTeamsForGame(game.id, apiMapped);
         }
       } catch (err) {
         console.log('[Admin] Fallback storage para inscrições');
@@ -535,6 +545,29 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleToggleRegistrationLock = async (g: any) => {
+    const code = g.code || g.id;
+    if (!code) return;
+    const avail = evaluateRegistrationAvailability(g);
+    const nextLocked = !avail.effectiveLocked;
+    try {
+      await apiClient.updateRegistrationLock(code, { registrationLocked: nextLocked });
+      saveLocalRegistrationLock(code, {
+        registrationLocked: nextLocked,
+        registrationStartAt: g.registrationStartAt ?? null,
+        registrationCloseAt: g.registrationCloseAt ?? null,
+      });
+      toast.success(
+        nextLocked
+          ? `🔒 Inscrições de "${g.name}" BLOQUEADAS imediatamente.`
+          : `🔓 Inscrições de "${g.name}" LIBERADAS novamente.`,
+      );
+      await loadData();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Erro ao atualizar bloqueio de inscrições');
+    }
+  };
+
   const handleDeleteGameCascade = async () => {
     if (!gameToDelete) return;
     setIsDeletingGame(true);
@@ -578,6 +611,9 @@ export default function AdminDashboardPage() {
     setNewGameFile(null);
     setNewGamePreview('');
     setNewGameBannerInfo(null);
+    setNewGameRegLocked(false);
+    setNewGameRegStartAt('');
+    setNewGameRegCloseAt('');
     setIsNewGameModalOpen(true);
   };
 
@@ -610,6 +646,9 @@ export default function AdminDashboardPage() {
     setNewGameFile(null);
     setNewGamePreview('');
     setNewGameBannerInfo(null);
+    setNewGameRegLocked(Boolean(g.registrationLocked));
+    setNewGameRegStartAt(toDatetimeLocalInput(g.registrationStartAt));
+    setNewGameRegCloseAt(toDatetimeLocalInput(g.registrationCloseAt));
     setIsNewGameModalOpen(true);
   };
 
@@ -674,6 +713,12 @@ export default function AdminDashboardPage() {
     };
 
     // Edição de campeonato existente (o código e o status não mudam)
+    const regLockPayload = {
+      registrationLocked: newGameRegLocked,
+      registrationStartAt: fromDatetimeLocalInput(newGameRegStartAt),
+      registrationCloseAt: fromDatetimeLocalInput(newGameRegCloseAt),
+    };
+
     if (editingGameCode) {
       try {
         await apiClient.updateGame(editingGameCode, {
@@ -691,7 +736,9 @@ export default function AdminDashboardPage() {
           description: newGameDesc,
           pixKey: newGamePixKey.trim(),
           pixBeneficiary: newGamePixBeneficiary.trim(),
+          ...regLockPayload,
         });
+        saveLocalRegistrationLock(editingGameCode, regLockPayload);
         await uploadPendingBanner(editingGameCode);
         toast.success(`Campeonato ${newGameName} atualizado com sucesso!`);
         setIsNewGameModalOpen(false);
@@ -721,7 +768,9 @@ export default function AdminDashboardPage() {
         description: newGameDesc || 'Campeonato oficial organizado na plataforma ITGames Arena',
         pixKey: newGamePixKey.trim() || undefined,
         pixBeneficiary: newGamePixBeneficiary.trim() || undefined,
+        ...regLockPayload,
       });
+      saveLocalRegistrationLock(cleanCode, regLockPayload);
       await uploadPendingBanner(cleanCode);
       toast.success(`Campeonato ${newGameName} (${cleanCode}) cadastrado como rascunho. Aguarde a liberação do Super Admin.`);
     } catch (err) {
@@ -1183,8 +1232,8 @@ export default function AdminDashboardPage() {
           </p>
         </div>
 
-        {/* ABAS DO PAINEL */}
-        <div className="flex flex-wrap items-center gap-2 bg-zinc-900 p-1.5 rounded-2xl border border-zinc-800">
+        {/* ABAS DO PAINEL (SCROLL HORIZONTAL NO MOBILE) */}
+        <div className="flex overflow-x-auto sm:flex-wrap items-center gap-2 bg-zinc-900 p-1.5 rounded-2xl border border-zinc-800 w-full [&>*]:shrink-0 [&>*]:whitespace-nowrap">
           <button
             onClick={() => setAdminTab('championships')}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
@@ -1319,6 +1368,7 @@ export default function AdminDashboardPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {games.map((g) => {
               const isSelected = activeGame?.code === g.code || activeGame?.id === g.code;
+              const regAvail = evaluateRegistrationAvailability(g);
               return (
                 <div
                   key={g.code || g.id}
@@ -1330,7 +1380,7 @@ export default function AdminDashboardPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xs font-mono font-black text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-lg border border-amber-500/20">
                           {g.code}
                         </span>
@@ -1342,6 +1392,13 @@ export default function AdminDashboardPage() {
                             : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
                         }`}>
                           {g.status === 'live' ? '🟢 Liberado (LIVE)' : g.status === 'draft' ? '🟡 Rascunho (DRAFT)' : '🔴 Bloqueado (BLOCKED)'}
+                        </span>
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg border ${
+                          regAvail.isOpen
+                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                            : 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                        }`}>
+                          {regAvail.badgeText}
                         </span>
                       </div>
                       <h3 className="text-lg font-black text-white mt-2">{g.name}</h3>
@@ -1404,41 +1461,71 @@ export default function AdminDashboardPage() {
                     </div>
                   </div>
 
+                  {/* CONTROLE DE JANELA E BLOQUEIO DE INSCRIÇÕES */}
+                  {(regAvail.startAtFormatted || regAvail.closeAtFormatted || regAvail.effectiveLocked) && (
+                    <div className="p-2.5 rounded-xl bg-zinc-950/80 border border-zinc-800 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                      <div className="flex flex-wrap items-center gap-2 text-zinc-400">
+                        <Calendar className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        {regAvail.startAtFormatted && <span>Abre: <strong className="text-zinc-200">{regAvail.startAtFormatted}</strong></span>}
+                        {regAvail.closeAtFormatted && <span>Fecha: <strong className="text-zinc-200">{regAvail.closeAtFormatted}</strong></span>}
+                        {regAvail.effectiveLocked && !regAvail.startAtFormatted && !regAvail.closeAtFormatted && (
+                          <span className="text-rose-300 font-semibold">Bloqueado manualmente pela flag de inscrições</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* AÇÕES DE GOVERNANÇA (SUPER ADMIN & ORGANIZADOR) */}
                   <div className="pt-3 border-t border-zinc-800 flex flex-wrap items-center justify-between gap-2">
-                    {userRole === 'SUPER_ADMIN' ? (
-                      <div className="flex flex-wrap items-center gap-2 w-full justify-between">
-                        <div className="flex items-center gap-1.5">
-                          {g.status !== 'live' && (
-                            <button
-                              onClick={() => handleUpdateStatus(g.code || g.id, 'live')}
-                              className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold flex items-center gap-1 transition-all"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>Liberar Execução</span>
-                            </button>
-                          )}
-                          {g.status !== 'draft' && (
-                            <button
-                              onClick={() => handleUpdateStatus(g.code || g.id, 'draft')}
-                              className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/30 text-xs font-bold flex items-center gap-1 transition-all"
-                            >
-                              <Clock className="w-3.5 h-3.5" />
-                              <span>Pausar (Rascunho)</span>
-                            </button>
-                          )}
-                          {g.status !== 'blocked' && (
-                            <button
-                              onClick={() => handleUpdateStatus(g.code || g.id, 'blocked')}
-                              className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 text-xs font-bold flex items-center gap-1 transition-all"
-                            >
-                              <XCircle className="w-3.5 h-3.5" />
-                              <span>Bloquear</span>
-                            </button>
-                          )}
-                        </div>
+                    <div className="flex flex-wrap items-center gap-1.5 w-full justify-between">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleRegistrationLock(g)}
+                          className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all min-h-[36px] ${
+                            regAvail.effectiveLocked
+                              ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/40'
+                              : 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border-rose-500/30'
+                          }`}
+                        >
+                          {regAvail.effectiveLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                          <span>{regAvail.effectiveLocked ? 'Liberar Inscrições' : 'Bloquear Inscrições'}</span>
+                        </button>
 
-                        {/* Botão de Excluir em Cascata */}
+                        {userRole === 'SUPER_ADMIN' && (
+                          <>
+                            {g.status !== 'live' && (
+                              <button
+                                onClick={() => handleUpdateStatus(g.code || g.id, 'live')}
+                                className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold flex items-center gap-1 transition-all"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Liberar Execução</span>
+                              </button>
+                            )}
+                            {g.status !== 'draft' && (
+                              <button
+                                onClick={() => handleUpdateStatus(g.code || g.id, 'draft')}
+                                className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/30 text-xs font-bold flex items-center gap-1 transition-all"
+                              >
+                                <Clock className="w-3.5 h-3.5" />
+                                <span>Pausar (Rascunho)</span>
+                              </button>
+                            )}
+                            {g.status !== 'blocked' && (
+                              <button
+                                onClick={() => handleUpdateStatus(g.code || g.id, 'blocked')}
+                                className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 text-xs font-bold flex items-center gap-1 transition-all"
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                                <span>Bloquear</span>
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+
+                      {userRole === 'SUPER_ADMIN' ? (
                         <button
                           onClick={() => setGameToDelete(g)}
                           className="px-3 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 border border-rose-800/40 text-xs font-bold flex items-center gap-1.5 transition-all ml-auto"
@@ -1447,13 +1534,12 @@ export default function AdminDashboardPage() {
                           <Trash2 className="w-3.5 h-3.5" />
                           <span>Excluir Cascata</span>
                         </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between w-full text-xs text-zinc-400">
-                        <span>Status: <strong className="text-zinc-200">{g.status === 'live' ? 'Liberado pelo Super Admin' : 'Aguardando Liberação do Super Admin'}</strong></span>
-                        <span className="text-[11px] text-zinc-500">Gestão pelo Organizador</span>
-                      </div>
-                    )}
+                      ) : (
+                        <span className="text-[11px] text-zinc-500">
+                          {g.status === 'live' ? '🟢 Campeonato Liberado' : '🟡 Aguardando Super Admin'}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -1604,6 +1690,46 @@ export default function AdminDashboardPage() {
               </button>
             </div>
 
+            {/* BARRA DE FILTRO FLUIDO POR CATEGORIA */}
+            {workouts.length > 0 && categories.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pb-1 border-b border-zinc-800/70">
+                <button
+                  type="button"
+                  onClick={() => setWodFilterCategoryId('all')}
+                  className={`px-3 py-1.5 rounded-xl text-[11px] font-black border transition-colors min-h-[34px] ${
+                    wodFilterCategoryId === 'all'
+                      ? 'bg-amber-500 text-black border-amber-500'
+                      : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-amber-500/50'
+                  }`}
+                >
+                  Todas ({workouts.length})
+                </button>
+                {categories.map((cat) => {
+                  const catWodCount = workouts.filter(
+                    (w) => w.categoryId === cat.id || w.categoryIds?.includes(cat.id),
+                  ).length;
+                  const active = wodFilterCategoryId === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setWodFilterCategoryId(cat.id)}
+                      className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border transition-colors min-h-[34px] flex items-center gap-1.5 ${
+                        active
+                          ? 'bg-amber-500 text-black border-amber-500'
+                          : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-amber-500/50'
+                      }`}
+                    >
+                      <span>{cat.name}</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${active ? 'bg-black/20 text-black' : 'bg-zinc-800 text-zinc-400'}`}>
+                        {catWodCount}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {workouts.length === 0 ? (
               <div className="p-8 rounded-2xl bg-zinc-950/50 border border-dashed border-zinc-800 text-center space-y-3">
                 <Dumbbell className="w-8 h-8 text-zinc-600 mx-auto" />
@@ -1621,7 +1747,13 @@ export default function AdminDashboardPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {workouts.map((wod) => {
+                {sortWorkoutsNaturally(
+                  wodFilterCategoryId === 'all'
+                    ? workouts
+                    : workouts.filter(
+                        (w) => w.categoryId === wodFilterCategoryId || w.categoryIds?.includes(wodFilterCategoryId),
+                      ),
+                ).map((wod) => {
                   const linkedGame = games.find(g => g.id === wod.gameId || g.code === wod.gameId) || (activeGame?.id === wod.gameId ? activeGame : null);
                   const linkedCats = categories.filter(c =>
                     wod.categoryIds?.includes(c.id) || wod.categoryId === c.id
@@ -1804,7 +1936,82 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            {/* MOBILE CHECK-IN & BAIXA EXPRESS (CARDS TOUCH) */}
+            <div className="grid grid-cols-1 gap-3 md:hidden">
+              {teams.map((t) => {
+                const isPaid = t.paymentStatus === 'paid';
+                const cat = categories.find(c => c.id === t.categoryId);
+                const amountVal = isPaid ? (t.amountPaid || cat?.price || 150) : (cat?.price || 150);
+                return (
+                  <div key={t.id} className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono font-black text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+                            {t.registerNumber}
+                          </span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            t.paymentStatus === 'cancelled'
+                              ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                              : isPaid
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                              : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                          }`}>
+                            {t.paymentStatus === 'cancelled' ? 'Cancelada' : isPaid ? 'Pago' : 'Pendente'}
+                          </span>
+                        </div>
+                        <h4 className="font-black text-white text-sm mt-1 truncate">{t.teamName}</h4>
+                        <p className="text-[11px] text-zinc-400 truncate">{t.categoryName || t.categoryId}</p>
+                        <p className="text-[11px] text-zinc-300 mt-0.5">{t.athletes.map(a => a.name).join(' • ')}</p>
+                      </div>
+                      <span className={`text-sm font-mono font-black shrink-0 ${isPaid ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                        R$ {amountVal.toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {t.athletes.map((a, i) => (
+                        <span key={i} className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-amber-300 font-mono text-[10px]">
+                          {a.name.split(' ')[0]}: <strong>{a.tshirtSize || 'M'}</strong>
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-800">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleCheckIn(t.id)}
+                        className={`min-h-[44px] px-3 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
+                          t.checkedIn
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                            : 'bg-zinc-800 text-zinc-200 border border-zinc-700'
+                        }`}
+                      >
+                        {t.checkedIn ? <CheckCircle2 className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+                        <span>{t.checkedIn ? 'Check-in OK' : 'Fazer Check-in'}</span>
+                      </button>
+
+                      {t.paymentStatus !== 'cancelled' && (
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePaymentStatus(t.id)}
+                          className={`min-h-[44px] px-3 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
+                            isPaid
+                              ? 'bg-zinc-800 text-zinc-300 border border-zinc-700'
+                              : 'bg-emerald-500 text-black'
+                          }`}
+                        >
+                          {isPaid ? <History className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                          <span>{isPaid ? 'Pendente' : 'Baixar Pix'}</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-zinc-800 text-zinc-400 uppercase text-[10px]">
@@ -1866,7 +2073,60 @@ export default function AdminDashboardPage() {
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {adminTab === 'registrations_financial' && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          
+          {/* CONTROLE RÁPIDO DE BLOQUEIO DE INSCRIÇÕES POR FLAG OU DATA */}
+          {activeGame && (() => {
+            const activeRegAvail = evaluateRegistrationAvailability(activeGame);
+            return (
+              <div className={`p-4 sm:p-5 rounded-3xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                activeRegAvail.isOpen
+                  ? 'bg-emerald-950/15 border-emerald-500/30'
+                  : 'bg-rose-950/20 border-rose-500/40'
+              }`}>
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border ${
+                      activeRegAvail.isOpen
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                    }`}>
+                      {activeRegAvail.badgeText}
+                    </span>
+                    <span className="text-xs font-bold text-white">Controle de Inscrições • {activeGame.name}</span>
+                  </div>
+                  <p className="text-xs text-zinc-400">
+                    {activeRegAvail.reason}
+                    {activeRegAvail.closeAtFormatted && activeRegAvail.isOpen && (
+                      <> • Prazo automático até <strong className="text-zinc-200">{activeRegAvail.closeAtFormatted}</strong></>
+                    )}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleToggleRegistrationLock(activeGame)}
+                    className={`px-4 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 transition-all min-h-[44px] ${
+                      activeRegAvail.effectiveLocked
+                        ? 'bg-emerald-500 hover:bg-emerald-400 text-black'
+                        : 'bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/20'
+                    }`}
+                  >
+                    {activeRegAvail.effectiveLocked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                    <span>{activeRegAvail.effectiveLocked ? 'Liberar Inscrições Agora' : 'Bloquear Inscrições (Flag)'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openEditGame(activeGame)}
+                    className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs border border-zinc-700 flex items-center gap-1.5 min-h-[44px]"
+                  >
+                    <Calendar className="w-4 h-4 text-amber-400" />
+                    <span>Configurar Data Limite</span>
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* CARDS DE MÉTRICAS FINANCEIRAS DO CAMPEONATO */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="glass-panel p-5 rounded-3xl border border-emerald-500/30 bg-emerald-950/10 space-y-2">
@@ -1892,11 +2152,11 @@ export default function AdminDashboardPage() {
                   A Receber (Pendente)
                 </span>
                 <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-mono">
-                  {teams.filter(t => t.paymentStatus !== 'paid').length} pendentes
+                  {teams.filter(t => t.paymentStatus === 'pending').length} pendentes
                 </span>
               </div>
               <div className="text-2xl sm:text-3xl font-black text-amber-400 font-mono">
-                R$ {teams.filter(t => t.paymentStatus !== 'paid').reduce((acc, t) => {
+                R$ {teams.filter(t => t.paymentStatus === 'pending').reduce((acc, t) => {
                   const cat = categories.find(c => c.id === t.categoryId);
                   return acc + (cat?.price || 150);
                 }, 0).toFixed(2)}
@@ -1905,27 +2165,34 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="glass-panel p-5 rounded-3xl border border-purple-500/30 bg-purple-950/10 space-y-2">
-              <div className="text-xs font-bold text-purple-400 uppercase flex items-center gap-1.5">
-                <Users className="w-4 h-4" />
-                <span>Total de Inscrições</span>
+              <div className="text-xs font-bold text-purple-400 uppercase flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Users className="w-4 h-4" />
+                  Total de Inscrições
+                </span>
+                {teams.filter(t => t.paymentStatus === 'cancelled').length > 0 && (
+                  <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-mono">
+                    {teams.filter(t => t.paymentStatus === 'cancelled').length} cancelada(s)
+                  </span>
+                )}
               </div>
               <div className="text-2xl sm:text-3xl font-black text-white font-mono">
-                {teams.length} Equipes / Atletas
+                {teams.filter(t => t.paymentStatus !== 'cancelled').length} Equipes / Atletas
               </div>
               <div className="text-[11px] text-zinc-400">
-                {teams.reduce((acc, t) => acc + (t.athletes?.length || 1), 0)} competidores cadastrados
+                {teams.filter(t => t.paymentStatus !== 'cancelled').reduce((acc, t) => acc + (t.athletes?.length || 1), 0)} competidores ativos
               </div>
             </div>
 
             <div className="glass-panel p-5 rounded-3xl border border-blue-500/30 bg-blue-950/10 space-y-2">
               <div className="text-xs font-bold text-blue-400 uppercase flex items-center gap-1.5">
                 <Shirt className="w-4 h-4" />
-                <span>Kits & Camisetas</span>
+                <span>Kits & Camisetas (Ativos)</span>
               </div>
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {['PP', 'P', 'M', 'G', 'GG', 'XG', 'XGG'].map((sz) => {
                   let count = 0;
-                  teams.forEach(t => t.athletes?.forEach(a => { if ((a.tshirtSize || 'M') === sz) count++; }));
+                  teams.filter(t => t.paymentStatus !== 'cancelled').forEach(t => t.athletes?.forEach(a => { if ((a.tshirtSize || 'M') === sz) count++; }));
                   if (count === 0) return null;
                   return (
                     <span key={sz} className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-zinc-200 text-[10px] font-mono font-bold">
@@ -1981,7 +2248,82 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            {/* MOBILE CHECK-IN & BAIXA EXPRESS (CARDS TOUCH) */}
+            <div className="grid grid-cols-1 gap-3 md:hidden">
+              {teams.map((t) => {
+                const isPaid = t.paymentStatus === 'paid';
+                const cat = categories.find(c => c.id === t.categoryId);
+                const amountVal = isPaid ? (t.amountPaid || cat?.price || 150) : (cat?.price || 150);
+                return (
+                  <div key={t.id} className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono font-black text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+                            {t.registerNumber}
+                          </span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            t.paymentStatus === 'cancelled'
+                              ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                              : isPaid
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                              : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                          }`}>
+                            {t.paymentStatus === 'cancelled' ? 'Cancelada' : isPaid ? 'Pago' : 'Pendente'}
+                          </span>
+                        </div>
+                        <h4 className="font-black text-white text-sm mt-1 truncate">{t.teamName}</h4>
+                        <p className="text-[11px] text-zinc-400 truncate">{t.categoryName || t.categoryId}</p>
+                        <p className="text-[11px] text-zinc-300 mt-0.5">{t.athletes.map(a => a.name).join(' • ')}</p>
+                      </div>
+                      <span className={`text-sm font-mono font-black shrink-0 ${isPaid ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                        R$ {amountVal.toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {t.athletes.map((a, i) => (
+                        <span key={i} className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-amber-300 font-mono text-[10px]">
+                          {a.name.split(' ')[0]}: <strong>{a.tshirtSize || 'M'}</strong>
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-800">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleCheckIn(t.id)}
+                        className={`min-h-[44px] px-3 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
+                          t.checkedIn
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                            : 'bg-zinc-800 text-zinc-200 border border-zinc-700'
+                        }`}
+                      >
+                        {t.checkedIn ? <CheckCircle2 className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+                        <span>{t.checkedIn ? 'Check-in OK' : 'Fazer Check-in'}</span>
+                      </button>
+
+                      {t.paymentStatus !== 'cancelled' && (
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePaymentStatus(t.id)}
+                          className={`min-h-[44px] px-3 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
+                            isPaid
+                              ? 'bg-zinc-800 text-zinc-300 border border-zinc-700'
+                              : 'bg-emerald-500 text-black'
+                          }`}
+                        >
+                          {isPaid ? <History className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                          <span>{isPaid ? 'Pendente' : 'Baixar Pix'}</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-zinc-800 text-zinc-400 uppercase text-[10px] bg-zinc-950/60">
@@ -2273,6 +2615,28 @@ export default function AdminDashboardPage() {
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {adminTab === 'audit_center' && (
         <div className="space-y-6">
+          {/* BANNER DE ACESSO DIRETO À MESA DO HEAD JUDGE */}
+          <div className="p-5 rounded-2xl bg-gradient-to-r from-emerald-950/60 via-zinc-900 to-zinc-900 border border-emerald-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="p-3 rounded-xl bg-emerald-500/20 text-emerald-400 shrink-0">
+                <FileCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black text-white">Mesa do Head Judge: Lançamento de Súmulas Físicas por Bateria</h4>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Interface otimizada para digitação rápida das pranchetas dos juízes com anexo obrigatório de foto comprovatória e recálculo imediato do Leaderboard.
+                </p>
+              </div>
+            </div>
+            <a
+              href="/sumulas?tab=head_judge_desk"
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-transform active:scale-95 shrink-0"
+            >
+              <Camera className="w-4 h-4" />
+              <span>ABRIR MESA DO HEAD JUDGE</span>
+            </a>
+          </div>
+
           <div className="glass-panel rounded-3xl p-6 border border-zinc-800 space-y-4">
             <h3 className="text-base font-bold text-white flex items-center gap-2">
               <Camera className="w-5 h-5 text-amber-400" />
@@ -2930,8 +3294,8 @@ export default function AdminDashboardPage() {
       {/* ────────────────────────────────────────────────────────────────────────── */}
 
       {isNewGameModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-          <form onSubmit={handleCreateGame} className="bg-zinc-900 border border-zinc-700 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-150">
+          <form onSubmit={handleCreateGame} className="bg-zinc-900 border border-zinc-700 rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
               <div className="flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-amber-400" />
@@ -3231,6 +3595,81 @@ export default function AdminDashboardPage() {
                     <span>Permitir Revisões</span>
                   </label>
                 </div>
+              </div>
+
+              {/* CONTROLE DE INSCRIÇÕES: BLOQUEIO POR FLAG MANUAL OU PRAZO POR DATA/HORA */}
+              <div className="p-3.5 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-black uppercase text-amber-400 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5" />
+                    Controle de Inscrições (Flag &amp; Datas)
+                  </span>
+                  <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${newGameRegLocked ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'}`}>
+                    {newGameRegLocked ? 'Bloqueado p/ Flag' : 'Flag Liberada'}
+                  </span>
+                </div>
+
+                <label className="flex items-center justify-between gap-3 p-3 rounded-xl bg-zinc-900 border border-zinc-800 cursor-pointer hover:border-zinc-700 transition-colors">
+                  <div>
+                    <div className="text-xs font-bold text-white">Bloquear Inscrições Manualmente (Flag Imediata)</div>
+                    <div className="text-[10px] text-zinc-400">Impede novas inscrições mesmo que o campeonato continue LIVE no Leaderboard</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={newGameRegLocked}
+                    onChange={(e) => setNewGameRegLocked(e.target.checked)}
+                    className="w-5 h-5 rounded bg-zinc-950 border-zinc-700 text-rose-500 focus:ring-0 shrink-0"
+                  />
+                </label>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-zinc-300 block mb-1">Abertura Automática (Opcional)</label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="datetime-local"
+                        value={newGameRegStartAt}
+                        onChange={(e) => setNewGameRegStartAt(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                      />
+                      {newGameRegStartAt && (
+                        <button
+                          type="button"
+                          onClick={() => setNewGameRegStartAt('')}
+                          className="p-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-xs"
+                          title="Limpar data de abertura"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-zinc-300 block mb-1">Encerramento / Data Limite (Opcional)</label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="datetime-local"
+                        value={newGameRegCloseAt}
+                        onChange={(e) => setNewGameRegCloseAt(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                      />
+                      {newGameRegCloseAt && (
+                        <button
+                          type="button"
+                          onClick={() => setNewGameRegCloseAt('')}
+                          className="p-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-xs"
+                          title="Limpar data limite"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[10px] text-zinc-500">
+                  Se definida a data limite, o servidor e a página do atleta bloquearão automaticamente novas inscrições após o horário configurado.
+                </p>
               </div>
 
               <div>

@@ -359,6 +359,9 @@ export class ApiClient {
     eventType?: string;
     pixKey?: string;
     pixBeneficiary?: string;
+    registrationLocked?: boolean;
+    registrationStartAt?: string | null;
+    registrationCloseAt?: string | null;
   }) {
     return this.strict<any>('/events', {
       method: 'POST',
@@ -377,6 +380,16 @@ export class ApiClient {
     return this.strict<any>(`/events/${code}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
+    });
+  }
+
+  async updateRegistrationLock(
+    code: string,
+    data: { registrationLocked?: boolean; registrationStartAt?: string | null; registrationCloseAt?: string | null },
+  ) {
+    return this.strict<any>(`/events/${code}/registration-lock`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
     });
   }
 
@@ -589,6 +602,11 @@ export class ApiClient {
   }
 
   // 5. Scores
+  async listScores(gameCode: string) {
+    const result = await this.request<any[]>(`/scores/game/${gameCode}`);
+    return result || [];
+  }
+
   async submitScore(scoreData: any) {
     const result = await this.strict<any>('/scores', {
       method: 'POST',
@@ -644,9 +662,30 @@ export class ApiClient {
     });
   }
 
-  // 7. Auditoria
+  // 7. Auditoria & Cálculo Oficial (Classificações)
   async getAuditLogs(gameCode: string) {
     return this.request<AuditLogEntry[]>(`/audit/game/${gameCode}`);
+  }
+
+  async getOfficialStatus(code: string) {
+    return this.request<any>(`/official/${code}`);
+  }
+
+  async previewOfficialWod(code: string, categoryId: number, eventId: number) {
+    return this.strict<any>(`/official/${code}/categories/${categoryId}/events/${eventId}/preview`);
+  }
+
+  async confirmOfficialWod(code: string, categoryId: number, eventId: number) {
+    return this.strict<any>(`/official/${code}/categories/${categoryId}/events/${eventId}/confirm`, {
+      method: 'POST',
+    });
+  }
+
+  async revertOfficialWod(code: string, categoryId: number, eventId: number, reason: string) {
+    return this.strict<any>(`/official/${code}/categories/${categoryId}/events/${eventId}/revert`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
   }
 
   // 8. Backup & Sincronização

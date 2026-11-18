@@ -12,6 +12,7 @@ import {
   X 
 } from 'lucide-react';
 import { apiClient, ApiError } from '@/lib/api-client';
+import { storage } from '@/lib/storage';
 import { toast } from 'sonner';
 
 interface BackupRestoreModalProps {
@@ -82,7 +83,16 @@ export function BackupRestoreModal({ isOpen, onClose, onSuccess }: BackupRestore
     setIsImporting(true);
     try {
       const res = await apiClient.importBackup(importPreview);
-      toast.success(res?.message || 'Snapshot restaurado com sucesso no banco de dados!');
+      // Limpar cache local dos campeonatos presentes no snapshot para refletir exatamente os dados importados
+      if (Array.isArray(importPreview.games)) {
+        for (const g of importPreview.games) {
+          const gId = g.code || g.id;
+          if (gId) {
+            storage.clearGameCache(gId);
+          }
+        }
+      }
+      toast.success(res?.message || 'Snapshot restaurado com sucesso! Dados sincronizados.');
       onSuccess();
       onClose();
     } catch (err) {
@@ -191,9 +201,9 @@ export function BackupRestoreModal({ isOpen, onClose, onSuccess }: BackupRestore
           </div>
         )}
 
-        <div className="flex items-center gap-2 text-[11px] text-zinc-500">
-          <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-          <span>A importação utiliza <strong>upsert</strong> (atualiza existentes e cria novos sem apagar outros registros).</span>
+        <div className="flex items-center gap-2 text-[11px] text-zinc-400">
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Restauração com <strong>espelhamento exato</strong>: o banco de dados e as inscrições ficarão 100% idênticos ao snapshot do arquivo.</span>
         </div>
       </div>
     </div>

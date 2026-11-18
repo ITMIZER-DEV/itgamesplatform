@@ -21,9 +21,13 @@ export function compareWithinWorkout(type: string, a: WorkoutResult, b: WorkoutR
       const tb = b.time + b.penalty;
       return ta !== tb ? ta - tb : a.tieBreak - b.tieBreak;
     }
-    return a.reps !== b.reps ? b.reps - a.reps : a.tieBreak - b.tieBreak;
+    // Ambos tomaram CAP:
+    // Na convenção do torneio (CAP + X metros/reps faltantes), quem tem MENOS metros faltantes fica na frente
+    return a.reps !== b.reps ? a.reps - b.reps : a.tieBreak - b.tieBreak;
   }
   if (type === 'amrap' || type === 'emom') {
+    // Maior número de rounds/reps fica na frente
+    // Em caso de empate no número de rounds/reps, o menor tempo de tiebreak vence o desempate
     return a.reps !== b.reps ? b.reps - a.reps : a.tieBreak - b.tieBreak;
   }
   if (type === 'max_load' || type === 'complex') {

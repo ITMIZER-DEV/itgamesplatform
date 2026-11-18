@@ -27,6 +27,8 @@ export interface EngineInput {
     tiebreak?: string | null;
     pointsTable?: unknown;
     isLowestPointsBetter?: boolean | null;
+    status?: string | null;
+    showScoreRevision?: boolean | null;
   };
   categories: { code: number; name: string }[];
   workouts: { code: number; category: number; title?: string | null; type?: string | null; timeCap?: string | null }[];
@@ -73,6 +75,8 @@ export interface Board {
     eventType: 'crossfit' | 'hyrox';
     rule: { mode: ScoringMode; tiebreak: Tiebreak };
     totalUnit: 'PTS' | 'SOMA' | 'TEMPO';
+    status?: string;
+    showScoreRevision?: boolean;
     /** false no placar parcial (pontos zerados); true no oficial e na visão completa. */
     pointsVisible?: boolean;
     view?: 'partial' | 'official';

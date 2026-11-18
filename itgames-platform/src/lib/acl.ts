@@ -104,7 +104,7 @@ export function homeForRole(role: UserRoleType): string {
   }
 }
 
-export function hasPermission(role: UserRoleType, resource: 'admin' | 'judge' | 'athlete' | 'heats' | 'sumulas' | 'superadmin' | 'public'): boolean {
+export function hasPermission(role: UserRoleType, resource: 'admin' | 'judge' | 'athlete' | 'heats' | 'sumulas' | 'superadmin' | 'public' | 'headjudge'): boolean {
   if (role === 'SUPER_ADMIN') return true;
 
   switch (resource) {
@@ -114,6 +114,8 @@ export function hasPermission(role: UserRoleType, resource: 'admin' | 'judge' | 
       return role === 'ATHLETE' || role === 'ORGANIZER';
     case 'judge':
       return role === 'JUDGE' || role === 'ORGANIZER';
+    case 'headjudge':
+      return role === 'ORGANIZER' || role === 'JUDGE';
     case 'heats':
     case 'sumulas':
     case 'admin':

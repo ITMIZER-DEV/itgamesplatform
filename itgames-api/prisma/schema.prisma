@@ -65,6 +65,9 @@ model Game {
   scoringMode           String?        // "points_table" | "rank_sum" | "total_time"; null = derivado
   tiebreak              String?        // "last_workout" | "most_wins" | "split:<nome>"
   pointsTable           Json?          // tabela de pontos por posição
+  registrationLocked    Boolean        @default(false)
+  registrationStartAt   String?
+  registrationCloseAt   String?
   
 
   registrations         Registration[]

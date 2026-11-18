@@ -20,6 +20,8 @@ export interface BoardRows {
     tiebreak?: string | null;
     pointsTable?: unknown;
     isLowestPointsBetter?: boolean | null;
+    status?: string | null;
+    showScoreRevision?: boolean | null;
   };
   categories: { code: number; name: string }[];
   workouts: { code: number; category: number; title?: string | null; type?: string | null; timeCap?: string | null }[];
@@ -66,6 +68,8 @@ export function toEngineInput(rows: BoardRows): EngineInput {
       tiebreak: rows.game.tiebreak,
       pointsTable: rows.game.pointsTable,
       isLowestPointsBetter: rows.game.isLowestPointsBetter,
+      status: rows.game.status,
+      showScoreRevision: rows.game.showScoreRevision,
     },
     categories: rows.categories.map((c) => ({ code: c.code, name: c.name })),
     workouts: rows.workouts.map((w) => ({
@@ -133,6 +137,8 @@ export class BoardService {
         scoringMode: true,
         tiebreak: true,
         pointsTable: true,
+        status: true,
+        showScoreRevision: true,
       },
     });
     if (!game) throw new NotFoundException('Campeonato não encontrado');

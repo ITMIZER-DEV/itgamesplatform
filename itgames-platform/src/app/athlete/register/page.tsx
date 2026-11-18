@@ -19,7 +19,8 @@ import {
   Copy,
   Check,
   Building2,
-  Clock
+  Clock,
+  Lock
 } from 'lucide-react';
 import { storage } from '@/lib/storage';
 import { GameEvent, Category, TeamRegistration, Athlete } from '@/types';
@@ -29,6 +30,7 @@ import { LgpdConsentModal } from '@/components/lgpd/LgpdConsentModal';
 import { QRCodeSVG } from 'qrcode.react';
 import { apiClient, ApiError } from '@/lib/api-client';
 import { buildPixPayload } from '@/lib/pix';
+import { evaluateRegistrationAvailability } from '@/lib/registration-lock';
 import { toast } from 'sonner';
 
 // Integrante identificado por CPF (e e-mail opcional). Os dados reais vêm do cadastro de atleta, na API.
@@ -89,6 +91,9 @@ export default function AthleteRegistrationWizardPage() {
       lanesCount: g.lanesCount || 8,
       pixKey: g.pixKey || undefined,
       pixBeneficiary: g.pixBeneficiary || undefined,
+      registrationLocked: Boolean(g.registrationLocked),
+      registrationStartAt: g.registrationStartAt || null,
+      registrationCloseAt: g.registrationCloseAt || null,
       scoringRules: {
         isLowestPointsBetter: g.isLowestPointsBetter || false,
         hyroxChipTimingEnabled: g.eventType === 'hyrox',
@@ -176,6 +181,7 @@ export default function AthleteRegistrationWizardPage() {
 
 
   const currentCategory: Category | undefined = categories.find(c => c.id === selectedCategoryId) || categories[0];
+  const regAvailability = evaluateRegistrationAvailability(activeGame);
 
   // Lista de integrantes: o capitão (logado) é sempre o #1; os demais são preenchidos por CPF
   useEffect(() => {
@@ -397,10 +403,55 @@ export default function AthleteRegistrationWizardPage() {
         </div>
       </div>
 
+      {/* BLOQUEIO DE INSCRIÇÕES POR FLAG MANUAL OU JANELA DE DATAS */}
+      {!regAvailability.isOpen && step < 5 && (
+        <div className="rounded-3xl bg-gradient-to-br from-rose-950/80 via-zinc-900 to-zinc-950 border-2 border-rose-500/50 p-6 sm:p-10 text-center space-y-4 shadow-2xl">
+          <div className="w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 mx-auto">
+            <Lock className="w-8 h-8" />
+          </div>
+          <div className="space-y-2 max-w-xl mx-auto">
+            <span className="inline-block px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[11px] font-black uppercase tracking-wider">
+              {regAvailability.badgeText}
+            </span>
+            <h2 className="text-xl sm:text-2xl font-black text-white">
+              Inscrições Indisponíveis no Momento
+            </h2>
+            <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
+              {regAvailability.reason}
+            </p>
+            {(regAvailability.startAtFormatted || regAvailability.closeAtFormatted) && (
+              <div className="pt-2 flex flex-wrap items-center justify-center gap-3 text-[11px] text-zinc-400">
+                {regAvailability.startAtFormatted && (
+                  <span className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                    Abertura: <strong className="text-zinc-200">{regAvailability.startAtFormatted}</strong>
+                  </span>
+                )}
+                {regAvailability.closeAtFormatted && (
+                  <span className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-rose-400" />
+                    Encerramento: <strong className="text-zinc-200">{regAvailability.closeAtFormatted}</strong>
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="pt-2">
+            <Link
+              href={activeGame?.code ? `/campeonatos/${encodeURIComponent(activeGame.code)}` : '/'}
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold border border-zinc-700"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Voltar ao Campeonato</span>
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {/* PASSO 1: ESCOLHA DA CATEGORIA E REGRAS */}
       {/* ────────────────────────────────────────────────────────────────────────── */}
-      {step === 1 && (
+      {regAvailability.isOpen && step === 1 && (
         <div className="space-y-6">
           <div className="glass-panel rounded-3xl p-6 border border-zinc-800 space-y-4">
             <h3 className="text-base font-bold text-white flex items-center gap-2">
@@ -507,7 +558,7 @@ export default function AthleteRegistrationWizardPage() {
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {/* PASSO 2: DADOS DOS ATLETAS & VALIDAÇÃO EM TEMPO REAL */}
       {/* ────────────────────────────────────────────────────────────────────────── */}
-      {step === 2 && currentCategory && (
+      {regAvailability.isOpen && step === 2 && currentCategory && (
         <div className="space-y-6">
           
           {/* NOME DA EQUIPE */}
@@ -635,7 +686,7 @@ export default function AthleteRegistrationWizardPage() {
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {/* PASSO 4: CHECKOUT PIX & HOMOLOGAÇÃO */}
       {/* ────────────────────────────────────────────────────────────────────────── */}
-      {step === 4 && currentCategory && (
+      {regAvailability.isOpen && step === 4 && currentCategory && (
         <div className="space-y-6">
           <div className="glass-panel rounded-3xl p-6 border border-zinc-800 space-y-6">
             

@@ -52,6 +52,27 @@
    - Na aba global **"Atletas"** (`/admin`), **Super Admins e Organizadores** têm acesso à consulta de atletas (busca por nome/email/CPF mascarado), modal de edição cadastral (`PATCH /users/athletes/:id`) e emissão de senha temporária (`POST /users/athletes/:id/reset-password`).
 
 
+### 🏋️ Gestão de Provas, Súmulas Inteligentes e Critérios Oficiais (WOD 1-A, 1-B e WOD 2)
+- **WOD 1-A (800m ROW)**:
+  - Critério: `for_time` com Time Cap de 05:00.
+  - Se finalizar: menor tempo vence.
+  - Se der Time Cap: metros faltantes para 800m somados ao resultado (`CAP + [metros faltantes]`).
+- **WOD 1-B (DEATH BY — 5 ROUNDS)**:
+  - Minuto 5:00 ao 6:00 de descanso/transição obrigatória.
+  - Rounds progressivos a cada 3 minutos (Min 6 ao 21): Thruster + Jumping Pull-up (25/18 kg).
+  - Critério: Maior número de rounds fechados vence.
+  - Desempate: Menor tempo acumulado nos rounds concluídos (Tie-break).
+- **WOD 2 (SYNC & BURN)**:
+  - Movimentos: 50 Knee Raises + 30 Cal Air Bike + 30 Sync Burpee Step Over + 20 Sync Snatch (40/29 kg) = Total 130 reps.
+  - Time Cap: 10:00 (600 segundos).
+  - Critério: `for_time` (menor tempo vence).
+  - Se der Time Cap: repetições faltantes acrescentadas ao tempo (`CAP + [reps faltantes]`), garantindo que quem faltou menos reps fica à frente.
+- **Súmulas Inteligentes A4**:
+  - `crossfit-wod1-combo-row-deathby`: Súmula integrada para prancheta única com WOD 1-A e WOD 1-B.
+  - `crossfit-wod2-sync-burn`: Súmula com checkpoints dos 4 exercícios, opções de término ou CAP e tie-break na Air Bike.
+- **Formatação de Cabeçalho no Leaderboard (`parseWodTitle`)**:
+  - Exibe com clareza `WOD 1-A`, `WOD 1-B` e `WOD 2` com seus respectivos subtítulos, eliminando qualquer risco de duplicidade ou confusão visual no Leaderboard e no Telão de Arena (Big Screen).
+
 ### ⏱️ Juiz de Arena (Judge App - `/judge`)
 - **Login Rápido por PIN de 4 Dígitos**: Autenticação individual por PIN com pré-seleção de raias atribuídas.
 - **Scorekeeper Touch-First de Alta Precisão**:
@@ -156,5 +177,84 @@
   - Suporte à edição parcial: se o organizador alterar apenas tamanho de camiseta, nome, gênero ou box, o CPF e telefone existentes são preservados integralmente sem perda de dados.
   - Adicionado botão de atalho para redigitar CPF ou telefone completo diretamente no modal.
   - No backend (`updateRegistrationAthletes`), adicionada salvaguarda que ignora valores com `*`, assegurando que o CPF real gravado no PostgreSQL jamais seja sobrescrito por strings mascaradas.
+
+### 🔄 Resiliência de Backup Snapshot & Persistência de Banners (v1.6.2)
+- **Importação e Sincronização Segura de Snapshots (`POST /backup/import`)**:
+  - Resolução do erro 500 (`Unique constraint failed on the fields: (id)`) durante a restauração de backups JSON (`itgames-snapshot-*.json`).
+  - Implementação de busca multi-chave para usuários (`id`, `email`, `cpf`) antes da criação/atualização no Prisma, evitando conflito de primary key e preservando os IDs autogerados.
+  - Vínculo resiliente de `athleteProfile` associado ao `userId` real do registro.
+  - Correção na atualização de Eventos (`games_events`), utilizando a chave primária composta `@@id([idEvent, game])` no Prisma (`where: { idEvent_game: { idEvent, game } }`).
+  - Tratamento individualizado por entidade com logs descritivos, impedindo que inconsistências isoladas aborte a restauração de todo o banco de dados.
+- **Persistência de Banners e Mídias no Docker**:
+  - Mapeamento explícito do volume `./itgames-api/uploads:/app/uploads` em `docker-compose.yml` e `docker-compose.override.yml`, prevenindo perda de imagens ao recriar contêineres.
+  - Disponibilização do banner de evento `SUMMER2026-1791259022141.jpg`.
+
+### 🎯 Espelhamento Exato de Snapshot & Gestão Fidedigna de Cancelados (v1.6.3)
+- **Restauração com Purga Automática de Entidades Obsoletas (`POST /backup/import`)**:
+  - A importação de snapshots foi elevada de um simples *upsert cumulativo* para um **espelhamento exato** das entidades do campeonato no banco de dados.
+  - Para cada campeonato presente no snapshot, o sistema remove automaticamente do banco de dados registros órfãos que não constam no arquivo:
+    - **Categorias Obsoletas/Excluídas**: Excluídas com segurança em cascata.
+    - **Inscrições Obsoletas**: Inscrições excluídas ou canceladas que não constam no snapshot são purgadas.
+    - **Atletas Removidos**: Atletas excluídos de equipes têm seus registros sincronizados.
+    - **Workouts, Eventos de Prova, Baterias e Súmulas**: Alinhados para espelhar rigorosamente o snapshot importado.
+- **Sincronização Bidirecional e Purga de Cache Local (`localStorage`)**:
+  - Implementação de `storage.clearGameCache(gameId)`, `storage.setTeamsForGame` e `storage.setCategoriesForGame` no frontend.
+  - O modal de restauração (`BackupRestoreModal.tsx`) invalida o cache local do navegador ao concluir o restore, garantindo que dados obsoletos do `localStorage` não reapareçam na interface.
+  - Ajuste no carregamento da página de administração (`AdminPage`): as inscrições recebidas da API NestJS passam a ser a fonte canônica da verdade, atualizando o storage em vez de manter inscrições antigas do cache do navegador.
+- **Métricas Fidedignas no Painel Financeiro e Inscrições**:
+  - Correção no card *"A Receber (Pendente)"*: corrigido filtro anterior (`status !== 'paid'`) que contabilizava erroneamente inscrições canceladas (`cancelled`) como pendentes a receber. Agora filtra estritamente `status === 'pending'`.
+  - No card *"Total de Inscrições"*, agora contabiliza inscrições ativas e exibe badge com a contagem de canceladas.
+  - No card *"Kits & Camisetas"*, camisetas de inscrições canceladas foram desconsideradas das contagens ativas de logística de entrega.
+
+### 🏋️ Provas Duplas / Combo Split & Súmula Unificada A4 (v1.6.4)
+- **Motor de Ranqueamento de For Time com CAP Residual (`workout-order.ts` / `engine.ts`)**:
+  - Aprimoramento da ordenação em provas `for_time`: quem conclui no menor tempo fica à frente. Para duplas/atletas que atingem o Time Cap (`time >= cap`), o critério ordena pelo menor número de metros/repetições faltantes (`a.reps - b.reps`), exibindo `CAP +X` com precisão.
+  - No formato `amrap` com Rounds (Death By), maior número de rounds completados vence (`b.reps - a.reps`). Em caso de empate, o menor tempo acumulado de tie-break desempata automaticamente.
+- **Template de Súmula Unificada A4 (`crossfit-wod1-combo-row-deathby`)**:
+  - Adicionado template oficial de folha única A4 em `sumula-presets.ts` integrando **WOD 1-A (800m Row)**, **REST 1 min** e **WOD 1-B (Death By 5 Rounds)**, permitindo que o juiz de raia avalie toda a prova na mesma prancheta sem troca de folhas.
+- **Simulação Homologada na Categoria `INICIANTE - DUPLA FEMININA`**:
+  - Cadastro de `WOD 1-A` e `WOD 1-B` com 12 duplas avaliadas e Leaderboard consolidado em tempo real.
+- **Tabela Oficial de Pontuação dos Games (`points_table`)**:
+  - Configurado o campeonato `SUMMER2026` com a tabela oficial de pontuação decrescente dos Games:
+    - 1º: 100 pts | 2º: 94 pts | 3º: 88 pts | 4º: 84 pts | 5º: 80 pts | 6º: 76 pts | 7º: 72 pts | 8º: 68 pts | 9º: 64 pts | 10º: 60 pts
+    - A partir do 11º: decresce de 2 em 2 pontos (58, 56, 54, 52, 50, ..., até 1 pt).
+  - Configurado `isLowestPointsBetter: false` (quem acumula mais pontos vence a competição) e desempate por `last_workout`.
+
+### 📋 Mesa do Head Judge, Súmulas A4 & Auditoria com Foto Obrigatória (v1.6.5)
+- **Súmula Oficial WOD 3 (Maximum Lift - Hang Clean n' Jerk Duplas) com 10 Tentativas**:
+  - Criação do preset oficial `crossfit-wod3-maximum-lift` em `sumula-presets.ts`.
+  - Tabela completa de 1ª a 10ª tentativa com colunas estruturadas: `TENT.`, `ATLETA A (KG)`, `ATLETA B (KG)`, `TOTAL DUPLA (KG)`, `VALIDAÇÃO JUIZ ([BOM] / [NO-REP])` e `CRONÔMETRO / TIE-BREAK`.
+  - Box de destaque para cálculo e homologação da **Maior Carga Total Válida da Dupla (Atleta A + Atleta B)** e tie-break oficial.
+- **Padronização Estrita para Impressão A4 Retrato (`@page { size: A4 portrait; }`)**:
+  - Otimização do `globals.css` com margens de impressão padronizadas (`8mm 6mm`), quebra de página mandatória (`page-break-after: always`) por prancheta e preservação exata de cores (`-webkit-print-color-adjust: exact`).
+  - Súmula do WOD 1-B expandida com todos os 5 rounds (Round 1 a 5, Min 06:00 ao 21:00) visíveis em prancheta única.
+- **Mesa do Head Judge: Central de Digitação, Auditoria & Homologação (`/sumulas?tab=head_judge_desk`)**:
+  - Nova aba interativa (Aba 4) projetada especificamente para o fluxo de campo dos campeonatos presenciais:
+    - O juiz de pista preenche a súmula física na prancheta e entrega à Mesa Técnica.
+    - O Head Judge seleciona Categoria, WOD e Bateria (Heat).
+    - **Regra Obrigatória de Foto**: O sistema impede a homologação do score sem que a foto nítida da súmula física assinada seja anexada (via câmera direta do celular ou upload de imagem).
+    - **Modal de Auditoria Visual (Lightbox / Zoom)**: Permite ao Head Judge ampliar a foto em tela cheia para conferir assinaturas, rasuras e anotações dos juízes de pista.
+    - **Campos de Digitação Específicos por WOD**:
+      - *WOD 1-A*: Alternância Tempo Concluído vs TIME CAP + Metros Faltantes.
+      - *WOD 1-B*: Seletor de rounds completados (1 a 5) com tie-break.
+      - *WOD 2*: Alternância Tempo Concluído vs TIME CAP + Reps Faltantes.
+      - *WOD 3*: Digitação das cargas individuais (Atleta A + Atleta B) com cálculo da soma da dupla em tempo real.
+    - **Atualização Instantânea**: Ao homologar, salva o score no banco de dados e no storage local auditado, recalculando imediatamente a classificação geral no Leaderboard.
+  - Atalho direto integrado no Painel Administrativo (`/admin` na aba de Auditoria de Súmulas).
+- **Gabinete & Cockpit do Head Judge (Controle Total na Rota `/head-judge`)**:
+  - Nova área completa e centralizada para o Chefe de Arbitragem com 5 módulos dedicados:
+    1. *Lançamento & Homologação de Súmulas*: Com foto obrigatória, zoom em tela cheia e formulários adaptados para cada WOD.
+    2. *Julgamento de Recursos & Retificações*: Análise de protestos de atletas/box com deferimento (retificação de tempo/reps/carga com justificativa técnica) ou indeferimento.
+    3. *Livro de Penalidades*: Aplicação de acréscimo de tempo, desconto de repetições por no-rep retroativo e desclassificações oficiais (D.Q.).
+    4. *Escala dos Juízes de Pista*: Monitoramento das raias ativas e conferência das entregas das pranchetas.
+    5. *Trilha de Auditoria Imutável*: Histórico auditado de todas as decisões tomadas pelo Head Judge com carimbo de tempo.
+  - **Botão de Ação Rápida: Congelamento do Leaderboard**: Permite ao Head Judge congelar e descongelar o placar ao vivo para o público e telões com um clique.
+  - **Menu Superior (Navbar)**: Adicionado o botão `⚖️ Mesa Head Judge` com destaque visual no menu principal para Organizadores, Super Admins e Juízes.
+
+
+
+
+
+
 
 

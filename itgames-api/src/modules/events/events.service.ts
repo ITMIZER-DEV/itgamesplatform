@@ -39,6 +39,9 @@ export interface CreateGameDto {
   scoringMode?: string | null;
   tiebreak?: string | null;
   pointsTable?: number[] | null;
+  registrationLocked?: boolean;
+  registrationStartAt?: string | null;
+  registrationCloseAt?: string | null;
 }
 
 
@@ -216,6 +219,9 @@ export class EventsService {
         eventType: dto.eventType || 'crossfit',
         pixKey: dto.pixKey || null,
         pixBeneficiary: dto.pixBeneficiary || null,
+        registrationLocked: dto.registrationLocked ?? false,
+        registrationStartAt: dto.registrationStartAt ?? null,
+        registrationCloseAt: dto.registrationCloseAt ?? null,
         ...(user.role === UserRole.ORGANIZER && { organizers: { create: [{ userId: user.id }] } }),
       },
       include: { organizers: { select: this.organizerPrivateSelect } },
@@ -270,6 +276,9 @@ export class EventsService {
         ...(dto.eventType !== undefined && { eventType: dto.eventType }),
         ...(dto.pixKey !== undefined && { pixKey: dto.pixKey }),
         ...(dto.pixBeneficiary !== undefined && { pixBeneficiary: dto.pixBeneficiary }),
+        ...(dto.registrationLocked !== undefined && { registrationLocked: dto.registrationLocked }),
+        ...(dto.registrationStartAt !== undefined && { registrationStartAt: dto.registrationStartAt || null }),
+        ...(dto.registrationCloseAt !== undefined && { registrationCloseAt: dto.registrationCloseAt || null }),
       },
     });
     // mudou a regra: empurra o novo placar para a TV e para o app
@@ -291,6 +300,61 @@ export class EventsService {
       this.screens.gameChanged(code);
     }
     return updated;
+  }
+
+  /**
+   * Garante que o campeonato aceita novas inscrições considerando status,
+   * flag manual de bloqueio e janela opcional de data/hora de abertura e encerramento.
+   */
+  private assertRegistrationOpen(game: {
+    status?: string | null;
+    registrationLocked?: boolean | null;
+    registrationStartAt?: string | null;
+    registrationCloseAt?: string | null;
+  }) {
+    if (game.status !== 'live') {
+      throw new BadRequestException('Inscrições indisponíveis: campeonato não liberado');
+    }
+    if (game.registrationLocked) {
+      throw new BadRequestException('Inscrições bloqueadas pela organização do campeonato.');
+    }
+    const now = Date.now();
+    if (game.registrationStartAt) {
+      const startMs = new Date(game.registrationStartAt).getTime();
+      if (!Number.isNaN(startMs) && now < startMs) {
+        throw new BadRequestException('As inscrições para este campeonato ainda não foram abertas.');
+      }
+    }
+    if (game.registrationCloseAt) {
+      const closeMs = new Date(game.registrationCloseAt).getTime();
+      if (!Number.isNaN(closeMs) && now > closeMs) {
+        throw new BadRequestException('O prazo de inscrições para este campeonato foi encerrado.');
+      }
+    }
+  }
+
+  // Organizador ou Super Admin: bloquear/liberar inscrições por flag manual ou janela de datas
+  async updateRegistrationLock(
+    code: string,
+    payload: { registrationLocked?: boolean; registrationStartAt?: string | null; registrationCloseAt?: string | null },
+  ) {
+    const existing = await this.prisma.game.findUnique({ where: { code } });
+    if (!existing) throw new NotFoundException('Campeonato não encontrado');
+
+    const updated = await this.prisma.game.update({
+      where: { code },
+      data: {
+        ...(payload.registrationLocked !== undefined && { registrationLocked: Boolean(payload.registrationLocked) }),
+        ...(payload.registrationStartAt !== undefined && {
+          registrationStartAt: payload.registrationStartAt || null,
+        }),
+        ...(payload.registrationCloseAt !== undefined && {
+          registrationCloseAt: payload.registrationCloseAt || null,
+        }),
+      },
+      include: { organizers: { select: this.organizerPrivateSelect } },
+    });
+    return this.presentGame(updated);
   }
 
   // Super Admin: vínculo de organizadores
@@ -842,14 +906,17 @@ export class EventsService {
   async registerTeam(dto: CreateRegistrationDto, captain: AuthUser) {
     const game = await this.prisma.game.findUnique({
       where: { code: dto.gameCode },
-      select: { status: true },
+      select: {
+        status: true,
+        registrationLocked: true,
+        registrationStartAt: true,
+        registrationCloseAt: true,
+      },
     });
     if (!game) {
       throw new NotFoundException('Campeonato não encontrado');
     }
-    if (game.status !== 'live') {
-      throw new BadRequestException('Inscrições indisponíveis: campeonato não liberado');
-    }
+    this.assertRegistrationOpen(game);
 
     const category = await this.prisma.category.findUnique({
       where: {

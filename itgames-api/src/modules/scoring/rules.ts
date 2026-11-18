@@ -1,5 +1,5 @@
 export type ScoringMode = 'points_table' | 'rank_sum' | 'total_time';
-export type Tiebreak = 'last_workout' | 'most_wins' | `split:${string}`;
+export type Tiebreak = 'last_workout' | 'most_wins' | 'best_ranks' | `split:${string}`;
 
 export interface ScoringRule {
   mode: ScoringMode;
@@ -7,10 +7,15 @@ export interface ScoringRule {
   tiebreak: Tiebreak;
 }
 
-/** Tabela de pontos padrão; posição além do fim vale 1 ponto. */
+/** Tabela de pontos padrão (100, 95, 90, 85, decrescendo 5 em 5). */
 export const DEFAULT_POINTS_TABLE: number[] = [
-  100, 95, 90, 85, 80, 75, 70, 65, 60, 55, 50, 47, 44, 41, 38, 35, 32, 29, 26, 23, 20, 18, 16,
-  14, 12, 10, 8, 6, 4, 2, 1,
+  100, 95, 90, 85, 80, 75, 70, 65, 60, 55, 50, 45, 40, 35, 30, 25, 20, 15, 10, 5,
+];
+
+/** Tabela oficial CrossFit Games (100, 94, 88, 84, 80, 76, 72, 68, 64, 60, decrescendo 2 em 2 até 1). */
+export const GAMES_POINTS_TABLE: number[] = [
+  100, 94, 88, 84, 80, 76, 72, 68, 64, 60, 58, 56, 54, 52, 50, 48, 46, 44, 42, 40,
+  38, 36, 34, 32, 30, 28, 26, 24, 22, 20, 18, 16, 14, 12, 10, 8, 6, 4, 2, 1,
 ];
 
 const MODES: ScoringMode[] = ['points_table', 'rank_sum', 'total_time'];
@@ -27,7 +32,7 @@ export function parsePointsTable(input: unknown): number[] | null {
 /** Valida o critério de desempate. */
 export function parseTiebreak(input: unknown): Tiebreak | null {
   if (typeof input !== 'string') return null;
-  if (input === 'last_workout' || input === 'most_wins') return input;
+  if (input === 'last_workout' || input === 'most_wins' || input === 'best_ranks') return input;
   if (input.startsWith('split:') && input.slice('split:'.length).trim().length > 0) {
     return input as Tiebreak;
   }

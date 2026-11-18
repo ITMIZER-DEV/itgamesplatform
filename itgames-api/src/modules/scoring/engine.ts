@@ -11,21 +11,27 @@ const TOTAL_UNIT = { points_table: 'PTS', rank_sum: 'SOMA', total_time: 'TEMPO' 
 
 function toResult(s: EngineScore, cap: number): WorkoutResult {
   const time = parseTime(s.time);
+  const reps = parseInt(s.reps || '', 10) || 0;
+  // Se bateu o cap ou tem reps faltantes marcadas no for_time, tomou CAP
+  const isCap = cap > 0 && reps > 0 && time >= cap;
   return {
     time,
-    reps: parseInt(s.reps || '', 10) || 0,
+    reps,
     weight: parseFloat((s.weight || '').replace(',', '.')) || 0,
     tieBreak: parseTime(s.tieBreakTime),
     penalty: s.penaltySeconds || 0,
-    completed: time > 0 && (cap === 0 || time <= cap),
+    completed: time > 0 && (cap === 0 || time <= cap) && !isCap,
   };
 }
 
 function display(type: string, r: WorkoutResult): string {
   const total = r.time + r.penalty;
-  if (type === 'for_time') return r.completed ? formatTime(total) : `CAP +${r.reps}`;
-  // a API não guarda rodadas separadas, só o total de repetições
-  if (type === 'amrap') return `${r.reps} reps`;
+  if (type === 'for_time') return r.completed ? formatTime(total) : (r.reps > 0 ? `CAP +${r.reps}` : `CAP`);
+  if (type === 'amrap' || type === 'emom') {
+    const tb = r.tieBreak > 0 ? ` (${formatTime(r.tieBreak)})` : '';
+    const unit = r.reps === 1 ? 'round' : 'rounds';
+    return `${r.reps} ${unit}${tb}`;
+  }
   if (type === 'max_load' || type === 'complex') return `${r.weight} kg`;
   if (type === 'hyrox_standard' || type === 'hyrox_relay') return formatTime(total);
   return '-';
@@ -186,6 +192,19 @@ export function buildBoard(input: EngineInput, entries: EntriesProvider, now: Da
       }
       if (rule.tiebreak === 'last_workout') return a.lastRank - b.lastRank;
       if (rule.tiebreak === 'most_wins') return b.wins - a.wins;
+      if (rule.tiebreak === 'best_ranks') {
+        // Regulamento Summer Games: comparam-se sucessivamente as melhores colocações em cada WOD (1º, 2º, 3º...)
+        const aRanks = a.wods.filter((w) => w.status === 'scored').map((w) => w.rank).sort((x, y) => x - y);
+        const bRanks = b.wods.filter((w) => w.status === 'scored').map((w) => w.rank).sort((x, y) => x - y);
+        const maxLen = Math.max(aRanks.length, bRanks.length);
+        for (let i = 0; i < maxLen; i++) {
+          const rankA = aRanks[i] ?? 9999;
+          const rankB = bRanks[i] ?? 9999;
+          if (rankA !== rankB) return rankA - rankB; // menor rank numérico (melhor colocação) vence
+        }
+        // Permanecendo o empate, a classificação da última prova formaliza o desempate
+        if (a.lastRank !== b.lastRank) return a.lastRank - b.lastRank;
+      }
       return 0;
     };
     const compare = (a: Row, b: Row): number => {
@@ -229,6 +248,8 @@ export function buildBoard(input: EngineInput, entries: EntriesProvider, now: Da
       eventType: input.game.eventType === 'hyrox' ? 'hyrox' : 'crossfit',
       rule: { mode: rule.mode, tiebreak: rule.tiebreak },
       totalUnit: TOTAL_UNIT[rule.mode],
+      status: input.game.status || 'live',
+      showScoreRevision: Boolean(input.game.showScoreRevision),
     },
     generatedAt: now.toISOString(),
     categories,

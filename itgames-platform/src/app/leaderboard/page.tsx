@@ -7,39 +7,108 @@ import {
   Tv, 
   Search, 
   Medal, 
-  TrendingUp, 
-  Flame, 
-  Clock, 
-  Activity, 
-  ChevronRight,
-  Filter,
-  Sparkles
+  Snowflake,
+  AlertCircle,
+  CheckCircle2,
+  Layers,
+  ShieldCheck,
+  Flame,
+  Clock,
+  Sparkles,
+  Lock
 } from 'lucide-react';
 import { useBoard } from '@/lib/use-board';
-import { toLeaderboardRanks, formatTotal } from '@/lib/board';
+import { toLeaderboardRanks, formatTotal, parseWodTitle, type BoardResponse } from '@/lib/board';
+import { computeCategoryStandings } from '@/lib/standings-engine';
+import { storage } from '@/lib/storage';
 import { LeaderboardRank } from '@/types';
-import { getCurrentUserSession } from '@/lib/acl';
 
 export default function LeaderboardPage() {
   const { board, status } = useBoard(30000);
   const activeGame = board?.game ?? null;
-  const categories = board?.categories ?? [];
+  const apiCategories = board?.categories ?? [];
+  const [localFallbackCats, setLocalFallbackCats] = useState<BoardResponse['categories']>([]);
+
+  useEffect(() => {
+    const syncLocalStandings = () => {
+      storage.initDefaultsIfEmpty();
+      const gCode = activeGame?.code || storage.getActiveGameId() || 'SUMMER2026';
+      const cats = storage.getCategories(gCode);
+      const teams = storage.getTeams(gCode);
+      const wods = storage.getWorkouts(gCode);
+      const scores = storage.getScores(gCode);
+      if (cats.length === 0 || teams.length === 0) return;
+
+      const computed: BoardResponse['categories'] = cats.map((cat) => {
+        const res = computeCategoryStandings(cat, teams, wods, scores);
+        return {
+          id: Number(String(cat.id).replace(/\D/g, '')) || 1,
+          name: cat.name,
+          wodTitles: res.workouts.map((w) => w.title),
+          rows: res.ranks.map((r) => ({
+            rank: r.rank,
+            teamCode: Number(String(r.registrationId).replace(/\D/g, '')) || r.rank,
+            team: r.teamName,
+            number: r.registerNumber,
+            athletes: r.athletes,
+            status: r.status === 'cancelled' ? 'cancelled' : 'active',
+            totalPoints: r.totalPoints,
+            totalDisplay: String(r.totalPoints),
+            wods: r.workoutScores.map((ws) => ({
+              title: ws.workoutTitle,
+              display: ws.scoreDisplay,
+              rank: ws.rank,
+              points: ws.points,
+              status: (ws.status as 'scored' | 'wo' | 'cancelled' | 'none') || 'none',
+            })),
+          })),
+        };
+      });
+      setLocalFallbackCats(computed);
+    };
+
+    syncLocalStandings();
+    window.addEventListener('itgames_storage_updated', syncLocalStandings);
+    window.addEventListener('itgames_standings_updated', syncLocalStandings);
+    return () => {
+      window.removeEventListener('itgames_storage_updated', syncLocalStandings);
+      window.removeEventListener('itgames_standings_updated', syncLocalStandings);
+    };
+  }, [activeGame]);
+
+  const categories = apiCategories.length > 0 ? apiCategories : localFallbackCats;
 
   const [pickedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [selectedWodIndex, setSelectedWodIndex] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const selectedCategoryId = pickedCategoryId || String(categories[0]?.id ?? '');
 
   const currentCategory = categories.find(c => String(c.id) === selectedCategoryId) || categories[0];
   const categoryWodTitles = currentCategory?.wodTitles ?? [];
 
-  // Classificação oficial calculada pelo servidor
+  // Classificação oficial calculada pelo servidor com regras oficiais de pontuação e tiebreak
   const leaderboard: LeaderboardRank[] = currentCategory
     ? toLeaderboardRanks(currentCategory, activeGame?.totalUnit ?? 'PTS')
     : [];
   const hasResults = categories.some(c => c.rows.some(r => r.wods.some(w => w.status !== 'none')));
 
+  // Ordenação das equipes:
+  // Se selectedWodIndex for número: ordena pelo rank daquela prova específica!
+  // Se for null: usa o ranking geral acumulado com o critério de desempate
+  const sortedRanks = [...leaderboard].sort((a, b) => {
+    if (selectedWodIndex !== null) {
+      const scoreA = a.workoutScores[selectedWodIndex];
+      const scoreB = b.workoutScores[selectedWodIndex];
+      const rankA = scoreA && scoreA.rank > 0 ? scoreA.rank : 9999;
+      const rankB = scoreB && scoreB.rank > 0 ? scoreB.rank : 9999;
+      if (rankA !== rankB) return rankA - rankB;
+      return a.rank - b.rank;
+    }
+    return a.rank - b.rank;
+  });
+
   // Filtrar busca por nome ou número
-  const filteredRanks = leaderboard.filter(item => {
+  const filteredRanks = sortedRanks.filter(item => {
     const query = searchQuery.toLowerCase();
     return (
       item.teamName.toLowerCase().includes(query) ||
@@ -48,6 +117,52 @@ export default function LeaderboardPage() {
       (item.boxOrAffiliate && item.boxOrAffiliate.toLowerCase().includes(query))
     );
   });
+
+  const [isFrozen, setIsFrozen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const checkFreeze = () => {
+      const gCode = activeGame?.code || 'SUMMER2026';
+      const localFreeze =
+        localStorage.getItem('itgames_leaderboard_frozen') === 'true' ||
+        localStorage.getItem('itgames_freeze_leaderboard') === 'true' ||
+        localStorage.getItem('itgames_freeze_leaderboard_SUMMER2026') === 'true' ||
+        (gCode ? localStorage.getItem(`itgames_freeze_leaderboard_${gCode}`) === 'true' : false);
+      const apiFreeze =
+        (activeGame?.status as string) === 'frozen' ||
+        (activeGame?.status as string) === 'blocked';
+      setIsFrozen(Boolean(localFreeze || apiFreeze));
+    };
+
+    checkFreeze();
+    window.addEventListener('storage', checkFreeze);
+    window.addEventListener('itgames_freeze_changed', checkFreeze);
+    const interval = setInterval(checkFreeze, 1000);
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('itgames_freeze_channel');
+      bc.onmessage = (ev) => {
+        if (ev.data && typeof ev.data.frozen === 'boolean') {
+          setIsFrozen(ev.data.frozen);
+        }
+        if (ev.data?.standingsUpdated) {
+          window.dispatchEvent(new Event('itgames_standings_updated'));
+        }
+      };
+    } catch {
+      // BroadcastChannel opcional
+    }
+
+    return () => {
+      window.removeEventListener('storage', checkFreeze);
+      window.removeEventListener('itgames_freeze_changed', checkFreeze);
+      clearInterval(interval);
+      if (bc) bc.close();
+    };
+  }, [activeGame]);
+
+  const showRevision = Boolean(activeGame?.showScoreRevision);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
@@ -58,12 +173,24 @@ export default function LeaderboardPage() {
           <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
             <Trophy className="w-4 h-4" />
             <span>Classificação Oficial Ao Vivo</span>
+            {isFrozen && (
+              <span className="inline-flex items-center gap-1 bg-rose-500/20 text-rose-300 border border-rose-500/40 px-2 py-0.5 rounded text-[10px] font-black uppercase">
+                <Lock className="w-3 h-3" />
+                Bloqueado
+              </span>
+            )}
+            {showRevision && (
+              <span className="inline-flex items-center gap-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded text-[10px] font-black uppercase">
+                <AlertCircle className="w-3 h-3" />
+                Revisão Aberta
+              </span>
+            )}
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">
             Leaderboard Geral • {activeGame?.name}
           </h1>
           <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-            Pontuação homologada em tempo real com critérios de desempate oficiais de {activeGame?.eventType === 'crossfit' ? 'CrossFit (100, 95, 90...)' : 'HYROX Racing (Tempo Acumulado)'}.
+            Pontuação homologada em tempo real com critérios de desempate oficiais Summer Games (melhores colocações sucessivas).
           </p>
         </div>
 
@@ -78,6 +205,43 @@ export default function LeaderboardPage() {
           </Link>
         </div>
       </div>
+
+      {/* OVERLAY / BANNER DE BLOQUEIO DO LEADERBOARD */}
+      {isFrozen && (
+        <div className="rounded-3xl bg-gradient-to-br from-rose-950/90 via-zinc-900 to-black border-2 border-rose-500/60 p-6 sm:p-10 shadow-2xl shadow-rose-500/20 text-center space-y-5">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-rose-500/20 border-2 border-rose-500/50 flex items-center justify-center text-rose-400 mx-auto animate-pulse">
+            <Lock className="w-8 h-8 sm:w-10 sm:h-10" />
+          </div>
+          <div className="space-y-2 max-w-2xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-300 text-[11px] font-black uppercase tracking-widest">
+              <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping" />
+              Blindagem Oficial Pré-Pódio
+            </div>
+            <h2 className="text-2xl sm:text-4xl font-black text-white uppercase tracking-tight">
+              LEADERBOARD BLOQUEADO
+            </h2>
+            <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
+              As pontuações parciais e o ranking geral foram temporariamente ocultados pela <strong className="text-white">Mesa do Head Judge</strong> para conferência de súmulas e fechamento oficial. O resultado definitivo será anunciado na Cerimônia de Premiação!
+            </p>
+          </div>
+          <div>
+            <span className="inline-flex items-center gap-2 text-xs font-mono font-bold text-amber-300 bg-zinc-900 px-4 py-2 rounded-xl border border-zinc-700">
+              <Snowflake className="w-4 h-4 animate-spin" />
+              Auditoria &amp; Homologação em Andamento
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* BANNER DE JANELA DE REVISÃO DE SÚMULA */}
+      {showRevision && (
+        <div className="rounded-2xl bg-amber-950/40 border border-amber-500/40 p-4 flex items-center gap-3 text-xs text-amber-200">
+          <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
+          <div>
+            <strong>Período de Revisão & Contestação de Súmulas Ativo:</strong> Atletas e capitães têm 15 minutos após o encerramento de cada bateria para solicitar auditoria formal de tempos, parciais e contagem de repetições junto à mesa diretora.
+          </div>
+        </div>
+      )}
 
       {status === 'loading' && <p className="text-sm text-zinc-500">Carregando classificação...</p>}
       {status === 'no-games' && (
@@ -96,6 +260,8 @@ export default function LeaderboardPage() {
         </div>
       )}
 
+      {!isFrozen && (
+        <>
       {/* SELEÇÃO DE CATEGORIA EM ABAS */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
         {categories.map(cat => {
@@ -111,6 +277,45 @@ export default function LeaderboardPage() {
               }`}
             >
               {cat.name}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* SELEÇÃO DE VISUALIZAÇÃO: GERAL ACUMULADO OU PARCIAL POR PROVA */}
+      <div className="glass-panel rounded-2xl p-2 border border-zinc-800 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+        <button
+          onClick={() => setSelectedWodIndex(null)}
+          className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all whitespace-nowrap ${
+            selectedWodIndex === null
+              ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-black shadow-md shadow-amber-500/20'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+          }`}
+        >
+          <Trophy className="w-3.5 h-3.5" />
+          <span>🏆 GERAL ACUMULADO</span>
+        </button>
+
+        {categoryWodTitles.map((title, idx) => {
+          const parsed = parseWodTitle(title, idx);
+          const isSelected = selectedWodIndex === idx;
+          return (
+            <button
+              key={idx}
+              onClick={() => setSelectedWodIndex(idx)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all whitespace-nowrap ${
+                isSelected
+                  ? 'bg-zinc-100 text-black shadow-md shadow-white/10'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5 opacity-60" />
+              <span>{parsed.shortTitle}</span>
+              {parsed.subtitle && (
+                <span className={`text-[10px] font-normal ${isSelected ? 'text-zinc-700' : 'text-zinc-500'}`}>
+                  ({parsed.subtitle})
+                </span>
+              )}
             </button>
           );
         })}
@@ -133,8 +338,8 @@ export default function LeaderboardPage() {
         )}
       </div>
 
-      {/* PÓDIO DOS 3 PRIMEIROS COLOCADOS (TOP 3) */}
-      {filteredRanks.length >= 3 && !searchQuery && (
+      {/* PÓDIO DOS 3 PRIMEIROS COLOCADOS (TOP 3) - EXIBIDO NO GERAL ACUMULADO */}
+      {selectedWodIndex === null && filteredRanks.length >= 3 && !searchQuery && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
           
           {/* 2º LUGAR (PRATA) */}
@@ -197,79 +402,236 @@ export default function LeaderboardPage() {
         </div>
       )}
 
-      {/* TABELA GERAL DO LEADERBOARD */}
-      <div className="glass-panel rounded-3xl border border-zinc-800 overflow-hidden shadow-2xl">
+      {/* CARDS DE CLASSIFICAÇÃO MOBILE (ERGONÔMICO PARA CELULARES) */}
+      <div className="space-y-3 md:hidden">
+        {filteredRanks.map((rankItem, rIdx) => {
+          const wodScore = selectedWodIndex !== null ? rankItem.workoutScores[selectedWodIndex] : null;
+          const displayRank = selectedWodIndex !== null ? (wodScore?.rank || rIdx + 1) : rankItem.rank;
+
+          return (
+            <div
+              key={`mob_${rankItem.registrationId}`}
+              className={`p-4 rounded-2xl border bg-zinc-950/90 space-y-3 ${
+                displayRank === 1
+                  ? 'border-amber-500/60 bg-gradient-to-br from-amber-500/10 via-zinc-900 to-zinc-950'
+                  : 'border-zinc-800'
+              } ${rankItem.status === 'cancelled' ? 'opacity-60' : ''}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span
+                    className={`w-9 h-9 rounded-xl font-black text-sm flex items-center justify-center shrink-0 ${
+                      displayRank === 1
+                        ? 'bg-amber-500 text-black'
+                        : displayRank === 2
+                          ? 'bg-zinc-300 text-black'
+                          : displayRank === 3
+                            ? 'bg-amber-700 text-white'
+                            : 'bg-zinc-800 text-zinc-400'
+                    }`}
+                  >
+                    {displayRank}º
+                  </span>
+                  <div className="min-w-0">
+                    <div className="font-black text-white text-sm flex items-center gap-1.5 flex-wrap">
+                      <span className="truncate">{rankItem.teamName}</span>
+                      <span className="text-[10px] font-mono text-amber-400">{rankItem.registerNumber}</span>
+                    </div>
+                    <div className="text-[11px] text-zinc-400 truncate">
+                      {rankItem.athletes.join(', ')}
+                      {rankItem.boxOrAffiliate ? ` • ${rankItem.boxOrAffiliate}` : ''}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-right shrink-0">
+                  <div className="text-[10px] uppercase font-bold text-zinc-500">
+                    {selectedWodIndex !== null ? 'Pontos' : 'Total'}
+                  </div>
+                  <div className="text-base font-black text-amber-400 font-mono">
+                    {selectedWodIndex !== null ? `${wodScore?.points ?? 0} pts` : formatTotal(rankItem)}
+                  </div>
+                </div>
+              </div>
+
+              {selectedWodIndex === null ? (
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-800/80">
+                  {rankItem.workoutScores.map((ws, idx) => {
+                    const parsed = parseWodTitle(ws.workoutTitle, idx);
+                    return (
+                      <div key={ws.workoutId} className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs">
+                        <div className="text-[10px] text-zinc-400 font-bold truncate">{parsed.shortTitle}</div>
+                        <div className="font-mono font-bold text-white">{ws.scoreDisplay}</div>
+                        <div className="text-[10px] text-emerald-400 font-semibold">
+                          {ws.points > 0 ? `${ws.points} pts (${ws.rank}º)` : '-'}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between pt-2 border-t border-zinc-800/80 text-xs">
+                  <span className="text-zinc-400">Marca Oficial:</span>
+                  <span className="font-mono font-black text-white bg-zinc-900 border border-zinc-700 px-3 py-1 rounded-lg">
+                    {wodScore?.scoreDisplay || '-'}
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* TABELA DE CLASSIFICAÇÃO (GERAL OU PARCIAL) */}
+      <div className="hidden md:block glass-panel rounded-3xl border border-zinc-800 overflow-hidden shadow-2xl">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-zinc-900/90 text-zinc-400 border-b border-zinc-800 uppercase text-[10px] tracking-wider font-bold">
-                <th className="py-4 px-4 text-center w-16">Rank</th>
+                <th className="py-4 px-4 text-center w-16">
+                  {selectedWodIndex !== null ? 'Pos. WOD' : 'Rank'}
+                </th>
                 <th className="py-4 px-4">Atleta / Equipe</th>
                 <th className="py-4 px-4">Box / Box Affiliate</th>
-                {categoryWodTitles.map((title, i) => (
-                  <th key={i} className="py-4 px-3 text-center">
-                    {title.split('-')[0] || `WOD ${i + 1}`}
-                  </th>
-                ))}
-                <th className="py-4 px-4 text-right font-black text-amber-400">Total</th>
+                
+                {selectedWodIndex === null ? (
+                  // COLUNAS DE TODOS OS WODS
+                  <>
+                    {categoryWodTitles.map((title, i) => {
+                      const parsed = parseWodTitle(title, i);
+                      return (
+                        <th key={i} className="py-3 px-3 text-center" title={title}>
+                          <div className="font-extrabold text-zinc-200 tracking-normal text-xs">{parsed.shortTitle}</div>
+                          {parsed.subtitle && (
+                            <div className="text-[9px] font-normal text-zinc-500 uppercase truncate max-w-[120px] mx-auto tracking-tight">
+                              {parsed.subtitle}
+                            </div>
+                          )}
+                        </th>
+                      );
+                    })}
+                    <th className="py-4 px-4 text-right font-black text-amber-400">Total</th>
+                  </>
+                ) : (
+                  // COLUNAS DA VISÃO PARCIAL DO WOD SELECIONADO
+                  <>
+                    <th className="py-4 px-4 text-center">Marca / Resultado Oficial</th>
+                    <th className="py-4 px-4 text-center">Pontos Conquistados</th>
+                    <th className="py-4 px-4 text-center">Homologação</th>
+                    <th className="py-4 px-4 text-right font-black text-zinc-400">Geral Acum.</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/60">
-              {filteredRanks.map((rankItem) => (
-                <tr 
-                  key={rankItem.registrationId}
-                  className={`hover:bg-zinc-800/40 transition-colors ${rankItem.status === 'cancelled' ? 'opacity-60' : ''}`}
-                >
-                  <td className="py-3.5 px-4 text-center">
-                    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-xl font-black text-xs ${
-                      rankItem.rank === 1 ? 'bg-amber-500 text-black' :
-                      rankItem.rank === 2 ? 'bg-zinc-300 text-black' :
-                      rankItem.rank === 3 ? 'bg-amber-700 text-white' :
-                      'bg-zinc-800 text-zinc-400'
-                    }`}>
-                      {rankItem.rank}
-                    </span>
-                  </td>
+              {filteredRanks.map((rankItem, rIdx) => {
+                const wodScore = selectedWodIndex !== null ? rankItem.workoutScores[selectedWodIndex] : null;
+                const displayRank = selectedWodIndex !== null ? (wodScore?.rank || rIdx + 1) : rankItem.rank;
 
-                  <td className="py-3.5 px-4">
-                    <div className="font-bold text-white flex items-center gap-1.5">
-                      <span>{rankItem.teamName}</span>
-                      <span className="text-[10px] text-amber-400">({rankItem.registerNumber})</span>
-                      {rankItem.status === 'cancelled' && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 font-black uppercase">
-                          CANCELADA
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[10px] text-zinc-400">
-                      {rankItem.athletes.join(', ')}
-                    </div>
-                  </td>
+                return (
+                  <tr 
+                    key={rankItem.registrationId}
+                    className={`hover:bg-zinc-800/40 transition-colors ${rankItem.status === 'cancelled' ? 'opacity-60' : ''}`}
+                  >
+                    <td className="py-3.5 px-4 text-center">
+                      <span className={`inline-flex items-center justify-center w-7 h-7 rounded-xl font-black text-xs ${
+                        displayRank === 1 ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20' :
+                        displayRank === 2 ? 'bg-zinc-300 text-black' :
+                        displayRank === 3 ? 'bg-amber-700 text-white' :
+                        'bg-zinc-800 text-zinc-400'
+                      }`}>
+                        {displayRank}
+                      </span>
+                    </td>
 
-                  <td className="py-3.5 px-4 text-zinc-400">
-                    {rankItem.boxOrAffiliate || '-'}
-                  </td>
-
-                  {/* SCORES DE CADA WOD */}
-                  {rankItem.workoutScores.map((ws) => (
-                    <td key={ws.workoutId} className="py-3.5 px-3 text-center">
-                      <div className="font-bold text-zinc-200">
-                        {ws.scoreDisplay}
+                    <td className="py-3.5 px-4">
+                      <div className="font-bold text-white flex items-center gap-1.5">
+                        <span>{rankItem.teamName}</span>
+                        <span className="text-[10px] text-amber-400">({rankItem.registerNumber})</span>
+                        {rankItem.status === 'cancelled' && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 font-black uppercase">
+                            CANCELADA
+                          </span>
+                        )}
                       </div>
-                      <div className="text-[10px] text-zinc-500">
-                        {ws.points > 0 ? `${ws.points} pts (${ws.rank}º)` : '-'}
+                      <div className="text-[10px] text-zinc-400">
+                        {rankItem.athletes.join(', ')}
                       </div>
                     </td>
-                  ))}
 
-                  <td className="py-3.5 px-4 text-right font-black text-sm text-amber-400">
-                    {formatTotal(rankItem)}
-                  </td>
-                </tr>
-              ))}
+                    <td className="py-3.5 px-4 text-zinc-400">
+                      {rankItem.boxOrAffiliate || '-'}
+                    </td>
+
+                    {selectedWodIndex === null ? (
+                      // SCORES DE CADA WOD NO GERAL
+                      <>
+                        {rankItem.workoutScores.map((ws) => (
+                          <td key={ws.workoutId} className="py-3.5 px-3 text-center">
+                            <div className="font-bold text-zinc-200">
+                              {ws.scoreDisplay}
+                            </div>
+                            <div className="text-[10px] text-zinc-500">
+                              {ws.points > 0 ? `${ws.points} pts (${ws.rank}º)` : '-'}
+                            </div>
+                          </td>
+                        ))}
+
+                        <td className="py-3.5 px-4 text-right font-black text-sm text-amber-400">
+                          {formatTotal(rankItem)}
+                        </td>
+                      </>
+                    ) : (
+                      // VISÃO ESPECÍFICA DO WOD SELECIONADO
+                      <>
+                        <td className="py-3.5 px-4 text-center font-mono font-bold text-sm text-white">
+                          <span className="bg-zinc-900 border border-zinc-700/80 px-3 py-1 rounded-lg">
+                            {wodScore?.scoreDisplay || '-'}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <span className="font-black text-amber-400 text-sm">
+                            {wodScore ? `${wodScore.points} pts` : '-'}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          {wodScore?.status === 'scored' ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded font-bold uppercase">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Homologado
+                            </span>
+                          ) : wodScore?.status === 'wo' ? (
+                            <span className="text-[10px] text-rose-400 bg-rose-500/10 border border-rose-500/30 px-2 py-0.5 rounded font-bold uppercase">
+                              W.O.
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-zinc-500">Sem Score</span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-mono font-bold text-zinc-400">
+                          {formatTotal(rankItem)}
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
+      </div>
+        </>
+      )}
+
+      {/* RODAPÉ INFORMATIVO: REGULAMENTO OFICIAL DE DESEMPATE */}
+      <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-400 space-y-1.5">
+        <div className="font-bold text-zinc-300 flex items-center gap-2">
+          <ShieldCheck className="w-4 h-4 text-amber-400" />
+          <span>Critério Oficial de Desempate — Regulamento Summer Games Interbox</span>
+        </div>
+        <p className="leading-relaxed text-[11px]">
+          Em caso de empate na pontuação geral acumulada, a classificação é definida pela comparação das <strong>melhores colocações sucessivas</strong> em cada WOD (1ºs lugares; persistindo, 2ºs lugares; e assim sucessivamente). Se o empate persistir após todos os WODs, o <strong>resultado obtido na última prova disputada</strong> formaliza a vitória definitiva.
+        </p>
       </div>
 
     </div>

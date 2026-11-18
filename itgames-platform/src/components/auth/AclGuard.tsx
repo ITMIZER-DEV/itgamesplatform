@@ -8,7 +8,7 @@ import Link from 'next/link';
 
 interface AclGuardProps {
   children: React.ReactNode;
-  resource: 'admin' | 'judge' | 'athlete' | 'heats' | 'sumulas' | 'superadmin' | 'public';
+  resource: 'admin' | 'judge' | 'athlete' | 'heats' | 'sumulas' | 'superadmin' | 'public' | 'headjudge';
   requiredRoleLabel?: string;
 }
 

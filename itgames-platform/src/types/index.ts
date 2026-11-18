@@ -254,6 +254,9 @@ export interface GameEvent {
   pixKey?: string;
   pixBeneficiary?: string;
   pixKeyType?: 'email' | 'cpf' | 'cnpj' | 'phone' | 'random';
+  registrationLocked?: boolean;
+  registrationStartAt?: string | null;
+  registrationCloseAt?: string | null;
   scoringRules: {
     isLowestPointsBetter: boolean;
     hyroxChipTimingEnabled: boolean;
