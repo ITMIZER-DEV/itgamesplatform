@@ -80,6 +80,7 @@ export default function HeadJudgePage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string>('');
   const [deskHeatNumber, setDeskHeatNumber] = useState<string>('1');
+  const isSyncingFromApiRef = React.useRef<boolean>(false);
 
   // ⚡ SISTEMA ANTIGO: Busca Rápida por Código do Team / Atleta
   const [quickSearchCode, setQuickSearchCode] = useState<string>('');
@@ -134,6 +135,7 @@ export default function HeadJudgePage() {
     let scs = storage.getScores(gameId);
     const logs = storage.getAuditLogs(gameId);
 
+    isSyncingFromApiRef.current = true;
     try {
       const [apiCats, apiWods, apiRegs, apiScores, apiOfficial] = await Promise.all([
         apiClient.listCategories(gCode).catch(() => null),
@@ -242,6 +244,10 @@ export default function HeadJudgePage() {
       }
     } catch (err) {
       console.warn('[HeadJudge] Fallback para storage local', err);
+    } finally {
+      setTimeout(() => {
+        isSyncingFromApiRef.current = false;
+      }, 150);
     }
 
     setCategories(cats);
@@ -251,18 +257,23 @@ export default function HeadJudgePage() {
     setScores(scs);
     setAuditLogs(logs);
 
-    if (cats.length > 0 && !selectedCategoryId) {
-      const defaultCat = cats.find(c => c.id === '2') || cats[0];
-      setSelectedCategoryId(defaultCat.id);
-      const firstCatWods = sortWorkoutsNaturally(
-        wods.filter(w => !w.categoryId || w.categoryId === defaultCat.id || w.categoryIds?.includes(defaultCat.id))
-      );
-      if (firstCatWods.length > 0 && !selectedWorkoutId) {
-        setSelectedWorkoutId(firstCatWods[0].id);
-      }
-    } else if (wods.length > 0 && !selectedWorkoutId) {
-      const sorted = sortWorkoutsNaturally(wods);
-      setSelectedWorkoutId(sorted[0].id);
+    if (cats.length > 0) {
+      setSelectedCategoryId((prev) => {
+        if (prev && cats.some((c) => c.id === prev)) return prev;
+        const defaultCat = cats.find((c) => c.id === '2') || cats[0];
+        return defaultCat.id;
+      });
+    }
+    if (wods.length > 0) {
+      setSelectedWorkoutId((prev) => {
+        if (prev && wods.some((w) => w.id === prev)) return prev;
+        const defaultCat = cats.find((c) => c.id === '2') || cats[0];
+        const firstCatWods = sortWorkoutsNaturally(
+          wods.filter((w) => !w.categoryId || w.categoryId === defaultCat?.id || w.categoryIds?.includes(defaultCat?.id)),
+        );
+        const list = firstCatWods.length > 0 ? firstCatWods : sortWorkoutsNaturally(wods);
+        return list[0]?.id || '';
+      });
     }
 
     // Carregar estado de congelamento real do banco e storage
@@ -276,28 +287,34 @@ export default function HeadJudgePage() {
     storage.initDefaultsIfEmpty();
     loadData();
 
-    window.addEventListener('itgames_storage_updated', loadData);
-    return () => window.removeEventListener('itgames_storage_updated', loadData);
+    const onStorageUpdated = () => {
+      if (isSyncingFromApiRef.current) return;
+      loadData();
+    };
+    window.addEventListener('itgames_storage_updated', onStorageUpdated);
+    return () => window.removeEventListener('itgames_storage_updated', onStorageUpdated);
   }, [activeGame]);
 
-  // Categoria e WOD ativos
+  // Categoria e WOD ativos (com fallback para WODs gerais do campeonato caso a categoria ainda não tenha WODs próprios)
   const currentCategory = categories.find(c => c.id === selectedCategoryId) || categories[0];
+  const directCatWorkouts = workouts.filter(
+    w => !w.categoryId || w.categoryId === currentCategory?.id || w.categoryIds?.includes(currentCategory?.id),
+  );
   const categoryWorkouts = sortWorkoutsNaturally(
-    workouts.filter(w => !w.categoryId || w.categoryId === currentCategory?.id || w.categoryIds?.includes(currentCategory?.id))
+    directCatWorkouts.length > 0 ? directCatWorkouts : workouts,
   );
   const currentWorkout = categoryWorkouts.find(w => w.id === selectedWorkoutId) || categoryWorkouts[0] || workouts[0];
 
   const handleSelectCategory = (catId: string) => {
     setSelectedCategoryId(catId);
     setDeskHeatNumber('1');
-    const nextWods = sortWorkoutsNaturally(
-      workouts.filter(w => !w.categoryId || w.categoryId === catId || w.categoryIds?.includes(catId))
-    );
+    const directNext = workouts.filter(w => !w.categoryId || w.categoryId === catId || w.categoryIds?.includes(catId));
+    const nextWods = sortWorkoutsNaturally(directNext.length > 0 ? directNext : workouts);
     setSelectedWorkoutId(nextWods[0]?.id || '');
   };
   
   // Equipes filtradas da categoria (garantindo que não perca por causa de status)
-  const filteredTeams = teams.filter(t => t.categoryId === currentCategory?.id && t.paymentStatus !== 'cancelled');
+  const filteredTeams = teams.filter(t => String(t.categoryId) === String(currentCategory?.id) && t.paymentStatus !== 'cancelled');
 
   // Mapear Raias e Baterias
   interface LaneItem {
@@ -307,7 +324,9 @@ export default function HeadJudgePage() {
     heatTime: string;
   }
 
-  const workoutHeats = heats.filter(h => h.workoutId === currentWorkout?.id);
+  const workoutHeats = heats.filter(
+    h => h.workoutId === currentWorkout?.id && (!h.categoryId || String(h.categoryId) === String(currentCategory?.id)),
+  );
   const allCategoryLanes: LaneItem[] = [];
 
   if (workoutHeats.length > 0) {
@@ -324,7 +343,10 @@ export default function HeadJudgePage() {
         }
       });
     });
-  } else {
+  }
+
+  // Se não houver baterias salvas para esta categoria específica, monta as baterias automaticamente com as equipes inscritas na categoria
+  if (allCategoryLanes.length === 0 && filteredTeams.length > 0) {
     const lanesPerHeat = activeGame?.lanesCount || 4;
     filteredTeams.forEach((team, idx) => {
       const heatNum = Math.floor(idx / lanesPerHeat) + 1;
@@ -2409,25 +2431,81 @@ export default function HeadJudgePage() {
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {distinctHeats.map(hNum => {
-                  const heatLanes = allCategoryLanes.filter(l => Number(l.heatNumber) === hNum);
-                  return (
-                    <div key={hNum} className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="font-black text-amber-400 text-sm">BATERIA #{hNum}</span>
-                        <span className="text-[10px] text-zinc-400 font-bold">{heatLanes.length} Raias</span>
-                      </div>
-                      <div className="space-y-1 pt-1">
-                        {heatLanes.map(lane => (
-                          <div key={lane.team.id} className="text-[11px] text-zinc-300 flex items-center justify-between border-b border-zinc-900 pb-1">
-                            <span>Raia {lane.laneNumber}: {lane.team.teamName}</span>
-                            <span className="text-zinc-500">{lane.team.registerNumber}</span>
+                {distinctHeats.length === 0 ? (
+                  <div className="col-span-full p-6 rounded-2xl bg-zinc-950 border border-zinc-800 text-center text-xs text-zinc-400">
+                    Nenhuma equipe inscrita na categoria <strong className="text-white">{currentCategory?.name}</strong>.
+                  </div>
+                ) : (
+                  distinctHeats.map(hNum => {
+                    const heatLanes = allCategoryLanes.filter(l => Number(l.heatNumber) === hNum);
+                    return (
+                      <div key={hNum} className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-2 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <span className="font-black text-amber-400 text-sm">BATERIA #{hNum}</span>
+                            <span className="text-[10px] text-zinc-400 font-bold">{heatLanes.length} Raias</span>
                           </div>
-                        ))}
+                          <div className="space-y-1 pt-2">
+                            {heatLanes.map(lane => (
+                              <div key={lane.team.id} className="text-[11px] text-zinc-300 flex items-center justify-between border-b border-zinc-900 pb-1">
+                                <span className="truncate mr-2">Raia {lane.laneNumber}: {lane.team.teamName}</span>
+                                <span className="text-zinc-500 shrink-0">{lane.team.registerNumber}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!activeGame || !currentCategory) return;
+                            const gCode = activeGame.code || activeGame.id;
+                            const catNum = Number(String(currentCategory.id).replace(/\D/g, '')) || 1;
+                            const wodNum = Number(String(currentWorkout?.id ?? '1').replace(/\D/g, '')) || 1;
+                            const lanes = heatLanes.map((item) => ({
+                              laneNumber: Number(item.laneNumber),
+                              teamCode: Number(String(item.team.id).replace(/\D/g, '')) || Number(item.laneNumber),
+                              teamName: item.team.teamName,
+                              number: item.team.registerNumber,
+                              athletes: (item.team.athletes || []).map((a) => a.name),
+                            }));
+                            const spot = {
+                              kind: 'heat_call' as const,
+                              gameCode: gCode,
+                              gameName: activeGame.name,
+                              categoryId: catNum,
+                              categoryName: currentCategory.name,
+                              workoutCode: wodNum,
+                              workoutTitle: currentWorkout?.title || 'WOD',
+                              heatNumber: hNum,
+                              totalHeats: Math.max(1, distinctHeats.length),
+                              startTime: heatLanes[0]?.heatTime || '09:00',
+                              message: 'ATLETAS DA BATERIA, DIRIJAM-SE ÀS SUAS RAIAS DE LARGADA',
+                              lanes,
+                              triggeredAt: new Date().toISOString(),
+                            };
+                            saveLocalArenaSpotlight(spot);
+                            await apiClient
+                              .triggerScreenSpotlight({
+                                kind: 'heat_call',
+                                gameCode: gCode,
+                                categoryId: catNum,
+                                workoutCode: wodNum,
+                                heatNumber: hNum,
+                                message: spot.message,
+                                lanes,
+                              })
+                              .catch(() => null);
+                            toast.success(`📢 Bateria #${hNum} (${currentCategory.name}) chamada nos telões!`);
+                          }}
+                          className="w-full mt-2 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500 hover:text-black border border-amber-500/40 text-amber-300 font-black text-[11px] flex items-center justify-center gap-1.5 transition-all"
+                        >
+                          <Megaphone className="w-3.5 h-3.5" />
+                          <span>📢 Chamar Bateria #{hNum} no Telão</span>
+                        </button>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             </div>
           </div>

@@ -60,10 +60,11 @@ export default function HeatsPage() {
   // seleção do usuário; os valores efetivos são derivados abaixo (sempre válidos para os dados carregados)
   const [pickedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [pickedWorkoutId, setSelectedWorkoutId] = useState<string>('');
-  const currentCategory = categories.find((c) => c.id === pickedCategoryId) || categories[0];
+  const currentCategory = categories.find((c) => String(c.id) === String(pickedCategoryId)) || categories[0];
   const selectedCategoryId = currentCategory?.id ?? '';
-  const workouts = sortWorkoutsNaturally(allWorkouts.filter((w) => w.categoryId === selectedCategoryId));
-  const currentWorkout = workouts.find((w) => w.id === pickedWorkoutId) || workouts[0];
+  const directCatWorkouts = allWorkouts.filter((w) => String(w.categoryId) === String(selectedCategoryId));
+  const workouts = sortWorkoutsNaturally(directCatWorkouts.length > 0 ? directCatWorkouts : allWorkouts);
+  const currentWorkout = workouts.find((w) => String(w.id) === String(pickedWorkoutId)) || workouts[0];
   const selectedWorkoutId = currentWorkout?.id ?? '';
 
   // Gerador
@@ -145,12 +146,47 @@ export default function HeatsPage() {
   const heats = heatsData && heatsData.key === heatsKey ? heatsData.heats : [];
   const isLoadingHeats = !!currentWorkout && !(heatsData && heatsData.key === heatsKey);
 
-  // Baterias filtradas
-  const filteredHeats = heats.filter((h) => h.categoryId === selectedCategoryId);
+  // Equipes inscritas nesta categoria
+  const enrolledCategoryTeams = teams.filter((t) => String(t.categoryId) === String(selectedCategoryId));
+
+  // Baterias filtradas do banco; se ainda não houver bateria persistida para esta categoria mas houver equipes inscritas,
+  // monta baterias automáticas da categoria para visualização e chamada imediata no telão
+  const dbFilteredHeats = heats.filter((h) => String(h.categoryId) === String(selectedCategoryId));
+  const filteredHeats: Heat[] =
+    dbFilteredHeats.length > 0
+      ? dbFilteredHeats
+      : enrolledCategoryTeams.length > 0 && currentWorkout
+        ? (() => {
+            const perHeat = activeGame?.lanesCount && activeGame.lanesCount > 0 ? activeGame.lanesCount : 4;
+            const count = Math.ceil(enrolledCategoryTeams.length / perHeat);
+            return Array.from({ length: count }, (_, idx) => {
+              const slice = enrolledCategoryTeams.slice(idx * perHeat, (idx + 1) * perHeat);
+              const totalMins = 9 * 60 + idx * 15;
+              const startTime = `${String(Math.floor(totalMins / 60)).padStart(2, '0')}:${String(totalMins % 60).padStart(2, '0')}`;
+              return {
+                id: `virtual_${selectedCategoryId}_${currentWorkout.id}_${idx + 1}`,
+                gameId: gameCode,
+                workoutId: currentWorkout.id,
+                categoryId: selectedCategoryId,
+                heatNumber: idx + 1,
+                startTime,
+                status: 'scheduled' as const,
+                laneAssignments: slice.map((team, lIdx) => ({
+                  slotId: undefined,
+                  lane: lIdx + 1,
+                  registrationId: team.id,
+                  teamName: team.teamName,
+                  registerNumber: team.registerNumber,
+                  athletes: (team.athletes || []).map((a) => a.name),
+                })),
+              };
+            });
+          })()
+        : [];
 
   // Equipes da categoria: organizador vê as inscritas; juiz conta as que já estão em baterias
   const categoryTeams: unknown[] = canEdit
-    ? teams.filter((t) => t.categoryId === selectedCategoryId)
+    ? enrolledCategoryTeams
     : filteredHeats.flatMap((h) => h.laneAssignments);
 
   const openGenerator = () => {
@@ -286,11 +322,13 @@ export default function HeatsPage() {
 
   const handleUpdateStatus = async (heatId: string, status: Heat['status'], heatObj?: Heat) => {
     try {
-      await apiClient.updateHeatStatus(heatId, status);
       if (status === 'calling' && heatObj) {
         await handleBroadcastHeatToTv(heatObj);
       }
-      reload();
+      if (!String(heatId).startsWith('virtual_')) {
+        await apiClient.updateHeatStatus(heatId, status);
+        reload();
+      }
       toast.success(`Status da bateria atualizado para ${status}!`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Não foi possível atualizar o status da bateria.');
@@ -429,7 +467,8 @@ export default function HeatsPage() {
             <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap">
               {categories.map((cat) => {
                 const isCatActive = cat.id === selectedCategoryId;
-                const catWodCount = allWorkouts.filter((w) => w.categoryId === cat.id).length;
+                const directCount = allWorkouts.filter((w) => String(w.categoryId) === String(cat.id)).length;
+                const catWodCount = directCount > 0 ? directCount : allWorkouts.length;
                 return (
                   <button
                     key={cat.id}

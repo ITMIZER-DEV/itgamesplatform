@@ -205,7 +205,7 @@ export function Navbar() {
             </div>
 
             {/* MENU DESKTOP (FILTRADO POR ACL) */}
-            <nav className="hidden lg:flex items-center gap-1.5">
+            <nav className="hidden lg:flex items-center gap-1 overflow-x-auto scrollbar-none min-w-0">
               {navLinks.map((link) => {
                 const Icon = link.icon;
                 const isActive = pathname === link.href || (link.href !== '/' && pathname.startsWith(`${link.href}/`));
@@ -213,7 +213,7 @@ export function Navbar() {
                   <Link
                     key={link.href}
                     href={link.href}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    className={`flex items-center gap-1.5 px-2.5 2xl:px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 transition-all ${
                       isActive
                         ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
                         : link.highlight
@@ -221,10 +221,11 @@ export function Navbar() {
                           : 'text-zinc-300 hover:text-white hover:bg-white/5'
                     }`}
                   >
-                    <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-amber-400' : link.highlight ? 'text-red-400' : 'text-zinc-400'}`} />
-                    <span>{link.label}</span>
+                    <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-amber-400' : link.highlight ? 'text-red-400' : 'text-zinc-400'}`} />
+                    <span className="2xl:hidden">{link.shortLabel}</span>
+                    <span className="hidden 2xl:inline">{link.label}</span>
                     {link.badge && (
-                      <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
+                      <span className="hidden xl:inline-block text-[9px] px-1.5 py-0.2 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
                         {link.badge}
                       </span>
                     )}
