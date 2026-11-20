@@ -84,7 +84,15 @@ export interface Board {
     awaitingOfficial?: boolean;
   };
   generatedAt: string;
-  categories: { id: number; name: string; wodTitles: string[]; rows: BoardRow[] }[];
+  categories: {
+    id: number;
+    name: string;
+    wodTitles: string[];
+    rows: BoardRow[];
+    frozen?: boolean;
+    frozenAt?: string | null;
+    overlayText?: string | null;
+  }[];
 }
 
 /** Resultado de um WOD por equipe, com dados extras usados só no modo total_time. */

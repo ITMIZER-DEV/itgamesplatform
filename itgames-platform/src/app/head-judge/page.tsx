@@ -32,11 +32,19 @@ import {
   ChevronRight,
   Zap,
   Play,
-  Award
+  Award,
+  Megaphone,
+  Snowflake
 } from 'lucide-react';
 import { storage } from '@/lib/storage';
 import { useGames } from '@/lib/use-games';
 import { apiClient, ApiError } from '@/lib/api-client';
+import {
+  FrozenCategorySummary,
+  getLocalFrozenCategories,
+  saveLocalArenaSpotlight,
+  saveLocalFrozenCategories,
+} from '@/lib/screens';
 import { sortWorkoutsNaturally, parseWodTitle } from '@/lib/board';
 import { computeWorkoutRanking, computeCategoryStandings, DEFAULT_POINTS_TABLE } from '@/lib/standings-engine';
 import { 
@@ -78,9 +86,10 @@ export default function HeadJudgePage() {
   const [quickSelectedTeam, setQuickSelectedTeam] = useState<TeamRegistration | null>(null);
   const [quickSelectedWorkoutId, setQuickSelectedWorkoutId] = useState<string>('');
 
-  // Controle de Congelamento do Leaderboard
+  // Controle de Congelamento do Leaderboard (Global e Por Categoria)
   const [isLeaderboardFrozen, setIsLeaderboardFrozen] = useState<boolean>(false);
   const [isUpdatingFreeze, setIsUpdatingFreeze] = useState<boolean>(false);
+  const [frozenCategoriesMap, setFrozenCategoriesMap] = useState<Record<string, FrozenCategorySummary>>({});
 
   // Modal de Zoom de Foto da Súmula
   const [zoomPhotoUrl, setZoomPhotoUrl] = useState<string | null>(null);
@@ -260,6 +269,7 @@ export default function HeadJudgePage() {
     const frozenState = localStorage.getItem(`itgames_freeze_leaderboard_${gCode}`);
     const isFrozenInDb = (activeGame.status as any) === 'frozen';
     setIsLeaderboardFrozen(frozenState === 'true' || isFrozenInDb);
+    setFrozenCategoriesMap(getLocalFrozenCategories(gCode));
   };
 
   useEffect(() => {
@@ -401,8 +411,12 @@ export default function HeadJudgePage() {
       );
 
       if (newState) {
+        await apiClient.freezeAllScreens('LEADERBOARD BLOQUEADO').catch(() => null);
         toast.warning('LEADERBOARD CONGELADO! O Telão e o placar público entraram em modo blindado com cadeado.');
       } else {
+        saveLocalFrozenCategories(gCode, {});
+        setFrozenCategoriesMap({});
+        await apiClient.unfreezeAllScreens().catch(() => null);
         toast.success('LEADERBOARD AO VIVO! O placar da arena foi reaberto com todas as pontuações homologadas.');
       }
     } catch (e) {
@@ -410,6 +424,115 @@ export default function HeadJudgePage() {
     } finally {
       setIsUpdatingFreeze(false);
     }
+  };
+
+  // Congelar / Liberar apenas a Categoria Selecionada (Ex.: Scaled Masculino em Revisão)
+  const handleToggleFreezeCurrentCategory = async () => {
+    if (!activeGame || !currentCategory) return;
+    const gCode = activeGame.code || activeGame.id;
+    const catNum = Number(String(currentCategory.id).replace(/\D/g, '')) || 1;
+    const currentMap = { ...getLocalFrozenCategories(gCode) };
+    const isCatFrozen = Boolean(currentMap[String(catNum)] || currentMap[String(currentCategory.id)]);
+
+    if (isCatFrozen) {
+      delete currentMap[String(catNum)];
+      delete currentMap[String(currentCategory.id)];
+      saveLocalFrozenCategories(gCode, currentMap);
+      setFrozenCategoriesMap(currentMap);
+      await apiClient.unfreezeAllScreens({ gameCode: gCode, categoryIds: [catNum] }).catch(() => null);
+      toast.success(`✅ Categoria "${currentCategory.name}" liberada ao vivo nos telões!`);
+    } else {
+      const meta: FrozenCategorySummary = {
+        gameCode: gCode,
+        categoryId: catNum,
+        categoryName: currentCategory.name,
+        overlayText: 'CATEGORIA EM REVISÃO',
+        frozenAt: new Date().toISOString(),
+      };
+      currentMap[String(catNum)] = meta;
+      saveLocalFrozenCategories(gCode, currentMap);
+      setFrozenCategoriesMap(currentMap);
+      await apiClient
+        .freezeAllScreens({
+          text: 'CATEGORIA EM REVISÃO',
+          gameCode: gCode,
+          categoryIds: [catNum],
+        })
+        .catch(() => null);
+      toast.warning(`❄️ Categoria "${currentCategory.name}" colocada EM REVISÃO nos telões (demais categorias seguem ao vivo)!`);
+    }
+  };
+
+  // Chamar Bateria Atual da Mesa para as Raias no Telão
+  const handleCallCurrentHeatOnTv = async () => {
+    if (!activeGame || !currentCategory) return;
+    const gCode = activeGame.code || activeGame.id;
+    const catNum = Number(String(currentCategory.id).replace(/\D/g, '')) || 1;
+    const wodNum = Number(String(currentWorkout?.id ?? '1').replace(/\D/g, '')) || 1;
+    const heatNum = Number(deskHeatNumber) || 1;
+    const lanes = activeDeskHeatLanes.map((item) => ({
+      laneNumber: Number(item.laneNumber),
+      teamCode: Number(String(item.team.id).replace(/\D/g, '')) || Number(item.laneNumber),
+      teamName: item.team.teamName,
+      number: item.team.registerNumber,
+      athletes: (item.team.athletes || []).map((a) => a.name),
+    }));
+    const spot = {
+      kind: 'heat_call' as const,
+      gameCode: gCode,
+      gameName: activeGame.name,
+      categoryId: catNum,
+      categoryName: currentCategory.name,
+      workoutCode: wodNum,
+      workoutTitle: currentWorkout?.title || 'WOD',
+      heatNumber: heatNum,
+      totalHeats: Math.max(1, distinctHeats.length),
+      startTime: activeDeskHeatLanes[0]?.heatTime || '09:00',
+      message: 'ATLETAS DA BATERIA, DIRIJAM-SE ÀS SUAS RAIAS DE LARGADA',
+      lanes,
+      triggeredAt: new Date().toISOString(),
+    };
+    saveLocalArenaSpotlight(spot);
+    await apiClient
+      .triggerScreenSpotlight({
+        kind: 'heat_call',
+        gameCode: gCode,
+        categoryId: catNum,
+        workoutCode: wodNum,
+        heatNumber: heatNum,
+        message: spot.message,
+        lanes,
+      })
+      .catch(() => null);
+    toast.success(`📢 Bateria #${heatNum} (${currentCategory.name}) chamada nos telões Firestick e Telão Web!`);
+  };
+
+  // Anunciar Vencedores (Pódio) da Categoria Atual no Telão
+  const handleAnnounceCategoryPodiumOnTv = async () => {
+    if (!activeGame || !currentCategory) return;
+    const gCode = activeGame.code || activeGame.id;
+    const catNum = Number(String(currentCategory.id).replace(/\D/g, '')) || 1;
+    const spot = {
+      kind: 'podium' as const,
+      gameCode: gCode,
+      gameName: activeGame.name,
+      categoryId: catNum,
+      categoryName: currentCategory.name,
+      revealStep: 1,
+      autoAdvance: true,
+      triggeredAt: new Date().toISOString(),
+    };
+    saveLocalArenaSpotlight(spot);
+    await apiClient
+      .triggerScreenSpotlight({
+        kind: 'podium',
+        gameCode: gCode,
+        categoryId: catNum,
+        revealStep: 1,
+        autoAdvance: true,
+      })
+      .catch(() => null);
+    toast.success(`🏆 Cerimônia de Pódio de "${currentCategory.name}" iniciada nos telões (3º ➔ 2º ➔ 1º Campeão)!`);
   };
 
   // ⚡ MOTOR DE CLASSIFICAÇÃO & PONTUAÇÃO OFICIAL (RODAR WOD, CATEGORIA OU CAMPEONATO)
@@ -899,6 +1022,49 @@ export default function HeadJudgePage() {
                 </>
               )}
             </button>
+
+            {currentCategory && (
+              <button
+                onClick={handleToggleFreezeCurrentCategory}
+                className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl font-black text-xs border transition-all active:scale-95 min-h-[42px] ${
+                  frozenCategoriesMap[String(Number(String(currentCategory.id).replace(/\D/g, '')) || 1)] ||
+                  frozenCategoriesMap[String(currentCategory.id)]
+                    ? 'bg-sky-500 text-black border-sky-300 shadow-lg shadow-sky-500/20'
+                    : 'bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border-sky-500/40'
+                }`}
+                title="Congelar/Descongelar apenas a categoria selecionada para revisão sem bloquear as demais"
+              >
+                <Snowflake className="w-4 h-4" />
+                <span>
+                  {frozenCategoriesMap[String(Number(String(currentCategory.id).replace(/\D/g, '')) || 1)] ||
+                  frozenCategoriesMap[String(currentCategory.id)]
+                    ? `LIBERAR: ${currentCategory.name}`
+                    : `REVISÃO: ${currentCategory.name}`}
+                </span>
+              </button>
+            )}
+
+            {currentCategory && (
+              <button
+                onClick={handleCallCurrentHeatOnTv}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 font-black text-xs border border-amber-500/40 transition-all active:scale-95 min-h-[42px]"
+                title="Chamar atletas da bateria atual para as raias no Telão / Firestick"
+              >
+                <Megaphone className="w-4 h-4" />
+                <span>📢 Chamar Bateria #{deskHeatNumber}</span>
+              </button>
+            )}
+
+            {currentCategory && (
+              <button
+                onClick={handleAnnounceCategoryPodiumOnTv}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 font-black text-xs border border-emerald-500/40 transition-all active:scale-95 min-h-[42px]"
+                title="Iniciar cerimônia de pódio desta categoria no Telão / Firestick"
+              >
+                <Trophy className="w-4 h-4" />
+                <span>🏆 Anunciar Pódio</span>
+              </button>
+            )}
 
             <button
               onClick={() => setIsPenaltyModalOpen(true)}

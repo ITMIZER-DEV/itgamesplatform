@@ -18,9 +18,24 @@ data class BoardRow(
     val wods: List<BoardWod>,
 )
 
-data class BoardCategory(val id: Int, val name: String, val wodTitles: List<String>, val rows: List<BoardRow>)
+data class BoardCategory(
+    val id: Int,
+    val name: String,
+    val wodTitles: List<String>,
+    val rows: List<BoardRow>,
+    val frozen: Boolean = false,
+    val frozenAt: String? = null,
+    val overlayText: String? = null,
+)
 
-data class Board(val gameName: String, val location: String, val eventType: String, val categories: List<BoardCategory>, val totalUnit: String = "PTS") {
+data class Board(
+    val gameName: String,
+    val location: String,
+    val eventType: String,
+    val categories: List<BoardCategory>,
+    val totalUnit: String = "PTS",
+    val gameCode: String = "",
+) {
     val isHyrox get() = eventType == "hyrox"
 
     companion object {
@@ -36,6 +51,7 @@ data class Board(val gameName: String, val location: String, val eventType: Stri
             val game = board.getJSONObject("game")
             val categories = board.getJSONArray("categories")
             return Board(
+                gameCode = game.optString("code"),
                 gameName = game.getString("name"),
                 location = game.optString("location"),
                 eventType = game.optString("eventType"),
@@ -48,6 +64,9 @@ data class Board(val gameName: String, val location: String, val eventType: Stri
                         id = cat.getInt("id"),
                         name = cat.getString("name"),
                         wodTitles = List(titles.length()) { titles.getString(it) },
+                        frozen = cat.optBoolean("frozen", false),
+                        frozenAt = if (cat.isNull("frozenAt")) null else cat.optString("frozenAt").ifBlank { null },
+                        overlayText = if (cat.isNull("overlayText")) null else cat.optString("overlayText").ifBlank { null },
                         rows = List(rows.length()) { r ->
                             val row = rows.getJSONObject(r)
                             val athletes = row.getJSONArray("athletes")

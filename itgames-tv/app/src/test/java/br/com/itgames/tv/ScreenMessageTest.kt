@@ -58,4 +58,24 @@ class ScreenMessageTest {
     fun otherTypeReturnsNull() {
         assertNull(ScreenMessage.parse("""{"type":"board","board":${board("G1")}}"""))
     }
+
+    @Test
+    fun parsesFrozenCategoriesAndSpotlight() {
+        val msg = """
+            {"type":"screen","screen":{"id":"s1","name":"Arena TV","mode":"partial","rotateSeconds":15,
+              "frozen":false,"frozenAt":null,"overlayText":null,
+              "games":[{"code":"G1","name":"Arena G1"}],
+              "frozenCategories":[{"gameCode":"G1","categoryId":2,"categoryName":"SCALED MASCULINO","overlayText":"CATEGORIA EM REVISÃO","frozenAt":"2026-10-20T14:30:00.000Z"}],
+              "spotlight":{"kind":"heat_call","gameCode":"G1","gameName":"Arena G1","categoryId":2,"categoryName":"SCALED MASCULINO","workoutTitle":"WOD 1-A","heatNumber":2,"totalHeats":4,"startTime":"09:30","message":"DIRIJAM-SE ÀS RAIAS","triggeredAt":"2026-10-20T14:35:00.000Z","lanes":[{"laneNumber":1,"teamName":"Dupla Alpha","number":"#101","athletes":["João","Pedro"],"rank":1,"totalDisplay":"100 PTS"}]}},
+             "boards":[${board("G1")}]}
+        """.trimIndent()
+        val (config, _) = ScreenMessage.parse(msg)!!
+        assertEquals(1, config.frozenCategories.size)
+        assertEquals("SCALED MASCULINO", config.frozenCategories[0].categoryName)
+        assertEquals("CATEGORIA EM REVISÃO", config.frozenCategories[0].overlayText)
+        val spot = config.spotlight as ScreenSpotlight.HeatCall
+        assertEquals(2, spot.heatNumber)
+        assertEquals("09:30", spot.startTime)
+        assertEquals("Dupla Alpha", spot.lanes.single().teamName)
+    }
 }

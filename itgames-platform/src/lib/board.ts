@@ -17,6 +17,9 @@ export interface BoardResponse {
     id: number;
     name: string;
     wodTitles: string[];
+    frozen?: boolean;
+    frozenAt?: string | null;
+    overlayText?: string | null;
     rows: {
       rank: number;
       teamCode: number;

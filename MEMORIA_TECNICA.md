@@ -251,6 +251,38 @@
   - **Botão de Ação Rápida: Congelamento do Leaderboard**: Permite ao Head Judge congelar e descongelar o placar ao vivo para o público e telões com um clique.
   - **Menu Superior (Navbar)**: Adicionado o botão `⚖️ Mesa Head Judge` com destaque visual no menu principal para Organizadores, Super Admins e Juízes.
 
+### 📱 UX Mobile-First, Blindagem do Placar, Inscrições & Fluxo por Categoria (v1.6.6)
+- **Overlay "LEADERBOARD BLOQUEADO" (`/leaderboard` e `/leaderboard/big-screen`)**:
+  - Sincronização instantânea do estado congelado/bloqueado entre a Mesa do Head Judge, `/leaderboard` e `/leaderboard/big-screen` via API (`status: 'frozen'`), `BroadcastChannel('itgames_freeze_channel')`, `localStorage` e polling.
+  - Exibe overlay visual explícito de `"LEADERBOARD BLOQUEADO"` enquanto congelado, mantendo o último placar visível por trás sem vazar novas súmulas.
+- **Bloqueio de Inscrições por Flag Manual & Janela de Datas**:
+  - Adicionados `registrationLocked`, `registrationStartAt` e `registrationCloseAt` no Prisma (`Game`), DTO (`UpdateRegistrationLockDto`), endpoint `PATCH /events/:code/registration-lock` e validação na criação de inscrições.
+  - Integrado ao painel `/admin`, à página pública `/campeonatos/[code]` e ao fluxo `/athlete/register` via helper `evaluateRegistrationAvailability`.
+- **Motor Oficial de Classificações no Head Judge (`standings-engine.ts`)**:
+  - Aba `2. ⚡ Rodar Classificações & Ranking` em `/head-judge` permitindo apurar 1 prova, 1 categoria inteira ou todas as categorias com critérios oficiais de desempate (melhores colocações sucessivas e última prova) + confirmação oficial na API.
+- **Responsividade Mobile-First Global**:
+  - Barra de navegação inferior fixa (`lg:hidden`) e drawer responsivo no `Navbar.tsx` + ajustes de toque em `/judge`, `/head-judge`, `/heats` e `/admin`.
+- **Fluxo Hierárquico `Categoria → WOD (Ordem Natural) → Baterias` & Gerador em Lote**:
+  - Utilitário `sortWorkoutsNaturally` em `src/lib/board.ts` garantindo sequência `WOD 1-A → WOD 1-B → WOD 2 → WOD 3` em todo o sistema e no motor de classificação.
+  - Unificação dos cards de Categoria, seletor compacto e painel integrado de WOD + Baterias em `/campeonatos/[code]`.
+  - Filtros rápidos em pílulas nas telas `/heats`, `/judge`, `/head-judge` e `/admin`, além de geração de baterias em lote por **Categoria** ou **Campeonato Inteiro** em `/heats`.
+
+### 📺 Show de Arena no Fire TV Stick (`itgames-tv`) & Telões: Revisão por Categoria, Chamada de Raias e Cerimônia de Pódio (v1.6.7)
+- **Congelamento Seletivo por Categoria ou Todas (`POST /screens/:id/freeze`, `POST /screens/freeze-all`)**:
+  - Permite congelar o campeonato inteiro (**Todas as Categorias**) ou selecionar **1 ou mais categorias específicas** (ex.: *SCALED MASCULINO — CATEGORIA EM REVISÃO*) tanto em `/telas` quanto na Mesa do Head Judge (`/head-judge`).
+  - Quando uma categoria específica está em revisão, a rotação do Firestick (`itgames-tv`), do Telão Web (`/leaderboard/big-screen`) e as abas do Placar Público (`/leaderboard`) mantêm as demais categorias ao vivo normalmente e exibem o card de bloqueio (`FrozenOverlay`) apenas na categoria em revisão, preservando o snapshot congelado das pontuações daquela categoria.
+- **Chamada de Atletas para as Raias (`heat_call` — Arena Call Room)**:
+  - Acionável remotamente em `/telas`, `/heats` (botão *"📢 Chamar no Telão"* em cada bateria) e `/head-judge` (`POST /screens/spotlight`), ou diretamente pelo controle remoto do Firestick (tecla `▲` -> Barra de Comando da Arena).
+  - Exibe na TV o cabeçalho pulsante *"CHAMADA OFICIAL DE ARENA • CALL ROOM"*, Nome do Campeonato, Categoria, WOD, Número da Bateria, Horário de Largada e o Grid de Raias (`RAIA 01`, `RAIA 02`...) com BIB, Nome da Equipe, Nomes dos Atletas e colocação geral atual.
+- **Cerimônia Oficial de Pódio — Anúncio dos Vencedores da Categoria (`podium`)**:
+  - Acionável remotamente em `/telas` e `/head-judge` ou diretamente pelo controle remoto do Firestick.
+  - Tela cinematográfica com animação de partículas douradas e Pódio Olímpico em 3 colunas (🥈 2º Lugar Prata à esquerda, 🥇 1º Lugar Campeão Ouro elevado ao centro, 🥉 3º Lugar Bronze à direita + faixa Top 5 com 4º e 5º lugares).
+  - Suporta **Modo Suspense Automático (3º ➔ 2º ➔ 1º Lugar)**, **Suspense Controlado pelo Locutor** (avançando passo a passo pelo painel ou tecla `OK` do controle do Firestick) e **Pódio Completo Imediato**.
+- **Prevenção de Suspensão no Fire TV Stick**:
+  - `FLAG_KEEP_SCREEN_ON`, `PowerManager.WakeLock` (`SCREEN_BRIGHT_WAKE_LOCK`), `WifiManager.WifiLock` e modo Immersive Fullscreen ativos no APK compilado em `public/downloads/itgames-telao.apk`.
+
+
+
 
 
 

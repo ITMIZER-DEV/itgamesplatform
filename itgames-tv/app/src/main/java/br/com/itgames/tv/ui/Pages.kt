@@ -47,7 +47,7 @@ fun statusBadge(config: ScreenConfig?): StatusBadge = when {
     else -> StatusBadge.PARCIAL
 }
 
-const val DEFAULT_OVERLAY_TEXT = "LEADERBOARD CONGELADO"
+const val DEFAULT_OVERLAY_TEXT = "LEADERBOARD BLOQUEADO"
 
 // Aviso do congelamento: texto em branco (ou ausente) cai no padrão.
 fun overlayTextOrDefault(text: String?): String = text?.trim().takeUnless { it.isNullOrEmpty() } ?: DEFAULT_OVERLAY_TEXT

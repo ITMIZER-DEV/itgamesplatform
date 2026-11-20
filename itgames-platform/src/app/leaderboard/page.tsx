@@ -21,6 +21,7 @@ import { useBoard } from '@/lib/use-board';
 import { toLeaderboardRanks, formatTotal, parseWodTitle, type BoardResponse } from '@/lib/board';
 import { computeCategoryStandings } from '@/lib/standings-engine';
 import { storage } from '@/lib/storage';
+import { FrozenCategorySummary, getLocalFrozenCategories } from '@/lib/screens';
 import { LeaderboardRank } from '@/types';
 
 export default function LeaderboardPage() {
@@ -119,6 +120,7 @@ export default function LeaderboardPage() {
   });
 
   const [isFrozen, setIsFrozen] = useState<boolean>(false);
+  const [frozenCategoriesMap, setFrozenCategoriesMap] = useState<Record<string, FrozenCategorySummary>>({});
 
   useEffect(() => {
     const checkFreeze = () => {
@@ -132,6 +134,7 @@ export default function LeaderboardPage() {
         (activeGame?.status as string) === 'frozen' ||
         (activeGame?.status as string) === 'blocked';
       setIsFrozen(Boolean(localFreeze || apiFreeze));
+      setFrozenCategoriesMap(getLocalFrozenCategories(gCode));
     };
 
     checkFreeze();
@@ -145,6 +148,9 @@ export default function LeaderboardPage() {
       bc.onmessage = (ev) => {
         if (ev.data && typeof ev.data.frozen === 'boolean') {
           setIsFrozen(ev.data.frozen);
+        }
+        if (ev.data?.frozenCategories) {
+          setFrozenCategoriesMap(ev.data.frozenCategories);
         }
         if (ev.data?.standingsUpdated) {
           window.dispatchEvent(new Event('itgames_standings_updated'));
@@ -162,6 +168,19 @@ export default function LeaderboardPage() {
     };
   }, [activeGame]);
 
+  const currentCatFrozenMeta = currentCategory
+    ? frozenCategoriesMap[String(currentCategory.id)] ||
+      (currentCategory.frozen
+        ? {
+            gameCode: activeGame?.code || 'SUMMER2026',
+            categoryId: currentCategory.id,
+            categoryName: currentCategory.name,
+            overlayText: currentCategory.overlayText || 'CATEGORIA EM REVISÃO',
+            frozenAt: currentCategory.frozenAt || new Date().toISOString(),
+          }
+        : undefined)
+    : undefined;
+  const isCurrentCatFrozen = isFrozen || Boolean(currentCatFrozenMeta);
   const showRevision = Boolean(activeGame?.showScoreRevision);
 
   return (
@@ -206,8 +225,34 @@ export default function LeaderboardPage() {
         </div>
       </div>
 
-      {/* OVERLAY / BANNER DE BLOQUEIO DO LEADERBOARD */}
-      {isFrozen && (
+      {/* SELEÇÃO DE CATEGORIA EM ABAS (Sempre visível para permitir alternar quando apenas 1 categoria está em revisão) */}
+      {!isFrozen && categories.length > 0 && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+          {categories.map((cat) => {
+            const isSelected = cat.id === currentCategory?.id;
+            const catFrozen = Boolean(frozenCategoriesMap[String(cat.id)] || cat.frozen);
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedCategoryId(String(cat.id))}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                  isSelected
+                    ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20 scale-105'
+                    : catFrozen
+                      ? 'bg-sky-950/70 hover:bg-sky-900/70 text-sky-300 border border-sky-500/50'
+                      : 'bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 border border-zinc-700'
+                }`}
+              >
+                {catFrozen && <Lock className="w-3 h-3" />}
+                <span>{cat.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* OVERLAY / BANNER DE BLOQUEIO DO LEADERBOARD (TOTAL OU DA CATEGORIA ATIVA) */}
+      {isCurrentCatFrozen && (
         <div className="rounded-3xl bg-gradient-to-br from-rose-950/90 via-zinc-900 to-black border-2 border-rose-500/60 p-6 sm:p-10 shadow-2xl shadow-rose-500/20 text-center space-y-5">
           <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-rose-500/20 border-2 border-rose-500/50 flex items-center justify-center text-rose-400 mx-auto animate-pulse">
             <Lock className="w-8 h-8 sm:w-10 sm:h-10" />
@@ -215,13 +260,22 @@ export default function LeaderboardPage() {
           <div className="space-y-2 max-w-2xl mx-auto">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-300 text-[11px] font-black uppercase tracking-widest">
               <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping" />
-              Blindagem Oficial Pré-Pódio
+              {!isFrozen && currentCategory ? `Categoria: ${currentCategory.name}` : 'Blindagem Oficial Pré-Pódio'}
             </div>
             <h2 className="text-2xl sm:text-4xl font-black text-white uppercase tracking-tight">
-              LEADERBOARD BLOQUEADO
+              {!isFrozen && currentCatFrozenMeta ? currentCatFrozenMeta.overlayText : 'LEADERBOARD BLOQUEADO'}
             </h2>
             <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
-              As pontuações parciais e o ranking geral foram temporariamente ocultados pela <strong className="text-white">Mesa do Head Judge</strong> para conferência de súmulas e fechamento oficial. O resultado definitivo será anunciado na Cerimônia de Premiação!
+              {!isFrozen && currentCategory ? (
+                <>
+                  As pontuações da categoria <strong className="text-amber-400">{currentCategory.name}</strong> estão temporariamente em revisão pela{' '}
+                  <strong className="text-white">Mesa do Head Judge</strong>. As demais categorias seguem com placar ao vivo normalmente!
+                </>
+              ) : (
+                <>
+                  As pontuações parciais e o ranking geral foram temporariamente ocultados pela <strong className="text-white">Mesa do Head Judge</strong> para conferência de súmulas e fechamento oficial. O resultado definitivo será anunciado na Cerimônia de Premiação!
+                </>
+              )}
             </p>
           </div>
           <div>
@@ -260,27 +314,8 @@ export default function LeaderboardPage() {
         </div>
       )}
 
-      {!isFrozen && (
+      {!isCurrentCatFrozen && (
         <>
-      {/* SELEÇÃO DE CATEGORIA EM ABAS */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-        {categories.map(cat => {
-          const isSelected = cat.id === currentCategory?.id;
-          return (
-            <button
-              key={cat.id}
-              onClick={() => setSelectedCategoryId(String(cat.id))}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                isSelected
-                  ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20 scale-105'
-                  : 'bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 border border-zinc-700'
-              }`}
-            >
-              {cat.name}
-            </button>
-          );
-        })}
-      </div>
 
       {/* SELEÇÃO DE VISUALIZAÇÃO: GERAL ACUMULADO OU PARCIAL POR PROVA */}
       <div className="glass-panel rounded-2xl p-2 border border-zinc-800 flex items-center gap-1.5 overflow-x-auto scrollbar-none">

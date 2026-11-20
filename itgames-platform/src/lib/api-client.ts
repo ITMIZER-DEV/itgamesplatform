@@ -2,7 +2,7 @@ import { ScoreEntry, Heat, AuditLogEntry, GameEvent, Category, WorkoutRule, Team
 import { storage } from './storage';
 import type { BoardResponse } from './board';
 import { getAuthToken, logoutUser } from './acl';
-import type { ScreenView, ScreenMode } from './screens';
+import type { ScreenView, ScreenMode, ScreenSpotlight, HeatCallLane } from './screens';
 
 export function getApiBaseUrl(): string {
   if (process.env.NEXT_PUBLIC_API_URL) {
@@ -419,20 +419,65 @@ export class ApiClient {
     return this.strict<ScreenView>(`/screens/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
   }
 
-  async freezeScreen(id: string, text?: string): Promise<ScreenView> {
-    return this.strict<ScreenView>(`/screens/${id}/freeze`, { method: 'POST', body: JSON.stringify({ text }) });
+  async freezeScreen(
+    id: string,
+    textOrOptions?: string | { text?: string; gameCode?: string; categoryIds?: number[] },
+  ): Promise<ScreenView> {
+    const payload = typeof textOrOptions === 'string' ? { text: textOrOptions } : (textOrOptions ?? {});
+    return this.strict<ScreenView>(`/screens/${id}/freeze`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   }
 
-  async unfreezeScreen(id: string): Promise<ScreenView> {
-    return this.strict<ScreenView>(`/screens/${id}/unfreeze`, { method: 'POST' });
+  async unfreezeScreen(
+    id: string,
+    options?: { gameCode?: string; categoryIds?: number[] },
+  ): Promise<ScreenView> {
+    return this.strict<ScreenView>(`/screens/${id}/unfreeze`, {
+      method: 'POST',
+      body: options ? JSON.stringify(options) : undefined,
+    });
   }
 
-  async freezeAllScreens(text?: string): Promise<ScreenView[]> {
-    return this.strict<ScreenView[]>('/screens/freeze-all', { method: 'POST', body: JSON.stringify({ text }) });
+  async freezeAllScreens(
+    textOrOptions?: string | { text?: string; gameCode?: string; categoryIds?: number[] },
+  ): Promise<ScreenView[]> {
+    const payload = typeof textOrOptions === 'string' ? { text: textOrOptions } : (textOrOptions ?? {});
+    return this.strict<ScreenView[]>('/screens/freeze-all', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   }
 
-  async unfreezeAllScreens(): Promise<ScreenView[]> {
-    return this.strict<ScreenView[]>('/screens/unfreeze-all', { method: 'POST' });
+  async unfreezeAllScreens(options?: { gameCode?: string; categoryIds?: number[] }): Promise<ScreenView[]> {
+    return this.strict<ScreenView[]>('/screens/unfreeze-all', {
+      method: 'POST',
+      body: options ? JSON.stringify(options) : undefined,
+    });
+  }
+
+  async triggerScreenSpotlight(data: {
+    screenId?: string;
+    kind: 'heat_call' | 'podium';
+    gameCode: string;
+    categoryId?: number;
+    workoutCode?: number;
+    heatNumber?: number;
+    message?: string;
+    lanes?: HeatCallLane[];
+    revealStep?: number;
+    autoAdvance?: boolean;
+  }): Promise<{ screens: ScreenView[]; spotlight: ScreenSpotlight }> {
+    return this.strict<{ screens: ScreenView[]; spotlight: ScreenSpotlight }>('/screens/spotlight', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async clearScreenSpotlight(screenId?: string): Promise<ScreenView[]> {
+    const query = screenId ? `?screenId=${encodeURIComponent(screenId)}` : '';
+    return this.strict<ScreenView[]>(`/screens/spotlight${query}`, { method: 'DELETE' });
   }
 
   async deleteScreen(id: string) {

@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -49,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import br.com.itgames.tv.Board
 import br.com.itgames.tv.BoardRow
 import br.com.itgames.tv.ScreenConfig
+import br.com.itgames.tv.ScreenSpotlight
 import br.com.itgames.tv.ScreenState
 import br.com.itgames.tv.Link
 import br.com.itgames.tv.R
@@ -67,7 +69,43 @@ fun BoardScreen(state: ScreenState, modifier: Modifier = Modifier) {
     var anchor by remember { mutableStateOf<BoardPage?>(null) }
     var paused by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
-    // atualização ao vivo mantém a página (campeonato, categoria, página) quando ela ainda existe; senão limita
+
+    // Modo interativo local na TV (barra de comando acionada com ▲ no controle do Firestick)
+    var showToolbar by remember { mutableStateOf(false) }
+    var toolbarIndex by remember { mutableIntStateOf(0) }
+    var localMode by remember { mutableStateOf(TvArenaMode.BOARD) }
+    var localHeatIndex by remember { mutableIntStateOf(0) }
+    var readyConfirmed by remember { mutableStateOf(false) }
+    var localPodiumStep by remember { mutableIntStateOf(1) }
+    var localFrozenCategoryIds by remember { mutableStateOf(setOf<Int>()) }
+    var dismissedRemoteTrigger by remember { mutableStateOf<String?>(null) }
+
+    // Quando chega um novo spotlight do servidor (painel web), exibe-o imediatamente
+    val remoteSpotlight = config?.spotlight?.takeIf { it.triggeredAt != dismissedRemoteTrigger }
+    val activeMode = when {
+        remoteSpotlight is ScreenSpotlight.HeatCall -> TvArenaMode.HEAT_CALL
+        remoteSpotlight is ScreenSpotlight.Podium -> TvArenaMode.PODIUM
+        else -> localMode
+    }
+
+    LaunchedEffect(remoteSpotlight?.triggeredAt) {
+        if (remoteSpotlight != null) {
+            readyConfirmed = false
+            if (remoteSpotlight is ScreenSpotlight.Podium) {
+                localPodiumStep = remoteSpotlight.revealStep
+            }
+        }
+    }
+
+    // Auto-advance no Pódio quando configurado com suspense automático
+    LaunchedEffect(remoteSpotlight, localPodiumStep) {
+        val podium = remoteSpotlight as? ScreenSpotlight.Podium
+        if (podium != null && podium.autoAdvance && localPodiumStep < 3) {
+            delay(5000L)
+            localPodiumStep = (localPodiumStep + 1).coerceAtMost(3)
+        }
+    }
+
     val safeIndex = keepPosition(anchor, pages, current)
 
     LaunchedEffect(Unit) { focus.requestFocus() }
@@ -76,11 +114,10 @@ fun BoardScreen(state: ScreenState, modifier: Modifier = Modifier) {
         anchor = pages.getOrNull(safeIndex)
     }
     val rotateMs = (config?.rotateSeconds ?: 15).coerceAtLeast(3) * 1000L
-    // O efeito não reinicia quando só o conteúdo muda; lê sempre a lista de páginas mais recente
     val latestPages by rememberUpdatedState(pages)
-    LaunchedEffect(pages.size, paused, safeIndex, rotateMs) {
-        if (paused || pages.size <= 1) return@LaunchedEffect
-        delay(rotateMs) // reinicia a contagem a cada troca, inclusive as manuais
+    LaunchedEffect(pages.size, paused, safeIndex, rotateMs, activeMode, showToolbar) {
+        if (paused || pages.size <= 1 || activeMode != TvArenaMode.BOARD || showToolbar) return@LaunchedEffect
+        delay(rotateMs)
         val atual = latestPages
         if (atual.isEmpty()) return@LaunchedEffect
         val next = (safeIndex + 1) % atual.size
@@ -88,13 +125,27 @@ fun BoardScreen(state: ScreenState, modifier: Modifier = Modifier) {
         anchor = atual[next]
     }
 
-    // controle remoto: ◀ ▶ trocam de página, OK pausa/retoma a rotação
     fun move(step: Int) {
         if (pages.isEmpty()) return
         val next = (safeIndex + step + pages.size) % pages.size
         current = next
         anchor = pages[next]
+        localHeatIndex = 0
+        readyConfirmed = false
     }
+
+    val page = pages.getOrNull(safeIndex)
+    val board = page?.let { boards.getOrNull(it.gameIndex) }
+    val category = if (page != null && board != null) board.categories.getOrNull(page.categoryIndex) else null
+
+    val categoryFrozenMeta = config?.frozenCategories?.firstOrNull {
+        it.categoryId == category?.id && (it.gameCode.isBlank() || board?.gameCode.isNullOrBlank() || it.gameCode == board?.gameCode)
+    }
+    val isCurrentCatFrozen =
+        config?.frozen == true ||
+            category?.frozen == true ||
+            categoryFrozenMeta != null ||
+            (category != null && localFrozenCategoryIds.contains(category.id))
 
     Box(
         modifier
@@ -104,10 +155,103 @@ fun BoardScreen(state: ScreenState, modifier: Modifier = Modifier) {
             .focusable()
             .onKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+
+                // 1. Navegação quando a Barra de Comando da Arena está aberta
+                if (showToolbar) {
+                    when (event.key) {
+                        Key.DirectionLeft -> {
+                            toolbarIndex = (toolbarIndex + 3) % 4
+                            return@onKeyEvent true
+                        }
+                        Key.DirectionRight -> {
+                            toolbarIndex = (toolbarIndex + 1) % 4
+                            return@onKeyEvent true
+                        }
+                        Key.DirectionDown, Key.Back, Key.Escape -> {
+                            showToolbar = false
+                            return@onKeyEvent true
+                        }
+                        Key.DirectionCenter, Key.Enter -> {
+                            when (toolbarIndex) {
+                                0 -> {
+                                    dismissedRemoteTrigger = config?.spotlight?.triggeredAt
+                                    localMode = TvArenaMode.BOARD
+                                    showToolbar = false
+                                }
+                                1 -> {
+                                    dismissedRemoteTrigger = config?.spotlight?.triggeredAt
+                                    localMode = TvArenaMode.HEAT_CALL
+                                    localHeatIndex = 0
+                                    readyConfirmed = false
+                                    showToolbar = false
+                                }
+                                2 -> {
+                                    dismissedRemoteTrigger = config?.spotlight?.triggeredAt
+                                    localMode = TvArenaMode.PODIUM
+                                    localPodiumStep = 1
+                                    showToolbar = false
+                                }
+                                3 -> {
+                                    val catId = category?.id
+                                    if (catId != null) {
+                                        localFrozenCategoryIds = if (localFrozenCategoryIds.contains(catId)) {
+                                            localFrozenCategoryIds - catId
+                                        } else {
+                                            localFrozenCategoryIds + catId
+                                        }
+                                    }
+                                    showToolbar = false
+                                }
+                            }
+                            return@onKeyEvent true
+                        }
+                        else -> return@onKeyEvent false
+                    }
+                }
+
+                // 2. Navegação nos modos especiais (Chamada de Raias ou Pódio) ou Placar
                 when (event.key) {
-                    Key.DirectionLeft -> { move(-1); true }
-                    Key.DirectionRight -> { move(1); true }
-                    Key.DirectionCenter, Key.Enter -> { paused = !paused; true }
+                    Key.DirectionUp -> {
+                        showToolbar = true
+                        return@onKeyEvent true
+                    }
+                    Key.Back, Key.Escape -> {
+                        if (activeMode != TvArenaMode.BOARD) {
+                            dismissedRemoteTrigger = config?.spotlight?.triggeredAt
+                            localMode = TvArenaMode.BOARD
+                            return@onKeyEvent true
+                        }
+                        false
+                    }
+                    Key.DirectionLeft -> {
+                        if (activeMode == TvArenaMode.HEAT_CALL && remoteSpotlight == null) {
+                            if (localHeatIndex > 0) localHeatIndex-- else move(-1)
+                            readyConfirmed = false
+                        } else {
+                            move(-1)
+                            if (activeMode == TvArenaMode.PODIUM && remoteSpotlight == null) localPodiumStep = 1
+                        }
+                        true
+                    }
+                    Key.DirectionRight -> {
+                        if (activeMode == TvArenaMode.HEAT_CALL && remoteSpotlight == null) {
+                            val totalHeats = ((category?.rows?.count { it.status != "cancelled" } ?: 1) + 5) / 6
+                            if (localHeatIndex + 1 < totalHeats) localHeatIndex++ else move(1)
+                            readyConfirmed = false
+                        } else {
+                            move(1)
+                            if (activeMode == TvArenaMode.PODIUM && remoteSpotlight == null) localPodiumStep = 1
+                        }
+                        true
+                    }
+                    Key.DirectionCenter, Key.Enter -> {
+                        when (activeMode) {
+                            TvArenaMode.HEAT_CALL -> readyConfirmed = !readyConfirmed
+                            TvArenaMode.PODIUM -> localPodiumStep = if (localPodiumStep < 3) localPodiumStep + 1 else 1
+                            TvArenaMode.BOARD -> paused = !paused
+                        }
+                        true
+                    }
                     else -> false
                 }
             },
@@ -116,14 +260,87 @@ fun BoardScreen(state: ScreenState, modifier: Modifier = Modifier) {
             Waiting(state)
             return@Box
         }
-        val badge = statusBadge(config)
-        val page = pages.getOrNull(safeIndex)
-        val board = page?.let { boards.getOrNull(it.gameIndex) }
-        val category = if (page != null && board != null) board.categories.getOrNull(page.categoryIndex) else null
 
-        Column(Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 20.dp)) {
-            Header(board, boards.size > 1, state.link, category?.name ?: "", page, paused, badge, config, showBadge = boards.isNotEmpty() || badge != StatusBadge.PARCIAL)
-            Spacer(Modifier.height(14.dp))
+        // Exibição 1: CHAMADA DE ATLETAS PARA AS RAIAS
+        if (activeMode == TvArenaMode.HEAT_CALL) {
+            val heatData = (remoteSpotlight as? ScreenSpotlight.HeatCall)
+                ?: buildLocalHeatCall(board, category, localHeatIndex)
+            if (heatData != null) {
+                HeatCallOverlayScreen(heatCall = heatData, readyConfirmed = readyConfirmed)
+            }
+            if (showToolbar) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 12.dp)) {
+                    ArenaActionToolbar(activeMode, toolbarIndex, isCurrentCatFrozen, category?.name ?: "Categoria")
+                }
+            }
+            return@Box
+        }
+
+        // Exibição 2: CERIMÔNIA DE PÓDIO — ANÚNCIO DOS VENCEDORES
+        if (activeMode == TvArenaMode.PODIUM) {
+            val remotePodium = remoteSpotlight as? ScreenSpotlight.Podium
+            val podiumBoard = if (remotePodium != null) {
+                boards.firstOrNull { it.gameCode == remotePodium.gameCode || it.gameName == remotePodium.gameName } ?: board
+            } else {
+                board
+            }
+            val podiumCat = if (remotePodium != null && podiumBoard != null) {
+                podiumBoard.categories.firstOrNull { it.id == remotePodium.categoryId || it.name == remotePodium.categoryName } ?: category
+            } else {
+                category
+            }
+            PodiumCeremonyScreen(
+                gameName = podiumBoard?.gameName ?: remotePodium?.gameName ?: "",
+                category = podiumCat,
+                totalUnit = podiumBoard?.totalUnit ?: "PTS",
+                revealStep = localPodiumStep,
+            )
+            if (showToolbar) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 12.dp)) {
+                    ArenaActionToolbar(activeMode, toolbarIndex, isCurrentCatFrozen, podiumCat?.name ?: "Categoria")
+                }
+            }
+            return@Box
+        }
+
+        // Exibição 3: PLACAR AO VIVO (COM SUPORTE A CONGELAMENTO POR CATEGORIA OU TODAS)
+        val baseBadge = statusBadge(config)
+        val badge = if (isCurrentCatFrozen) StatusBadge.CONGELADO else baseBadge
+        val isFrozen = badge == StatusBadge.CONGELADO
+        val effectiveOverlayText = when {
+            !category?.overlayText.isNullOrBlank() -> category!!.overlayText
+            categoryFrozenMeta != null -> categoryFrozenMeta.overlayText
+            category != null && localFrozenCategoryIds.contains(category.id) -> "CATEGORIA EM REVISÃO"
+            else -> config.overlayText
+        }
+        val effectiveFrozenAt = when {
+            !category?.frozenAt.isNullOrBlank() -> category!!.frozenAt
+            categoryFrozenMeta?.frozenAt != null -> categoryFrozenMeta.frozenAt
+            else -> config.frozenAt
+        }
+
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 28.dp, vertical = 16.dp)
+                .then(if (isFrozen) Modifier.blur(18.dp).alpha(0.35f) else Modifier),
+        ) {
+            if (showToolbar) {
+                ArenaActionToolbar(activeMode, toolbarIndex, isCurrentCatFrozen, category?.name ?: "Categoria")
+                Spacer(Modifier.height(8.dp))
+            }
+            Header(
+                board = board,
+                multiple = boards.size > 1,
+                link = state.link,
+                categoryName = category?.name ?: "",
+                page = page,
+                paused = paused,
+                badge = badge,
+                frozenAtIso = effectiveFrozenAt,
+                showBadge = boards.isNotEmpty() || badge != StatusBadge.PARCIAL,
+            )
+            Spacer(Modifier.height(12.dp))
 
             if (board == null) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -135,39 +352,159 @@ fun BoardScreen(state: ScreenState, modifier: Modifier = Modifier) {
                 }
             } else {
                 val rows = category.rows.drop(page.page * ROWS_PER_PAGE).take(ROWS_PER_PAGE)
-                // cada linha ocupa uma fração igual da altura, então 6 equipes sempre cabem na tela
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    rows.forEach { ScoreRow(it, category.wodTitles.size, board.totalUnit, Modifier.weight(1f)) }
+                    rows.forEach { ScoreRow(it, category.wodTitles.size, board.totalUnit, hideScores = isFrozen, Modifier.weight(1f)) }
                     repeat(ROWS_PER_PAGE - rows.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
 
-            Footer(state, partialNotice = badge == StatusBadge.PARCIAL && boards.isNotEmpty())
+            Footer(
+                state = state,
+                partialNotice = badge == StatusBadge.PARCIAL && boards.isNotEmpty(),
+                frozenCategoriesCount = config.frozenCategories.size + localFrozenCategoryIds.size,
+            )
         }
 
-        if (badge == StatusBadge.CONGELADO) FrozenOverlay(overlayTextOrDefault(config.overlayText))
+        if (isFrozen) {
+            FrozenOverlay(
+                text = overlayTextOrDefault(effectiveOverlayText),
+                gameName = board?.gameName,
+                categoryName = category?.name,
+                isSingleCategoryFreeze = !config.frozen,
+            )
+            if (showToolbar) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 12.dp)) {
+                    ArenaActionToolbar(activeMode, toolbarIndex, isCurrentCatFrozen, category?.name ?: "Categoria")
+                }
+            }
+        }
     }
 }
 
-// Faixa translúcida grande, legível de longe, sobre o meio do placar (as linhas continuam visíveis acima e abaixo).
+// Overlay em tela cheia com backdrop escuro, exibindo a logo, o nome do campeonato, a categoria e a mensagem de bloqueio.
 @Composable
-private fun FrozenOverlay(text: String) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Box(
+private fun FrozenOverlay(
+    text: String,
+    gameName: String?,
+    categoryName: String?,
+    isSingleCategoryFreeze: Boolean = false,
+) {
+    val titleSize = when {
+        text.length > 34 -> 26.sp
+        text.length > 22 -> 32.sp
+        else -> 40.sp
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.78f))
+            .padding(horizontal = 48.dp, vertical = 28.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
             Modifier
-                .fillMaxWidth()
-                .background(Palette.Frozen.copy(alpha = 0.82f))
-                .padding(horizontal = 48.dp, vertical = 10.dp),
-            contentAlignment = Alignment.Center,
+                .fillMaxWidth(0.88f)
+                .clip(RoundedCornerShape(24.dp))
+                .background(Palette.Surface.copy(alpha = 0.96f))
+                .border(2.dp, Palette.Frozen.copy(alpha = 0.85f), RoundedCornerShape(24.dp))
+                .padding(horizontal = 40.dp, vertical = 26.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Image(
+                    painterResource(R.drawable.logo_itgames),
+                    contentDescription = "ITMIZER ITGames",
+                    modifier = Modifier.height(48.dp),
+                    contentScale = ContentScale.Fit,
+                )
+                Text(
+                    "ITMIZER",
+                    color = Palette.TextMuted,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 2.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Palette.SurfaceHigh)
+                        .border(1.dp, Palette.Border, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+            }
+
+            if (!gameName.isNullOrBlank()) {
+                Text(
+                    gameName,
+                    color = Palette.Amber,
+                    fontSize = 22.sp,
+                    lineHeight = 26.sp,
+                    fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            if (!categoryName.isNullOrBlank()) {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Palette.Amber.copy(alpha = 0.14f))
+                        .border(1.dp, Palette.Amber.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                ) {
+                    Text(
+                        if (isSingleCategoryFreeze) "CATEGORIA: $categoryName" else categoryName,
+                        color = Palette.Amber,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Palette.Frozen.copy(alpha = 0.92f))
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(Modifier.size(width = 18.dp, height = 13.dp).border(3.5.dp, Color.White, RoundedCornerShape(topStart = 9.dp, topEnd = 9.dp)))
+                        Box(Modifier.size(width = 28.dp, height = 18.dp).clip(RoundedCornerShape(4.dp)).background(Color.White))
+                    }
+                    Text(
+                        text,
+                        color = Color.White,
+                        fontSize = titleSize,
+                        lineHeight = titleSize * 1.22f,
+                        fontWeight = FontWeight.Black,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
             Text(
-                text,
-                color = Color.White,
-                fontSize = 48.sp,
-                fontWeight = FontWeight.Black,
+                if (isSingleCategoryFreeze) "Esta categoria está em revisão pela mesa técnica • Demais categorias seguem ao vivo"
+                else "Aguarde a liberação oficial da mesa técnica",
+                color = Palette.TextMuted,
+                fontSize = 15.sp,
+                lineHeight = 20.sp,
+                fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -199,42 +536,30 @@ private fun Header(
     page: BoardPage?,
     paused: Boolean,
     badge: StatusBadge,
-    config: ScreenConfig,
+    frozenAtIso: String?,
     showBadge: Boolean,
 ) {
+    val isFrozen = badge == StatusBadge.CONGELADO
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        // logo oficial no lugar do texto; altura fixa preserva o layout (proporção mantida)
         Image(painterResource(R.drawable.logo_itgames), contentDescription = "ITGames", modifier = Modifier.height(60.dp), contentScale = ContentScale.Fit)
         Spacer(Modifier.width(20.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // congelado e online: o selo CONGELADO já diz tudo, "AO VIVO" seria enganoso
-                if (LiveBadge(link, config.frozen)) Spacer(Modifier.width(8.dp))
+                if (LiveBadge(link, isFrozen)) Spacer(Modifier.width(8.dp))
                 if (showBadge) {
-                    StatusPill(badge, config)
+                    StatusPill(badge, frozenAtIso)
                     Spacer(Modifier.width(12.dp))
                 }
                 if (board != null) {
-                    // com mais de um campeonato, o nome ganha destaque para saber qual placar está na tela
                     Text(
                         board.gameName,
-                        color = if (multiple) Palette.Text else Palette.TextMuted,
-                        fontSize = if (multiple) 20.sp else 14.sp,
-                        fontWeight = if (multiple) FontWeight.Bold else FontWeight.Normal,
+                        color = Palette.Text,
+                        fontSize = if (multiple) 19.sp else 17.sp,
+                        fontWeight = FontWeight.Black,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
                     )
-                    // o local só aparece com um campeonato (com vários, o nome precisa do espaço)
-                    if (!multiple && board.location.isNotBlank()) {
-                        Text(
-                            " • ${board.location}",
-                            color = Palette.TextMuted,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
                 }
             }
             if (board != null) {
@@ -268,15 +593,14 @@ private fun Header(
     }
 }
 
-// Selo do cabeçalho: PARCIAL (âmbar), OFICIAL (verde) ou CONGELADO (azul, com cadeado e a hora).
 @Composable
-private fun StatusPill(badge: StatusBadge, config: ScreenConfig) {
+private fun StatusPill(badge: StatusBadge, frozenAtIso: String?) {
     val color = when (badge) {
         StatusBadge.PARCIAL -> Palette.Amber
         StatusBadge.OFICIAL -> Palette.Online
         StatusBadge.CONGELADO -> Palette.Frozen
     }
-    val since = if (badge == StatusBadge.CONGELADO) frozenSince(config.frozenAt, ZoneId.systemDefault()) else null
+    val since = if (badge == StatusBadge.CONGELADO) frozenSince(frozenAtIso, ZoneId.systemDefault()) else null
     Row(
         Modifier
             .clip(CircleShape)
@@ -298,7 +622,6 @@ private fun StatusPill(badge: StatusBadge, config: ScreenConfig) {
     }
 }
 
-// Cadeado desenhado com formas (fontes de TV nem sempre têm o emoji).
 @Composable
 private fun LockIcon(color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -340,7 +663,7 @@ private fun Clock() {
 }
 
 @Composable
-private fun ScoreRow(row: BoardRow, wodCount: Int, totalUnit: String, modifier: Modifier = Modifier) {
+private fun ScoreRow(row: BoardRow, wodCount: Int, totalUnit: String, hideScores: Boolean = false, modifier: Modifier = Modifier) {
     val (badgeBg, badgeFg, rowBorder) = when (row.rank) {
         1 -> Triple(Palette.Amber, Color.Black, Palette.Amber)
         2 -> Triple(Palette.Silver, Color.Black, Palette.Silver.copy(alpha = 0.5f))
@@ -390,7 +713,10 @@ private fun ScoreRow(row: BoardRow, wodCount: Int, totalUnit: String, modifier: 
             }
         }
         if (wodCount > 0) {
-            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                modifier = if (hideScores) Modifier.blur(12.dp).alpha(0.18f) else Modifier,
+            ) {
                 row.wods.take(MAX_WOD_CHIPS).forEachIndexed { index, wod ->
                     Column(
                         Modifier
@@ -398,11 +724,20 @@ private fun ScoreRow(row: BoardRow, wodCount: Int, totalUnit: String, modifier: 
                             .clip(RoundedCornerShape(8.dp))
                             .background(Palette.Background)
                             .border(1.dp, Palette.SurfaceHigh, RoundedCornerShape(8.dp))
-                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                            .padding(horizontal = 4.dp, vertical = 3.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
                     ) {
-                        Text("WOD ${index + 1}", color = Palette.TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                        Text(wod.display, color = Palette.Text, fontSize = chipFontSize(wod.display).sp, fontWeight = FontWeight.Black, maxLines = 1, softWrap = false)
+                        Text("WOD ${index + 1}", color = Palette.TextMuted, fontSize = 9.sp, lineHeight = 10.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (hideScores) "•••" else wod.display,
+                            color = Palette.Text,
+                            fontSize = chipFontSize(wod.display).sp,
+                            lineHeight = 14.sp,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
                     }
                 }
             }
@@ -413,16 +748,18 @@ private fun ScoreRow(row: BoardRow, wodCount: Int, totalUnit: String, modifier: 
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color.Black.copy(alpha = 0.6f))
                 .border(1.dp, Palette.Amber.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
-                .padding(horizontal = 14.dp, vertical = 3.dp),
+                .padding(horizontal = 14.dp, vertical = 4.dp)
+                .then(if (hideScores) Modifier.blur(12.dp).alpha(0.18f) else Modifier),
             horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.Center,
         ) {
-            Text("TOTAL", color = Palette.TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-            // PTS e SOMA levam a unidade; TEMPO mostra só o horário. Valores longos (1:02:10) encolhem para caber.
-            val text = if (totalUnit == "TEMPO") row.totalDisplay else "${row.totalDisplay} $totalUnit"
+            Text("TOTAL", color = Palette.TextMuted, fontSize = 9.sp, lineHeight = 10.sp, fontWeight = FontWeight.Bold)
+            val text = if (hideScores) "•••" else if (totalUnit == "TEMPO") row.totalDisplay else "${row.totalDisplay} $totalUnit"
             Text(
                 text,
                 color = totalColor,
-                fontSize = if (text.length > 9) 15.sp else if (text.length > 7) 18.sp else 20.sp,
+                fontSize = if (text.length > 9) 14.sp else if (text.length > 7) 16.sp else 18.sp,
+                lineHeight = 20.sp,
                 fontWeight = FontWeight.Black,
                 fontFamily = FontFamily.Monospace,
                 maxLines = 1,
@@ -432,7 +769,6 @@ private fun ScoreRow(row: BoardRow, wodCount: Int, totalUnit: String, modifier: 
     }
 }
 
-// Tamanho (sp) do texto do chip de WOD: valores longos ("CANCELADA", "Sem Score") encolhem para caber nos 80dp sem truncar.
 fun chipFontSize(display: String): Int = when {
     display.length <= 8 -> 12
     else -> 9
@@ -442,15 +778,22 @@ private const val MAX_WOD_CHIPS = 5
 private val WOD_CHIP_WIDTH = 80.dp
 
 @Composable
-private fun Footer(state: ScreenState, partialNotice: Boolean) {
+private fun Footer(state: ScreenState, partialNotice: Boolean, frozenCategoriesCount: Int = 0) {
     Row(
         Modifier.fillMaxWidth().padding(top = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("◀ ▶ trocar página   OK pausar/retomar   MENU configurar", color = Palette.TextMuted, fontSize = 12.sp)
+        Text("◀ ▶ página   OK pausar   ▲ comando arena (raias/pódio)   MENU servidor", color = Palette.TextMuted, fontSize = 12.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            // offline mostra RECONECTANDO e mantém o aviso PARCIAL quando o modo for parcial
+            if (frozenCategoriesCount > 0) {
+                Text(
+                    "$frozenCategoriesCount cat. em revisão",
+                    color = Palette.Frozen,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
             if (state.link == Link.OFFLINE) {
                 Text(state.error ?: "RECONECTANDO…", color = Palette.Offline, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }

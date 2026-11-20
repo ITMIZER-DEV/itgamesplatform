@@ -16,10 +16,12 @@ import {
   ArrowRight,
   ShieldCheck,
   ArrowLeftRight,
-  Crown
+  Crown,
+  Megaphone
 } from 'lucide-react';
 import { Category, WorkoutRule, TeamRegistration, Heat } from '@/types';
 import { apiClient, ApiError } from '@/lib/api-client';
+import { saveLocalArenaSpotlight, HeatCallSpotlight } from '@/lib/screens';
 import { useGames } from '@/lib/use-games';
 import { mapCategory, mapHeat, mapRegistration, mapWorkout } from '@/lib/arena-data';
 import { parseWodTitle, sortWorkoutsNaturally } from '@/lib/board';
@@ -238,9 +240,56 @@ export default function HeatsPage() {
     }
   };
 
-  const handleUpdateStatus = async (heatId: string, status: Heat['status']) => {
+  const handleBroadcastHeatToTv = async (heat: Heat) => {
+    if (!activeGame) return;
+    const catNum = Number(String(currentCategory?.id ?? heat.categoryId).replace(/\D/g, '')) || 1;
+    const wodNum = Number(String(currentWorkout?.id ?? heat.workoutId).replace(/\D/g, '')) || 1;
+    const lanes = heat.laneAssignments.map((l) => ({
+      laneNumber: Number(l.lane),
+      teamCode: Number(String(l.registrationId).replace(/\D/g, '')) || Number(l.lane),
+      teamName: l.teamName,
+      number: l.registerNumber || `#${l.registrationId}`,
+      athletes: l.athletes || [],
+    }));
+    const localSpot: HeatCallSpotlight = {
+      kind: 'heat_call',
+      gameCode: activeGame.code,
+      gameName: activeGame.name,
+      categoryId: catNum,
+      categoryName: currentCategory?.name || 'Categoria',
+      workoutCode: wodNum,
+      workoutTitle: currentWorkout?.title || 'WOD',
+      heatNumber: Number(heat.heatNumber) || 1,
+      totalHeats: Math.max(1, filteredHeats.length),
+      startTime: heat.startTime || '09:00',
+      message: 'ATLETAS DA BATERIA, DIRIJAM-SE ÀS SUAS RAIAS DE LARGADA',
+      lanes,
+      triggeredAt: new Date().toISOString(),
+    };
+    saveLocalArenaSpotlight(localSpot);
+    try {
+      const res = await apiClient.triggerScreenSpotlight({
+        kind: 'heat_call',
+        gameCode: activeGame.code,
+        categoryId: catNum,
+        workoutCode: wodNum,
+        heatNumber: Number(heat.heatNumber) || 1,
+        message: localSpot.message,
+        lanes,
+      });
+      if (res?.spotlight) saveLocalArenaSpotlight(res.spotlight);
+    } catch {
+      // sincronizado localmente para Telão Web
+    }
+    toast.success(`📢 Bateria #${heat.heatNumber} (${currentCategory?.name}) transmitida para os Telões!`);
+  };
+
+  const handleUpdateStatus = async (heatId: string, status: Heat['status'], heatObj?: Heat) => {
     try {
       await apiClient.updateHeatStatus(heatId, status);
+      if (status === 'calling' && heatObj) {
+        await handleBroadcastHeatToTv(heatObj);
+      }
       reload();
       toast.success(`Status da bateria atualizado para ${status}!`);
     } catch (err) {
@@ -534,29 +583,38 @@ export default function HeatsPage() {
                     </div>
                   </div>
 
-                  {/* CONTROLE DE STATUS DA BATERIA */}
-                  <div className="flex items-center gap-2 no-print">
-                    <span className="text-[11px] text-zinc-400 font-semibold">Status:</span>
+                  {/* CONTROLE DE STATUS DA BATERIA + CHAMADA NO TELÃO */}
+                  <div className="flex flex-wrap items-center gap-2 no-print">
                     <button
-                      onClick={() => handleUpdateStatus(heat.id, 'scheduled')}
+                      type="button"
+                      onClick={() => handleBroadcastHeatToTv(heat)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-black shadow-md shadow-amber-500/20"
+                      title="Transmitir chamada desta bateria com as raias e atletas nos telões Firestick e Telão Web"
+                    >
+                      <Megaphone className="w-3.5 h-3.5" />
+                      <span>📢 Chamar no Telão</span>
+                    </button>
+                    <span className="text-[11px] text-zinc-400 font-semibold ml-1">Status:</span>
+                    <button
+                      onClick={() => handleUpdateStatus(heat.id, 'scheduled', heat)}
                       className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${heat.status === 'scheduled' ? 'bg-zinc-700 text-white' : 'bg-zinc-800/60 text-zinc-400 hover:text-white'}`}
                     >
                       Agendada
                     </button>
                     <button
-                      onClick={() => handleUpdateStatus(heat.id, 'calling')}
+                      onClick={() => handleUpdateStatus(heat.id, 'calling', heat)}
                       className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${heat.status === 'calling' ? 'bg-amber-500 text-black font-bold animate-pulse' : 'bg-zinc-800/60 text-zinc-400 hover:text-white'}`}
                     >
                       Chamando Atletas
                     </button>
                     <button
-                      onClick={() => handleUpdateStatus(heat.id, 'in_progress')}
+                      onClick={() => handleUpdateStatus(heat.id, 'in_progress', heat)}
                       className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${heat.status === 'in_progress' ? 'bg-emerald-500 text-black font-bold' : 'bg-zinc-800/60 text-zinc-400 hover:text-white'}`}
                     >
                       Na Arena
                     </button>
                     <button
-                      onClick={() => handleUpdateStatus(heat.id, 'completed')}
+                      onClick={() => handleUpdateStatus(heat.id, 'completed', heat)}
                       className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${heat.status === 'completed' ? 'bg-purple-600 text-white' : 'bg-zinc-800/60 text-zinc-400 hover:text-white'}`}
                     >
                       Concluída

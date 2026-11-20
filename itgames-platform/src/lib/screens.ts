@@ -2,6 +2,53 @@
 
 export type ScreenMode = 'partial' | 'official';
 
+export interface FrozenCategorySummary {
+  gameCode: string;
+  categoryId: number;
+  categoryName: string;
+  overlayText: string;
+  frozenAt: string;
+}
+
+export interface HeatCallLane {
+  laneNumber: number;
+  teamCode: number;
+  teamName: string;
+  number: string;
+  athletes: string[];
+  rank?: number;
+  totalDisplay?: string;
+}
+
+export interface HeatCallSpotlight {
+  kind: 'heat_call';
+  gameCode: string;
+  gameName: string;
+  categoryId: number;
+  categoryName: string;
+  workoutCode?: number;
+  workoutTitle: string;
+  heatNumber: number;
+  totalHeats: number;
+  startTime: string;
+  message?: string;
+  lanes: HeatCallLane[];
+  triggeredAt: string;
+}
+
+export interface PodiumSpotlight {
+  kind: 'podium';
+  gameCode: string;
+  gameName: string;
+  categoryId: number;
+  categoryName: string;
+  revealStep: number; // 1 = 3º lugar, 2 = 2º e 3º lugar, 3 = Pódio Completo (1º, 2º e 3º)
+  autoAdvance: boolean;
+  triggeredAt: string;
+}
+
+export type ScreenSpotlight = HeatCallSpotlight | PodiumSpotlight;
+
 export interface ScreenView {
   id: string;
   name: string;
@@ -14,9 +61,17 @@ export interface ScreenView {
   online: boolean;
   lastSeenAt: string | null;
   ownerId: string | null;
+  frozenCategories?: FrozenCategorySummary[];
+  spotlight?: ScreenSpotlight | null;
 }
 
-export const OVERLAY_PRESETS: string[] = ['LEADERBOARD CONGELADO', 'LEADERBOARD EM REVISÃO'];
+export const OVERLAY_PRESETS: string[] = [
+  'LEADERBOARD CONGELADO',
+  'LEADERBOARD EM REVISÃO',
+  'CATEGORIA EM REVISÃO',
+  'LEADERBOARD BLOQUEADO',
+  'AGUARDE APURAÇÃO OFICIAL',
+];
 
 export const OVERLAY_MAX_LENGTH = 60;
 export const ROTATE_MIN = 5;
@@ -54,6 +109,14 @@ export function describeScreenState(
     const hora = at ? `${pad2(at.getHours())}:${pad2(at.getMinutes())}` : '--:--';
     return { label: `congelado desde ${hora}`, tone: 'frozen' };
   }
+  if (s.frozenCategories && s.frozenCategories.length > 0) {
+    const count = s.frozenCategories.length;
+    const label =
+      count === 1
+        ? `${s.frozenCategories[0].categoryName} em revisão`
+        : `${count} categorias em revisão`;
+    return { label, tone: 'frozen' };
+  }
   if (!s.online) {
     return { label: `offline — ${formatLastSeen(s.lastSeenAt, now)}`, tone: 'offline' };
   }
@@ -82,4 +145,73 @@ export function gameCodesForPatch(
   const now = selected.filter((c) => visible.has(c));
   const same = now.length === before.size && now.every((c) => before.has(c));
   return same ? undefined : now;
+}
+
+// ─── Sincronização Local & BroadcastChannel (Categorias Congeladas e Spotlight) ───
+
+const FROZEN_CATS_KEY_PREFIX = 'itgames_frozen_categories_';
+const SPOTLIGHT_KEY = 'itgames_arena_spotlight';
+
+export function getLocalFrozenCategories(gameCode: string): Record<string, FrozenCategorySummary> {
+  if (typeof window === 'undefined' || !gameCode) return {};
+  try {
+    const raw = localStorage.getItem(`${FROZEN_CATS_KEY_PREFIX}${gameCode}`);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveLocalFrozenCategories(
+  gameCode: string,
+  categoriesMap: Record<string, FrozenCategorySummary>,
+): void {
+  if (typeof window === 'undefined' || !gameCode) return;
+  try {
+    if (Object.keys(categoriesMap).length === 0) {
+      localStorage.removeItem(`${FROZEN_CATS_KEY_PREFIX}${gameCode}`);
+    } else {
+      localStorage.setItem(`${FROZEN_CATS_KEY_PREFIX}${gameCode}`, JSON.stringify(categoriesMap));
+    }
+    window.dispatchEvent(
+      new CustomEvent('itgames_freeze_changed', {
+        detail: { gameCode, frozenCategories: categoriesMap },
+      }),
+    );
+    const bc = new BroadcastChannel('itgames_freeze_channel');
+    bc.postMessage({ gameCode, frozenCategories: categoriesMap, timestamp: Date.now() });
+    bc.close();
+  } catch {
+    // ignore
+  }
+}
+
+export function getLocalArenaSpotlight(): ScreenSpotlight | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(SPOTLIGHT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as ScreenSpotlight;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLocalArenaSpotlight(spotlight: ScreenSpotlight | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!spotlight) {
+      localStorage.removeItem(SPOTLIGHT_KEY);
+    } else {
+      localStorage.setItem(SPOTLIGHT_KEY, JSON.stringify(spotlight));
+    }
+    window.dispatchEvent(new CustomEvent('itgames_spotlight_changed', { detail: { spotlight } }));
+    const bc = new BroadcastChannel('itgames_freeze_channel');
+    bc.postMessage({ spotlight, spotlightUpdated: true, timestamp: Date.now() });
+    bc.close();
+  } catch {
+    // ignore
+  }
 }

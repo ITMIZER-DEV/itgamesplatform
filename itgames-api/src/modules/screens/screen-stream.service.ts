@@ -6,7 +6,7 @@ import { BoardService } from '../scoring/board.service';
 import { Board } from '../scoring/types';
 import { WsUpgradeRouter } from '../ws/ws-upgrade-router';
 import { ScreenNotifier } from './screen-notifier.service';
-import { buildScreenMessage, ScreenRecord } from './screen-message';
+import { buildScreenMessage, parseScreenEnvelope, ScreenRecord } from './screen-message';
 import { effectiveCodesForOwner } from './owner-codes';
 import { ScreenMode } from './screens-logic';
 import { hashDeviceToken } from './screen-token';
@@ -42,7 +42,7 @@ export class ScreenStreamService implements OnApplicationBootstrap, OnApplicatio
     private readonly router: WsUpgradeRouter,
     private readonly prisma: PrismaService,
     private readonly boards: BoardService,
-    screens: ScreenNotifier,
+    private readonly screens: ScreenNotifier,
     leaderboard: LeaderboardNotifier,
   ) {
     leaderboard.onChange((game) => this.onBoardChange(game));
@@ -174,6 +174,12 @@ export class ScreenStreamService implements OnApplicationBootstrap, OnApplicatio
       if (seq !== entry.seq || this.live.get(id) !== entry) return;
       entry.codes = new Set(configured);
       entry.frozen = frozen;
+      const env = parseScreenEnvelope(row.frozenBoards);
+      const frozenCategoriesMap = {
+        ...(env.frozenCategories ?? {}),
+        ...this.screens.getCategoryFreezes(row.id),
+      };
+      const spotlight = this.screens.getSpotlight(row.id) ?? env.spotlight ?? null;
       const record: ScreenRecord = {
         id: row.id,
         name: row.name,
@@ -182,7 +188,9 @@ export class ScreenStreamService implements OnApplicationBootstrap, OnApplicatio
         frozen,
         frozenAt: row.frozenAt,
         overlayText: row.overlayText,
-        frozenBoards: frozen ? this.frozenList(row.frozenBoards) : null,
+        frozenBoards: frozen ? this.frozenList(env.boards ?? row.frozenBoards) : null,
+        frozenCategoriesMap,
+        spotlight,
       };
       const payload = JSON.stringify(buildScreenMessage(record, live));
       const targets = only ? [only] : [...entry.sockets];
