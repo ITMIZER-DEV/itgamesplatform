@@ -46,11 +46,15 @@ class DataStorage {
     }
   }
 
-  private setItem<T>(key: string, value: T): void {
+  private setItem<T>(key: string, value: T, silent = false): void {
     if (!this.isBrowser()) return;
     try {
-      localStorage.setItem(key, JSON.stringify(value));
-      window.dispatchEvent(new Event('itgames_storage_updated'));
+      const serialized = JSON.stringify(value);
+      if (localStorage.getItem(key) === serialized) return;
+      localStorage.setItem(key, serialized);
+      if (!silent) {
+        window.dispatchEvent(new Event('itgames_storage_updated'));
+      }
     } catch (e) {
       console.error(`Erro ao salvar chave ${key}:`, e);
     }
@@ -139,7 +143,7 @@ class DataStorage {
 
   public setCategoriesForGame(gameId: string, categories: Category[]): void {
     const others = this.getCategories().filter(c => c.gameId !== gameId);
-    this.setItem(STORAGE_KEYS.CATEGORIES, [...others, ...categories]);
+    this.setItem(STORAGE_KEYS.CATEGORIES, [...others, ...categories], true);
   }
 
   // Workouts
@@ -188,7 +192,7 @@ class DataStorage {
 
   public setTeamsForGame(gameId: string, teams: TeamRegistration[]): void {
     const others = this.getTeams().filter(t => t.gameId !== gameId);
-    this.setItem(STORAGE_KEYS.TEAMS, [...others, ...teams]);
+    this.setItem(STORAGE_KEYS.TEAMS, [...others, ...teams], true);
   }
 
   public clearGameCache(gameId: string): void {

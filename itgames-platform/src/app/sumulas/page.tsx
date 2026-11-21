@@ -108,14 +108,24 @@ export default function SumulasStudioPage() {
         let wods = storage.getWorkouts(game.id);
         let tms = storage.getTeams(game.id);
         let hts = storage.getHeats(game.id);
-        const tmpls = storage.getSumulaTemplates();
+        let tmpls = storage.getSumulaTemplates();
 
         try {
-          const [apiCats, apiWods, apiRegs] = await Promise.all([
+          const [apiCats, apiWods, apiRegs, apiTmpls] = await Promise.all([
             apiClient.listCategories(gId).catch(() => null),
             apiClient.listWorkouts(gId).catch(() => null),
             apiClient.listRegistrations(gId).catch(() => null),
+            apiClient.getSumulaTemplates().catch(() => null),
           ]);
+
+          if (apiTmpls && apiTmpls.length > 0) {
+            const byId = new Map(tmpls.map((t) => [t.id, t]));
+            for (const t of apiTmpls) {
+              byId.set(t.id, t);
+              storage.saveSumulaTemplate(t);
+            }
+            tmpls = Array.from(byId.values());
+          }
 
           if (apiCats && apiCats.length > 0) {
             cats = apiCats.map((c: any) => ({
@@ -542,6 +552,7 @@ export default function SumulasStudioPage() {
     }
 
     storage.deleteSumulaTemplate(templateId);
+    apiClient.deleteSumulaTemplate(templateId).catch(() => null);
     const updated = storage.getSumulaTemplates();
     setTemplates(updated);
 
@@ -555,7 +566,7 @@ export default function SumulasStudioPage() {
   };
 
   // SALVAR TEMPLATE
-  const handleSaveTemplate = () => {
+  const handleSaveTemplate = async () => {
     if (!editingTemplateName.trim()) {
       toast.error('Informe o nome do template');
       return;
@@ -574,9 +585,18 @@ export default function SumulasStudioPage() {
       createdAt: new Date().toISOString()
     };
 
-    storage.saveSumulaTemplate(updatedTemplate);
-    setTemplates(storage.getSumulaTemplates());
-    toast.success('Template de Súmula salvo e vinculado com sucesso!');
+    try {
+      await apiClient.saveSumulaTemplate(updatedTemplate);
+      storage.saveSumulaTemplate(updatedTemplate);
+      setEditingTemplateId(updatedTemplate.id);
+      setTemplates(storage.getSumulaTemplates());
+      toast.success('Template de Súmula salvo no banco com sucesso!');
+    } catch {
+      storage.saveSumulaTemplate(updatedTemplate);
+      setEditingTemplateId(updatedTemplate.id);
+      setTemplates(storage.getSumulaTemplates());
+      toast.error('Salvo localmente, mas houve erro ao sincronizar com o banco.');
+    }
   };
 
   // Carregar preset de WOD no construtor

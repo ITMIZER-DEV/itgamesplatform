@@ -766,6 +766,24 @@ export class ApiClient {
       body: JSON.stringify(data),
     }, true);
   }
+
+  // 9. Templates de Súmula
+  async getSumulaTemplates() {
+    return this.strict<any[]>('/sumulas/templates', { method: 'GET' }, true);
+  }
+
+  async saveSumulaTemplate(template: any) {
+    return this.strict<any>('/sumulas/templates', {
+      method: 'POST',
+      body: JSON.stringify(template),
+    }, true);
+  }
+
+  async deleteSumulaTemplate(id: string) {
+    return this.strict<{ success: boolean }>(`/sumulas/templates/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }, true);
+  }
 }
 
 export const apiClient = new ApiClient();
