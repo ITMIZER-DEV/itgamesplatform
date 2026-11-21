@@ -1085,6 +1085,31 @@ export class EventsService {
     };
   }
 
+  async listMyRegistrations(gameCode: string, user: { id: string; email?: string; name?: string }) {
+    const normalizeCpf = (v?: string | null) => String(v || '').replace(/\D/g, '');
+    const dbUser = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      include: { athleteProfile: true },
+    });
+    const userCpf = normalizeCpf(dbUser?.athleteProfile?.cpf);
+    const userEmail = String(dbUser?.email || user.email || '').toLowerCase().trim();
+    const userName = String(dbUser?.name || user.name || '').toLowerCase().trim();
+
+    const all = await this.listRegistrations(gameCode);
+    return all.filter((reg: any) =>
+      (reg.athletes || []).some((a: any) => {
+        const aCpf = normalizeCpf(a.cpf);
+        const aEmail = String(a.email || '').toLowerCase().trim();
+        const aName = String(a.name || '').toLowerCase().trim();
+        return (
+          (userCpf && aCpf && aCpf === userCpf) ||
+          (userEmail && aEmail && aEmail === userEmail) ||
+          (userName && aName && (aName === userName || aName.includes(userName) || userName.includes(aName)))
+        );
+      }),
+    );
+  }
+
   async listRegistrations(gameCode: string, categoryId?: number) {
     const registrations = await this.prisma.registration.findMany({
       where: {

@@ -239,6 +239,15 @@ export class EventsController {
     return this.eventsService.registerTeam({ ...dto, gameCode: code }, user);
   }
 
+  @Get(':code/my-registrations')
+  @ApiOperation({ summary: 'Listar inscrições do próprio atleta autenticado neste evento' })
+  async listMyRegistrations(
+    @Param('code') code: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.eventsService.listMyRegistrations(code, user);
+  }
+
   @Roles(UserRole.ORGANIZER)
   @Get(':code/registrations')
   @ApiOperation({ summary: 'Listar inscrições do evento (organizador do campeonato / super admin)' })

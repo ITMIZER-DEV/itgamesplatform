@@ -564,6 +564,10 @@ export class ApiClient {
   }
 
   // 4. Inscrições de Atletas
+  async listMyRegistrations(gameCode: string): Promise<any[] | null> {
+    return this.request<any[]>(`/events/${encodeURIComponent(gameCode)}/my-registrations`, { method: 'GET' });
+  }
+
   async listRegistrations(gameCode: string, categoryId?: number): Promise<any[] | null> {
     const query = categoryId ? `?categoryId=${categoryId}` : '';
     return this.request<any[]>(`/events/${gameCode}/registrations${query}`);

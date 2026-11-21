@@ -111,7 +111,7 @@ export default function AthletePortalPage() {
     if (game) {
       let tms = storage.getTeams(game.id);
       try {
-        const apiRegs = await apiClient.listRegistrations(game.code || game.id);
+        const apiRegs = await apiClient.listMyRegistrations(game.code || game.id);
         if (apiRegs && apiRegs.length > 0) {
           const apiMapped: TeamRegistration[] = apiRegs.map(r => ({
             id: `reg_${r.code}`,
