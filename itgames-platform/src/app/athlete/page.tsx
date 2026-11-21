@@ -161,6 +161,8 @@ export default function AthletePortalPage() {
         const lastId = typeof window !== 'undefined' ? localStorage.getItem('itgames_last_registered_team_id') : null;
         const userEmail = curSession.email?.toLowerCase().trim();
         const userName = curSession.name?.toLowerCase().trim() || '';
+        const normalizeCpf = (v?: string | null) => String(v || '').replace(/\D/g, '');
+        const userCpf = normalizeCpf((curSession as any).cpf);
 
         const matchName = (n1: string, n2: string) => {
           const a = n1.toLowerCase().trim();
@@ -176,6 +178,7 @@ export default function AthletePortalPage() {
         const myTeams = tms.filter(t => 
           (lastBib && t.registerNumber === lastBib) ||
           (lastId && t.id === lastId) ||
+          (userCpf && t.athletes.some(a => normalizeCpf(a.cpf) === userCpf)) ||
           (userEmail && t.athletes.some(a => a.email?.toLowerCase().trim() === userEmail)) ||
           (userName && t.athletes.some(a => matchName(userName, a.name))) ||
           (userName && matchName(userName, t.teamName))
@@ -335,6 +338,8 @@ export default function AthletePortalPage() {
   const lastId = typeof window !== 'undefined' ? localStorage.getItem('itgames_last_registered_team_id') : null;
   const userEmail = session.email?.toLowerCase().trim();
   const userName = session.name?.toLowerCase().trim() || '';
+  const normalizeCpf = (v?: string | null) => String(v || '').replace(/\D/g, '');
+  const userCpf = normalizeCpf((session as any).cpf);
 
   const matchName = (n1: string, n2: string) => {
     const a = n1.toLowerCase().trim();
@@ -349,6 +354,7 @@ export default function AthletePortalPage() {
   const myAthleteTeams = teams.filter(t => 
     (lastBib && t.registerNumber === lastBib) ||
     (lastId && t.id === lastId) ||
+    (userCpf && t.athletes.some(a => normalizeCpf(a.cpf) === userCpf)) ||
     (userEmail && t.athletes.some(a => a.email?.toLowerCase().trim() === userEmail)) ||
     (userName && t.athletes.some(a => matchName(userName, a.name))) ||
     (userName && matchName(userName, t.teamName))
