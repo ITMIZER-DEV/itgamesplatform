@@ -1,10 +1,14 @@
 package br.com.itgames.tv.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -26,7 +30,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -34,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -48,6 +55,7 @@ import br.com.itgames.tv.BoardRow
 import br.com.itgames.tv.HeatCallLane
 import br.com.itgames.tv.R
 import br.com.itgames.tv.ScreenSpotlight
+import kotlinx.coroutines.delay
 import kotlin.math.sin
 
 enum class TvArenaMode {
@@ -141,7 +149,7 @@ fun buildLocalHeatCall(
     board: Board?,
     category: BoardCategory?,
     heatIndex: Int,
-    lanesPerHeat: Int = 6,
+    lanesPerHeat: Int = 4,
 ): ScreenSpotlight.HeatCall? {
     if (board == null || category == null) return null
     val activeRows = category.rows.filter { it.status != "cancelled" }
@@ -345,25 +353,37 @@ fun HeatCallOverlayScreen(
 
             Row(
                 Modifier.weight(1f).fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 Column(
                     Modifier.weight(1f).fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     leftCol.forEach { lane ->
-                        LaneCallCard(lane, accentColor, Modifier.weight(1f))
+                        LaneCallCard(
+                            lane = lane,
+                            accentColor = accentColor,
+                            animIndex = lane.laneNumber - 1,
+                            isLeft = true,
+                            modifier = Modifier.weight(1f),
+                        )
                     }
-                    repeat((4 - leftCol.size).coerceAtLeast(0)) { Spacer(Modifier.weight(1f)) }
+                    repeat((rowsPerCol - leftCol.size).coerceAtLeast(0)) { Spacer(Modifier.weight(1f)) }
                 }
                 Column(
                     Modifier.weight(1f).fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     rightCol.forEach { lane ->
-                        LaneCallCard(lane, accentColor, Modifier.weight(1f))
+                        LaneCallCard(
+                            lane = lane,
+                            accentColor = accentColor,
+                            animIndex = lane.laneNumber - 1,
+                            isLeft = false,
+                            modifier = Modifier.weight(1f),
+                        )
                     }
-                    repeat((4 - rightCol.size).coerceAtLeast(0)) { Spacer(Modifier.weight(1f)) }
+                    repeat((rowsPerCol - rightCol.size).coerceAtLeast(0)) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
@@ -395,55 +415,85 @@ fun HeatCallOverlayScreen(
 private fun LaneCallCard(
     lane: HeatCallLane,
     accentColor: Color,
+    animIndex: Int = 0,
+    isLeft: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(14.dp)
+    val animProgress = remember(lane.laneNumber, lane.teamName) { Animatable(0f) }
+
+    LaunchedEffect(lane.laneNumber, lane.teamName) {
+        animProgress.snapTo(0f)
+        // Cadência de 480ms entre a entrada de cada raia (mais cadenciada e imponente)
+        delay((animIndex.coerceAtLeast(0) * 480L))
+        animProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(
+                durationMillis = 700,
+                easing = FastOutSlowInEasing,
+            ),
+        )
+    }
+
+    val progress = animProgress.value
+    val shape = RoundedCornerShape(16.dp)
     Row(
         modifier
             .fillMaxWidth()
+            .graphicsLayer {
+                alpha = progress.coerceIn(0f, 1f)
+                val slideDir = if (isLeft) -140f else 140f
+                translationX = (1f - progress) * slideDir
+                translationY = (1f - progress) * 24f
+                scaleX = 0.84f + (0.16f * progress)
+                scaleY = 0.84f + (0.16f * progress)
+            }
             .clip(shape)
             .background(Palette.Surface)
-            .border(1.5.dp, accentColor.copy(alpha = 0.55f), shape)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .border(
+                width = if (progress > 0.95f) 1.5.dp else 2.5.dp,
+                color = if (progress in 0.78f..0.98f) Color.White else accentColor.copy(alpha = 0.55f),
+                shape = shape,
+            )
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // CRACHÁ DA RAIA
         Column(
             Modifier
-                .width(74.dp)
+                .width(82.dp)
                 .fillMaxHeight()
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(12.dp))
                 .background(accentColor)
-                .padding(horizontal = 6.dp, vertical = 4.dp),
+                .padding(horizontal = 6.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
                 "RAIA",
                 color = Color.Black,
-                fontSize = 10.sp,
-                lineHeight = 10.sp,
+                fontSize = 11.sp,
+                lineHeight = 11.sp,
                 fontWeight = FontWeight.Black,
             )
             Text(
                 "%02d".format(lane.laneNumber),
                 color = Color.Black,
-                fontSize = 22.sp,
-                lineHeight = 22.sp,
+                fontSize = 28.sp,
+                lineHeight = 28.sp,
                 fontWeight = FontWeight.Black,
                 fontFamily = FontFamily.Monospace,
             )
         }
 
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(14.dp))
 
-        // EQUIPE E ATLETAS
+        // EQUIPE E CADA ATLETA EM UMA LINHA SEPARADA
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     lane.teamName,
                     color = Palette.Text,
-                    fontSize = 19.sp,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Black,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -459,19 +509,36 @@ private fun LaneCallCard(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
                             .background(Palette.Amber.copy(alpha = 0.14f))
-                            .padding(horizontal = 6.dp, vertical = 1.dp),
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
                     )
                 }
             }
-            if (lane.athletes.isNotEmpty()) {
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    lane.athletes.joinToString(" • "),
-                    color = Palette.TextMuted,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+
+            // Cada atleta exibido em sua própria linha independente
+            val validAthletes = lane.athletes.map { it.trim() }.filter { it.isNotEmpty() }
+            if (validAthletes.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    validAthletes.forEach { athleteName ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(Palette.Amber),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                athleteName.uppercase(),
+                                color = Color.White.copy(alpha = 0.92f),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
             }
         }
 

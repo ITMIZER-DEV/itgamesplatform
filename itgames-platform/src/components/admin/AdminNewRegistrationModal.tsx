@@ -96,20 +96,31 @@ export function AdminNewRegistrationModal({
 
   const requiredAthletesCount = categoryRules.maxAthletes;
 
-  // Inicializar formulário ao abrir
+  // Inicializar formulário somente na abertura do modal (evita resetar categoria quando `categories` re-renderizar no pai)
   useEffect(() => {
-    if (isOpen && categories.length > 0) {
+    if (!isOpen) return;
+    if (categories.length > 0) {
       const initialCat = categories[0];
       setSelectedCatId(String(initialCat.id));
       const price = (initialCat as any).priceBrl ?? initialCat.price ?? 150;
       setAmountPaid(price);
-      setTeamName('');
-      setPaymentStatus('paid');
-      setActiveAthleteTab(0);
-      setAthleteSearchQuery('');
-      setSearchResults([]);
+    } else {
+      setSelectedCatId('');
     }
-  }, [isOpen, categories]);
+    setTeamName('');
+    setPaymentStatus('paid');
+    setActiveAthleteTab(0);
+    setAthleteSearchQuery('');
+    setSearchResults([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  // Se o modal abrir antes de `categories` terminar de carregar, seleciona a 1ª apenas se ainda não houver seleção
+  useEffect(() => {
+    if (isOpen && !selectedCatId && categories.length > 0) {
+      setSelectedCatId(String(categories[0].id));
+    }
+  }, [isOpen, selectedCatId, categories]);
 
   // Ajustar número de atletas quando mudar a categoria
   useEffect(() => {

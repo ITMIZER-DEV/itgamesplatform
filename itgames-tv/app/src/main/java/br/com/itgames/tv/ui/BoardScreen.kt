@@ -2,6 +2,7 @@ package br.com.itgames.tv.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -61,7 +62,7 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun BoardScreen(state: ScreenState, modifier: Modifier = Modifier) {
+fun BoardScreen(state: ScreenState, modifier: Modifier = Modifier, onOpenSetup: (() -> Unit)? = null) {
     val config = state.config
     val boards = state.boards
     val pages = remember(boards) { pagesOf(boards) }
@@ -257,7 +258,7 @@ fun BoardScreen(state: ScreenState, modifier: Modifier = Modifier) {
             },
     ) {
         if (config == null) {
-            Waiting(state)
+            Waiting(state, onOpenSetup = onOpenSetup)
             return@Box
         }
 
@@ -511,8 +512,13 @@ private fun FrozenOverlay(
 }
 
 @Composable
-private fun Waiting(state: ScreenState) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+private fun Waiting(state: ScreenState, onOpenSetup: (() -> Unit)? = null) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .clickable { onOpenSetup?.invoke() },
+        contentAlignment = Alignment.Center,
+    ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Image(painterResource(R.drawable.logo_itgames), contentDescription = "ITGames", modifier = Modifier.height(160.dp), contentScale = ContentScale.Fit)
             Spacer(Modifier.height(24.dp))
@@ -522,7 +528,7 @@ private fun Waiting(state: ScreenState) {
                 fontSize = 22.sp,
             )
             Spacer(Modifier.height(8.dp))
-            Text("Pressione MENU para configurar", color = Palette.TextMuted, fontSize = 16.sp)
+            Text("Pressione MENU ou clique aqui para configurar", color = Palette.TextMuted, fontSize = 16.sp)
         }
     }
 }

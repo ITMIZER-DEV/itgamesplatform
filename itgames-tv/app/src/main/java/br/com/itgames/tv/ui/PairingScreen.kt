@@ -3,6 +3,7 @@ package br.com.itgames.tv.ui
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -41,7 +43,7 @@ private const val RETRY_MS = 5_000L
 // Pareamento sem digitar nada no controle: a TV mostra um código grande e o organizador o digita no painel.
 // Renova o código quando expira (ou quando o servidor não o conhece mais) e consulta a cada 3 s.
 @Composable
-fun PairingScreen(server: String, onPaired: (token: String) -> Unit) {
+fun PairingScreen(server: String, onOpenSetup: (() -> Unit)? = null, onPaired: (token: String) -> Unit) {
     var code by remember { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf("Gerando código…") }
 
@@ -108,7 +110,13 @@ fun PairingScreen(server: String, onPaired: (token: String) -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(status, color = Palette.TextMuted, fontSize = 18.sp)
-            Text("MENU: endereço do servidor", color = Palette.TextMuted, fontSize = 14.sp)
+            Text(
+                "MENU: configurar servidor",
+                color = Palette.Amber,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onOpenSetup?.invoke() }.padding(horizontal = 8.dp, vertical = 4.dp),
+            )
         }
     }
 }

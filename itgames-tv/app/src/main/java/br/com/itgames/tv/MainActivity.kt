@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
                 } else if (currentToken == null) {
                     PairingScreen(
                         server = server,
+                        onOpenSetup = { showSetup = true },
                         onPaired = { newToken ->
                             prefs.deviceToken = newToken
                             token = newToken
@@ -77,7 +78,10 @@ class MainActivity : ComponentActivity() {
                         socket.start()
                         onDispose { socket.stop() }
                     }
-                    BoardScreen(socket.state.collectAsState().value)
+                    BoardScreen(
+                        state = socket.state.collectAsState().value,
+                        onOpenSetup = { showSetup = true },
+                    )
                 }
             }
         }

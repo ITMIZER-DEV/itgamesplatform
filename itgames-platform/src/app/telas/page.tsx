@@ -8,6 +8,7 @@ import { apiClient, ApiError } from '@/lib/api-client';
 import { storage } from '@/lib/storage';
 import {
   FrozenCategorySummary,
+  HeatCallLane,
   OVERLAY_MAX_LENGTH,
   OVERLAY_PRESETS,
   ROTATE_DEFAULT,
@@ -669,7 +670,7 @@ function ModalShell({ title, onClose, children }: { title: string; onClose: () =
   );
 }
 
-// Helper que carrega as categorias de um campeonato (API com fallback local)
+// Helper que carrega as categorias de um campeonato (API com fallback local sem duplicatas)
 function useGameCategories(gameCode: string): CategoryOption[] {
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   useEffect(() => {
@@ -679,17 +680,30 @@ function useGameCategories(gameCode: string): CategoryOption[] {
       .listCategories(gameCode)
       .then((list) => {
         if (cancelled) return;
-        if (list && list.length > 0) {
-          setCategories(list.map((c: any) => ({ id: Number(c.code ?? c.id), name: c.name })));
-        } else {
-          const local = storage.getCategories(gameCode);
-          setCategories(local.map((c) => ({ id: Number(String(c.id).replace(/\D/g, '')) || 1, name: c.name })));
+        const raw = (list && list.length > 0)
+          ? list.map((c: any) => ({ id: Number(c.code ?? c.id), name: c.name }))
+          : storage.getCategories(gameCode).map((c) => ({ id: Number(String(c.id).replace(/\D/g, '')) || 1, name: c.name }));
+        
+        const map = new Map<string, CategoryOption>();
+        for (const item of raw) {
+          const key = item.name.trim().toLowerCase();
+          if (!map.has(key)) {
+            map.set(key, item);
+          }
         }
+        setCategories(Array.from(map.values()));
       })
       .catch(() => {
         if (cancelled) return;
         const local = storage.getCategories(gameCode);
-        setCategories(local.map((c) => ({ id: Number(String(c.id).replace(/\D/g, '')) || 1, name: c.name })));
+        const map = new Map<string, CategoryOption>();
+        for (const c of local) {
+          const key = c.name.trim().toLowerCase();
+          if (!map.has(key)) {
+            map.set(key, { id: Number(String(c.id).replace(/\D/g, '')) || 1, name: c.name });
+          }
+        }
+        setCategories(Array.from(map.values()));
       });
     return () => {
       cancelled = true;
@@ -1057,6 +1071,7 @@ function HeatCallDialog({
     workoutCode?: number;
     heatNumber: number;
     message: string;
+    lanes?: HeatCallLane[];
   }) => void | Promise<void>;
 }) {
   const defaultGame = target?.gameCodes?.[0] ?? games[0]?.code ?? 'SUMMER2026';
@@ -1067,9 +1082,10 @@ function HeatCallDialog({
   const [workoutCode, setWorkoutCode] = useState<number>(0);
   const [heatNumber, setHeatNumber] = useState<number>(1);
   const [message, setMessage] = useState('ATLETAS DA BATERIA, DIRIJAM-SE ÀS SUAS RAIAS DE LARGADA');
+  const [teams, setTeams] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
 
-  const effectiveCatId = categoryId || categories[0]?.id || 1;
+  const effectiveCatId = categoryId || categories[0]?.id || 2;
 
   useEffect(() => {
     if (!gameCode) return;
@@ -1089,8 +1105,53 @@ function HeatCallDialog({
       .catch(() => {});
   }, [gameCode]);
 
+  // Carrega duplas/equipes da categoria para compor a prévia das baterias e raias
+  useEffect(() => {
+    if (!gameCode || !effectiveCatId) return;
+    const localTeams = storage.getTeams(gameCode);
+    const catLocal = localTeams.filter(
+      (t: any) => Number(t.categoryId ?? t.category) === effectiveCatId || String(t.categoryId ?? t.category) === String(effectiveCatId),
+    );
+    if (catLocal.length > 0) {
+      setTeams(catLocal);
+    }
+
+    apiClient
+      .listRegistrations(gameCode, effectiveCatId)
+      .then((regs) => {
+        if (regs && regs.length > 0) {
+          setTeams(regs);
+        }
+      })
+      .catch(() => {});
+  }, [gameCode, effectiveCatId]);
+
   const catWorkouts = workouts.filter((w) => !w.categoryId || w.categoryId === effectiveCatId);
   const effectiveWodCode = workoutCode || catWorkouts[0]?.code || undefined;
+
+  // Divisão em baterias de 4 raias
+  const lanesPerHeat = 4;
+  const totalHeats = Math.max(1, Math.ceil((teams.length || 1) / lanesPerHeat));
+  const currentHeatSafe = Math.min(totalHeats, Math.max(1, heatNumber));
+
+  const startIdx = (currentHeatSafe - 1) * lanesPerHeat;
+  const currentHeatTeams = teams.slice(startIdx, startIdx + lanesPerHeat);
+
+  // Calcula horário sugerido de largada (8:00 + 15 min por bateria)
+  const totalMin = 8 * 60 + (currentHeatSafe - 1) * 15;
+  const suggestedTime = `${String(Math.floor(totalMin / 60)).padStart(2, '0')}:${String(totalMin % 60).padStart(2, '0')}`;
+
+  const currentLanes: HeatCallLane[] = currentHeatTeams.map((t, idx) => ({
+    laneNumber: idx + 1,
+    teamCode: Number(t.teamCode || t.code || t.number || idx + 1) || (idx + 1),
+    teamName: t.teamName || t.team || t.name || `Equipe #${t.teamCode || t.number || idx + 1}`,
+    number: String(t.teamCode || t.number || t.bib || `#${idx + 1}`),
+    athletes: Array.isArray(t.athletes)
+      ? t.athletes.map((a: any) => (typeof a === 'string' ? a : a.name || ''))
+      : [],
+    rank: t.rank || 0,
+    totalDisplay: t.totalDisplay || '',
+  }));
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1101,8 +1162,9 @@ function HeatCallDialog({
         gameCode,
         categoryId: effectiveCatId,
         workoutCode: effectiveWodCode,
-        heatNumber: Math.max(1, heatNumber),
+        heatNumber: currentHeatSafe,
         message: message.trim() || 'DIRIJAM-SE ÀS RAIAS DE LARGADA',
+        lanes: currentLanes.length > 0 ? currentLanes : undefined,
       });
     } finally {
       setBusy(false);
@@ -1111,12 +1173,12 @@ function HeatCallDialog({
 
   return (
     <ModalShell
-      title={target ? `📢 Chamar Atletas p/ Raias em “${target.name}”` : '📢 Chamar Atletas para as Raias (Todos os Telões)'}
+      title={target ? `📢 Chamar Atletas p/ Raias em “${target.name}”` : '📢 Chamar Atletas para as Raias (Telões)'}
       onClose={onClose}
     >
-      <form onSubmit={submit} className="space-y-4">
+      <form onSubmit={submit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
         <p className="text-xs text-zinc-400">
-          Exibe nos telões Firestick e Telão Web o painel de chamada oficial da bateria com cada Raia, BIB, equipe e atletas.
+          Transmite instantaneamente a chamada oficial nos telões com animação dos cards, raias e duplas convocadas.
         </p>
 
         {games.length > 1 && (
@@ -1132,25 +1194,26 @@ function HeatCallDialog({
           </div>
         )}
 
-        <div>
-          <label className={LABEL_CLASS}>Categoria</label>
-          <select
-            value={effectiveCatId}
-            onChange={(e) => {
-              setCategoryId(Number(e.target.value));
-              setWorkoutCode(0);
-            }}
-            className={INPUT_CLASS}
-          >
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className={LABEL_CLASS}>Categoria</label>
+            <select
+              value={effectiveCatId}
+              onChange={(e) => {
+                setCategoryId(Number(e.target.value));
+                setWorkoutCode(0);
+                setHeatNumber(1);
+              }}
+              className={INPUT_CLASS}
+            >
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={LABEL_CLASS}>Prova / WOD</label>
             <select
@@ -1169,18 +1232,83 @@ function HeatCallDialog({
               )}
             </select>
           </div>
+        </div>
 
-          <div>
-            <label className={LABEL_CLASS}>Nº da Bateria (Heat)</label>
-            <input
-              type="number"
-              min={1}
-              max={30}
-              value={heatNumber}
-              onChange={(e) => setHeatNumber(Math.max(1, Number(e.target.value)))}
-              className={INPUT_CLASS}
-            />
+        {/* SELEÇÃO VISUAL DA BATERIA (HEAT) */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className={LABEL_CLASS}>Bateria a Chamar no Telão</label>
+            <span className="text-[11px] font-bold text-amber-400">
+              {totalHeats} {totalHeats === 1 ? 'bateria' : 'baterias'} • ~{suggestedTime}
+            </span>
           </div>
+          <div className="flex flex-wrap gap-2">
+            {Array.from({ length: totalHeats }, (_, i) => i + 1).map((num) => {
+              const isSelected = num === currentHeatSafe;
+              const bMin = 8 * 60 + (num - 1) * 15;
+              const bTime = `${String(Math.floor(bMin / 60)).padStart(2, '0')}:${String(bMin % 60).padStart(2, '0')}`;
+              return (
+                <button
+                  type="button"
+                  key={num}
+                  onClick={() => setHeatNumber(num)}
+                  className={`flex-1 min-w-[100px] px-3 py-2 rounded-xl border text-xs font-black transition-all ${
+                    isSelected
+                      ? 'bg-amber-500 border-amber-400 text-black shadow-md shadow-amber-500/20'
+                      : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300'
+                  }`}
+                >
+                  <div>BATERIA #{num}</div>
+                  <div className={`text-[10px] font-mono ${isSelected ? 'text-zinc-900 font-bold' : 'text-zinc-500'}`}>
+                    Largada {bTime}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* PRÉVIA DAS RAIAS DA BATERIA SELECIONADA */}
+        <div className="p-3 rounded-2xl bg-zinc-900/90 border border-zinc-800 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-black uppercase text-zinc-400 tracking-wider">
+              PRÉVIA DAS RAIAS • BATERIA {currentHeatSafe}/{totalHeats}
+            </span>
+            <span className="text-[10px] font-mono text-zinc-500">{currentLanes.length} raias alocadas</span>
+          </div>
+
+          {currentLanes.length === 0 ? (
+            <p className="text-xs text-zinc-500 italic py-2 text-center">
+              Nenhuma equipe configurada para esta bateria.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {currentLanes.map((lane) => (
+                <div
+                  key={lane.laneNumber}
+                  className="flex items-center gap-2.5 p-2 rounded-xl bg-zinc-950 border border-zinc-800"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-amber-500/20 border border-amber-500/50 flex flex-col items-center justify-center shrink-0">
+                    <span className="text-[8px] font-black text-amber-400 leading-none">RAIA</span>
+                    <span className="text-sm font-black font-mono text-white leading-tight">
+                      {String(lane.laneNumber).padStart(2, '0')}
+                    </span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-black text-white truncate">{lane.teamName}</span>
+                      {lane.number && (
+                        <span className="text-[10px] text-amber-400/80 font-mono font-bold shrink-0">{lane.number}</span>
+                      )}
+                    </div>
+                    {lane.athletes.length > 0 && (
+                      <p className="text-[10px] text-zinc-400 truncate">{lane.athletes.join(' • ')}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>
@@ -1192,16 +1320,32 @@ function HeatCallDialog({
             className={INPUT_CLASS}
             placeholder="Ex.: ATLETAS DA BATERIA, DIRIJAM-SE ÀS RAIAS DE LARGADA"
           />
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {[
+              'ATLETAS DA BATERIA, DIRIJAM-SE ÀS SUAS RAIAS DE LARGADA',
+              'ÚLTIMA CHAMADA — BATERIA ENTRANDO EM PISTA',
+              'CONFERÊNCIA DE EQUIPAMENTOS NAS RAIAS',
+            ].map((msg) => (
+              <button
+                type="button"
+                key={msg}
+                onClick={() => setMessage(msg)}
+                className="text-[10px] px-2 py-0.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors"
+              >
+                {msg.slice(0, 32)}…
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
           <button type="button" onClick={onClose} className="px-3 py-2 rounded-xl bg-zinc-800 text-zinc-200 text-xs font-bold">
             Cancelar
           </button>
           <button
             type="submit"
             disabled={busy}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-black disabled:opacity-40"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-black disabled:opacity-40 shadow-lg shadow-amber-500/20"
           >
             <Megaphone className="w-3.5 h-3.5" /> Transmitir Chamada nos Telões
           </button>

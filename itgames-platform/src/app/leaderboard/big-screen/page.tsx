@@ -283,10 +283,11 @@ export default function BigScreenLeaderboardPage() {
           </div>
 
           <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 my-2 content-center">
-            {spotlight.lanes.map((lane) => (
+            {spotlight.lanes.map((lane, idx) => (
               <div
                 key={lane.laneNumber}
-                className="flex items-center justify-between gap-4 p-4 rounded-2xl bg-zinc-900 border-2 border-amber-500/50 shadow-lg"
+                style={{ animationDelay: `${idx * 420}ms`, animationFillMode: 'both' }}
+                className="flex items-center justify-between gap-4 p-4 rounded-2xl bg-zinc-900 border-2 border-amber-500/50 shadow-lg animate-in fade-in zoom-in-90 slide-in-from-bottom-6 duration-700"
               >
                 <div className="flex items-center gap-4 min-w-0">
                   <div className="w-20 h-16 rounded-xl bg-amber-500 text-black flex flex-col items-center justify-center shrink-0">
@@ -305,8 +306,13 @@ export default function BigScreenLeaderboardPage() {
                       )}
                     </div>
                     {lane.athletes.length > 0 && (
-                      <div className="text-xs sm:text-sm text-zinc-400 font-medium truncate mt-0.5">
-                        {lane.athletes.join(' • ')}
+                      <div className="flex flex-col gap-1 mt-1.5">
+                        {lane.athletes.map((ath, aIdx) => (
+                          <div key={aIdx} className="flex items-center gap-2 text-xs sm:text-sm text-zinc-300 font-bold truncate">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                            <span className="truncate">{ath}</span>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>

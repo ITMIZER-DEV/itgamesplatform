@@ -64,7 +64,21 @@ fun SetupScreen(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Choice(
+                label = "🖥️ Emulador (10.0.2.2:3334)",
+                modifier = Modifier.weight(1f),
+                onClick = { server = br.com.itgames.tv.Prefs.EMULATOR_API_URL },
+            )
+            Choice(
+                label = "📶 Rede Local PC (10.10.10.32:3334)",
+                modifier = Modifier.weight(1f),
+                onClick = { server = br.com.itgames.tv.Prefs.LOCAL_LAN_API_URL },
+            )
+        }
+        Spacer(Modifier.height(12.dp))
         Text(
             if (paired) "Este aparelho está pareado a um telão." else "Este aparelho ainda não está pareado.",
             color = Palette.TextMuted, fontSize = 16.sp,
@@ -73,7 +87,7 @@ fun SetupScreen(
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Choice("Salvar", onClick = { onSave(server.trim().trimEnd('/')) })
-            if (paired) Choice("Desparear", onClick = onUnpair)
+            if (paired) Choice("Desparear (Gerar novo código)", onClick = onUnpair)
             Choice("Voltar", onClick = onCancel)
         }
     }
@@ -81,11 +95,10 @@ fun SetupScreen(
 
 // Botão focável pelo controle remoto, com destaque visível no foco.
 @Composable
-private fun Choice(label: String, onClick: () -> Unit) {
+private fun Choice(label: String, modifier: Modifier = Modifier.fillMaxWidth(), onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Box(
-        Modifier
-            .fillMaxWidth()
+        modifier
             .clip(RoundedCornerShape(12.dp))
             .background(if (focused) Palette.SurfaceHigh else Palette.Surface)
             .border(if (focused) 3.dp else 1.dp, if (focused) Palette.Amber else Palette.Border, RoundedCornerShape(12.dp))
@@ -93,6 +106,6 @@ private fun Choice(label: String, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 14.dp),
     ) {
-        Text(label, color = if (focused) Color.White else Palette.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = if (focused) Color.White else Palette.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
     }
 }

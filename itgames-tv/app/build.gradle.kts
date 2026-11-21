@@ -14,7 +14,7 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         // Servidor sugerido na tela de configuração: -PapiUrl=https://api.exemplo.com.br
-        buildConfigField("String", "DEFAULT_API_URL", "\"${project.findProperty("apiUrl") ?: "http://192.168.0.10:3333"}\"")
+        buildConfigField("String", "DEFAULT_API_URL", "\"${project.findProperty("apiUrl") ?: "http://10.10.10.32:3334"}\"")
     }
 
     buildTypes {
