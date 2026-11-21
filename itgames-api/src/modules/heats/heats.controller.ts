@@ -38,6 +38,29 @@ export class HeatsController {
   }
 
   @Roles(UserRole.ORGANIZER)
+  @Post('generate-schedule')
+  @ApiOperation({ summary: 'Gerar cronograma real de baterias por blocos sequenciais (1.1/1.2/1.3) e intervalo de 10 min' })
+  async generateSchedule(
+    @Body()
+    body: {
+      gameCode: string;
+      totalLanes: number;
+      startHour: string;
+      intervalMinutes?: number;
+      subWodRestMinutes?: number;
+      categoryTransitionMinutes?: number;
+      wodTransitionMinutes?: number;
+      minPerHeat?: number;
+      categoryId?: number;
+      isFinalSeeding?: boolean;
+    },
+    @CurrentUser() user: AuthUser,
+  ) {
+    await this.access.assertCanManage(user, body.gameCode);
+    return this.heatsService.generateSchedule(body);
+  }
+
+  @Roles(UserRole.ORGANIZER)
   @Post('swap-lanes')
   @ApiOperation({ summary: 'Trocar raias entre dois atletas de uma bateria' })
   async swapLanes(@Body() body: { slotIdA: string; slotIdB: string }, @CurrentUser() user: AuthUser) {

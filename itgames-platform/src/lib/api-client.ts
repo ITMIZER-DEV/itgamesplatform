@@ -684,6 +684,24 @@ export class ApiClient {
     });
   }
 
+  async generateHeatSchedule(body: {
+    gameCode: string;
+    totalLanes: number;
+    startHour: string;
+    intervalMinutes?: number;
+    subWodRestMinutes?: number;
+    categoryTransitionMinutes?: number;
+    wodTransitionMinutes?: number;
+    minPerHeat?: number;
+    categoryId?: number;
+    isFinalSeeding?: boolean;
+  }) {
+    return this.strict<any>('/heats/generate-schedule', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
   async swapLanes(slotIdA: string, slotIdB: string) {
     return this.strict<any>('/heats/swap-lanes', {
       method: 'POST',

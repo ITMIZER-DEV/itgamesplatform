@@ -25,6 +25,7 @@ import { saveLocalArenaSpotlight, HeatCallSpotlight } from '@/lib/screens';
 import { useGames } from '@/lib/use-games';
 import { mapCategory, mapHeat, mapRegistration, mapWorkout } from '@/lib/arena-data';
 import { parseWodTitle, sortWorkoutsNaturally } from '@/lib/board';
+import { buildPdfHeatList, downloadSchedulePdf } from '@/lib/heats-pdf';
 import { toast } from 'sonner';
 import { AclGuard } from '@/components/auth/AclGuard';
 
@@ -48,6 +49,7 @@ export default function HeatsPage() {
   // erro amarrado ao campeonato em que ocorreu, para não aparecer após trocar de campeonato
   const [dataErrorState, setDataErrorState] = useState<{ game: string; message: string } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [heatsData, setHeatsData] = useState<{ key: string; heats: Heat[] } | null>(null);
 
   const fresh = data && data.game === gameCode ? data : null;
@@ -69,10 +71,14 @@ export default function HeatsPage() {
 
   // Gerador
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [generateScope, setGenerateScope] = useState<'single_wod' | 'category_all_wods' | 'game_all'>('category_all_wods');
+  const [generateScope, setGenerateScope] = useState<'single_wod' | 'category_all_wods' | 'game_all'>('game_all');
   const [totalLanes, setTotalLanes] = useState(8);
-  const [startHour, setStartHour] = useState('09:00');
-  const [intervalMinutes, setIntervalMinutes] = useState(15);
+  const [startHour, setStartHour] = useState('08:00');
+  const [intervalMinutes, setIntervalMinutes] = useState(10);
+  const [subWodRestMinutes, setSubWodRestMinutes] = useState(3);
+  const [categoryTransitionMinutes, setCategoryTransitionMinutes] = useState(10);
+  const [wodTransitionMinutes, setWodTransitionMinutes] = useState(5);
+  const [minPerHeat, setMinPerHeat] = useState(3);
   const [isFinalSeeding, setIsFinalSeeding] = useState(false);
 
   // Troca de Raias (Swap)
@@ -189,6 +195,33 @@ export default function HeatsPage() {
     ? enrolledCategoryTeams
     : filteredHeats.flatMap((h) => h.laneAssignments);
 
+  const handleExportSchedulePdf = async () => {
+    if (!activeGame || allWorkouts.length === 0 || isExportingPdf) return;
+    setIsExportingPdf(true);
+    try {
+      const lists = await Promise.all(
+        allWorkouts.map((w) =>
+          apiClient
+            .fetchHeats(activeGame.code, Number(w.id))
+            .then((list) => list.map((h) => mapHeat(h, activeGame.code)))
+            .catch(() => [] as Heat[]),
+        ),
+      );
+      const allHeats = lists.flat();
+      if (allHeats.length === 0) {
+        toast.error('Nenhuma bateria gerada ainda para exportar.');
+        return;
+      }
+      const pdfRows = buildPdfHeatList(allHeats, categories, allWorkouts);
+      downloadSchedulePdf(activeGame.name, activeGame.code, pdfRows);
+      toast.success(`PDF gerado com ${pdfRows.length} baterias por horário e raia!`);
+    } catch {
+      toast.error('Não foi possível gerar o PDF do cronograma.');
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   const openGenerator = () => {
     if (!canEdit) {
       toast.error('Apenas o organizador do campeonato pode gerar baterias.');
@@ -217,56 +250,44 @@ export default function HeatsPage() {
 
     setIsGenerating(true);
     try {
-      const targets: { categoryId: string; workoutId: string }[] = [];
-
       if (generateScope === 'single_wod' && currentCategory && currentWorkout) {
-        targets.push({ categoryId: currentCategory.id, workoutId: currentWorkout.id });
-      } else if (generateScope === 'category_all_wods' && currentCategory) {
-        workouts.forEach((w) => targets.push({ categoryId: currentCategory.id, workoutId: w.id }));
-      } else {
-        categories.forEach((cat) => {
-          const catWods = sortWorkoutsNaturally(allWorkouts.filter((w) => w.categoryId === cat.id));
-          catWods.forEach((w) => targets.push({ categoryId: cat.id, workoutId: w.id }));
-        });
-      }
-
-      let generatedWorkouts = 0;
-      let totalHeatsCreated = 0;
-      let minuteOffset = 0;
-      const warnings: string[] = [];
-
-      for (const target of targets) {
         const res = await apiClient.generateHeats({
           gameCode: activeGame.code,
-          categoryId: Number(target.categoryId),
-          workoutCode: Number(target.workoutId),
+          categoryId: Number(currentCategory.id),
+          workoutCode: Number(currentWorkout.id),
           totalLanes,
-          startHour: addMinutesToHour(startHour, minuteOffset),
+          startHour,
           intervalMinutes,
           isFinalSeeding,
         });
-        if (res?.success) {
-          generatedWorkouts += 1;
-          const count = Number(res.totalHeats) || 0;
-          totalHeatsCreated += count;
-          minuteOffset += Math.max(count, 1) * intervalMinutes;
-        } else if (res?.message) {
-          warnings.push(res.message);
+        if (!res?.success) {
+          toast.error(res?.message || 'Não foi possível gerar as baterias.');
+          return;
         }
-      }
-
-      if (generatedWorkouts === 0) {
-        toast.error(warnings[0] || 'Não foi possível gerar as baterias.');
-        return;
-      }
-
-      setIsModalOpen(false);
-      reload();
-      if (generateScope === 'single_wod') {
-        toast.success(`${totalHeatsCreated} baterias geradas com sucesso para ${categoryTeams.length} equipes!`);
+        setIsModalOpen(false);
+        reload();
+        toast.success(`${res.totalHeats} baterias geradas com sucesso para ${categoryTeams.length} equipes!`);
       } else {
+        const res = await apiClient.generateHeatSchedule({
+          gameCode: activeGame.code,
+          totalLanes,
+          startHour,
+          intervalMinutes,
+          subWodRestMinutes,
+          categoryTransitionMinutes,
+          wodTransitionMinutes,
+          minPerHeat,
+          categoryId: generateScope === 'category_all_wods' && currentCategory ? Number(currentCategory.id) : undefined,
+          isFinalSeeding,
+        });
+        if (!res?.success) {
+          toast.error(res?.message || 'Não foi possível gerar o cronograma de baterias.');
+          return;
+        }
+        setIsModalOpen(false);
+        reload();
         toast.success(
-          `${totalHeatsCreated} baterias geradas em ${generatedWorkouts} WOD(s)${warnings.length > 0 ? ` (${warnings.length} categoria(s) sem inscritos)` : ''}!`,
+          `${res.totalHeats} baterias geradas em ${res.totalWorkouts} WOD(s) (término estimado: ${res.endTimeEstimated})!`,
         );
       }
     } catch (err) {
@@ -392,6 +413,15 @@ export default function HeatsPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto">
+          <button
+            onClick={handleExportSchedulePdf}
+            disabled={isExportingPdf || allWorkouts.length === 0}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-semibold text-xs border border-emerald-500/40 transition-colors disabled:opacity-50"
+          >
+            <Printer className="w-4 h-4 text-emerald-400" />
+            <span>{isExportingPdf ? 'Gerando PDF...' : 'Baixar Cronograma PDF'}</span>
+          </button>
+
           <button
             onClick={() => window.print()}
             className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold text-xs border border-zinc-700 transition-colors"
@@ -795,18 +825,33 @@ export default function HeatsPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="text-zinc-300 font-semibold block mb-1">
-                  1. Quantidade de Raias Disponíveis na Arena:
-                </label>
-                <input
-                  type="number"
-                  min="2"
-                  max="30"
-                  value={totalLanes}
-                  onChange={(e) => setTotalLanes(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-white font-bold"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-zinc-300 font-semibold block mb-1">
+                    1. Máximo de Raias na Arena:
+                  </label>
+                  <input
+                    type="number"
+                    min="2"
+                    max="30"
+                    value={totalLanes}
+                    onChange={(e) => setTotalLanes(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-white font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-zinc-300 font-semibold block mb-1">
+                    Mínimo por Bateria:
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="15"
+                    value={minPerHeat}
+                    onChange={(e) => setMinPerHeat(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-white font-bold"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -823,7 +868,7 @@ export default function HeatsPage() {
                 </div>
                 <div>
                   <label className="text-zinc-300 font-semibold block mb-1">
-                    3. Intervalo (Minutos):
+                    3. Intervalo entre Baterias (Min):
                   </label>
                   <input
                     type="number"
@@ -831,6 +876,49 @@ export default function HeatsPage() {
                     max="120"
                     value={intervalMinutes}
                     onChange={(e) => setIntervalMinutes(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-white font-bold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-zinc-300 font-semibold block mb-1">
+                  4. Descanso entre Sub-Provas (1.1 → 1.2 → 1.3) em Minutos:
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="30"
+                  value={subWodRestMinutes}
+                  onChange={(e) => setSubWodRestMinutes(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-white font-bold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-zinc-300 font-semibold block mb-1">
+                    5. Transição entre Categorias (Min):
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="60"
+                    value={categoryTransitionMinutes}
+                    onChange={(e) => setCategoryTransitionMinutes(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-white font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-zinc-300 font-semibold block mb-1">
+                    6. Transição entre WODs (Min):
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="60"
+                    value={wodTransitionMinutes}
+                    onChange={(e) => setWodTransitionMinutes(Number(e.target.value))}
                     className="w-full px-3 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-white font-bold"
                   />
                 </div>
