@@ -46,7 +46,8 @@ import {
   FileCheck,
   Lock,
   Unlock,
-  Calendar
+  Calendar,
+  Search
 } from 'lucide-react';
 import { storage } from '@/lib/storage';
 import { evaluateRegistrationAvailability, saveLocalRegistrationLock, toDatetimeLocalInput, fromDatetimeLocalInput } from '@/lib/registration-lock';
@@ -98,6 +99,9 @@ export default function AdminDashboardPage() {
   // Abas do Painel: championships (Gestão de Campeonatos & Liberações), organizer (WODs & Categorias), registrations_financial (Inscrições, Pagamentos & Kits), judges_staff (Escala de Juízes), audit_center (Homologação de Súmulas), saas_owner (Monetização)
   const [adminTab, setAdminTab] = useState<'championships' | 'organizer' | 'registrations_financial' | 'judges_staff' | 'audit_center' | 'saas_owner' | 'organizers_mgmt' | 'email' | 'athletes_mgmt'>('championships');
   const [wodFilterCategoryId, setWodFilterCategoryId] = useState<string>('all');
+  const [regSearchQuery, setRegSearchQuery] = useState<string>('');
+  const [regCategoryFilter, setRegCategoryFilter] = useState<string>('all');
+  const [regStatusFilter, setRegStatusFilter] = useState<'all' | 'paid' | 'pending' | 'cancelled'>('all');
 
   // Modal de Criação / Edição de Campeonato Completo
   const [isNewGameModalOpen, setIsNewGameModalOpen] = useState(false);
@@ -2248,9 +2252,100 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
+            {/* BARRA DE BUSCA E FILTROS (CATEGORIA, ATLETA, TIME E STATUS) */}
+            {(() => {
+              const filteredRegistrations = teams.filter((t) => {
+                if (regCategoryFilter !== 'all' && String(t.categoryId) !== regCategoryFilter) return false;
+                if (regStatusFilter === 'paid' && t.paymentStatus !== 'paid') return false;
+                if (regStatusFilter === 'pending' && (t.paymentStatus === 'paid' || t.paymentStatus === 'cancelled')) return false;
+                if (regStatusFilter === 'cancelled' && t.paymentStatus !== 'cancelled') return false;
+                const q = regSearchQuery.trim().toLowerCase();
+                if (q) {
+                  const matchTeam = (t.teamName || '').toLowerCase().includes(q);
+                  const matchBib = (t.registerNumber || '').toLowerCase().includes(q);
+                  const matchAthlete = (t.athletes || []).some((a) => (a.name || '').toLowerCase().includes(q));
+                  if (!matchTeam && !matchBib && !matchAthlete) return false;
+                }
+                return true;
+              });
+              const hasActiveFilter = regSearchQuery.trim() !== '' || regCategoryFilter !== 'all' || regStatusFilter !== 'all';
+
+              return (
+                <>
+                  <div className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800 space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                      <div className="md:col-span-5 relative">
+                        <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={regSearchQuery}
+                          onChange={(e) => setRegSearchQuery(e.target.value)}
+                          placeholder="Buscar por nome do time, atleta ou BIB (#2152)..."
+                          className="w-full pl-9 pr-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+
+                      <div className="md:col-span-4">
+                        <select
+                          value={regCategoryFilter}
+                          onChange={(e) => setRegCategoryFilter(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-bold text-white focus:outline-none focus:border-emerald-500"
+                        >
+                          <option value="all">Todas as categorias ({teams.length})</option>
+                          {categories.map((cat) => {
+                            const count = teams.filter((t) => String(t.categoryId) === String(cat.id)).length;
+                            return (
+                              <option key={cat.id} value={String(cat.id)}>
+                                {cat.name} ({count})
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+
+                      <div className="md:col-span-3">
+                        <select
+                          value={regStatusFilter}
+                          onChange={(e) => setRegStatusFilter(e.target.value as any)}
+                          className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-bold text-white focus:outline-none focus:border-emerald-500"
+                        >
+                          <option value="all">Todos os status</option>
+                          <option value="paid">Pago (Confirmado)</option>
+                          <option value="pending">Pendente</option>
+                          <option value="cancelled">Cancelada</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-400">
+                      <span>
+                        Mostrando <strong className="text-white">{filteredRegistrations.length}</strong> de <strong className="text-white">{teams.length}</strong> inscrições
+                      </span>
+                      {hasActiveFilter && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRegSearchQuery('');
+                            setRegCategoryFilter('all');
+                            setRegStatusFilter('all');
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-bold transition-colors"
+                        >
+                          Limpar filtros
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {filteredRegistrations.length === 0 && (
+                    <div className="p-8 rounded-2xl bg-zinc-950/50 border border-dashed border-zinc-800 text-center text-xs text-zinc-400">
+                      Nenhuma inscrição encontrada com os filtros selecionados.
+                    </div>
+                  )}
+
             {/* MOBILE CHECK-IN & BAIXA EXPRESS (CARDS TOUCH) */}
             <div className="grid grid-cols-1 gap-3 md:hidden">
-              {teams.map((t) => {
+              {filteredRegistrations.map((t) => {
                 const isPaid = t.paymentStatus === 'paid';
                 const cat = categories.find(c => c.id === t.categoryId);
                 const amountVal = isPaid ? (t.amountPaid || cat?.price || 150) : (cat?.price || 150);
@@ -2338,7 +2433,7 @@ export default function AdminDashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/60 text-zinc-200">
-                  {teams.map((t) => {
+                  {filteredRegistrations.map((t) => {
                     const isPaid = t.paymentStatus === 'paid';
                     const cat = categories.find(c => c.id === t.categoryId);
                     const amountVal = isPaid ? (t.amountPaid || cat?.price || 150) : (cat?.price || 150);
@@ -2504,6 +2599,9 @@ export default function AdminDashboardPage() {
                 </div>
               )}
             </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
