@@ -103,9 +103,51 @@ export default function HeadJudgePage() {
     weightA: string;
     weightB: string;
     rounds: number;
+    roundTimes?: string[];
     tiebreak: string;
     photoUrl: string | null;
   }>>({});
+
+  const handleUpdateRoundTime = (regId: string, roundIndex: number, val: string) => {
+    setDeskScoresState((prev) => {
+      const cur = prev[regId] || {
+        time: '',
+        isCap: false,
+        reps: '',
+        weightA: '',
+        weightB: '',
+        rounds: 3,
+        roundTimes: ['', '', '', '', ''],
+        tiebreak: '',
+        photoUrl: null,
+      };
+      const nextRoundTimes = [...(cur.roundTimes || ['', '', '', '', ''])];
+      nextRoundTimes[roundIndex] = val;
+      let totalSec = 0;
+      let hasAny = false;
+      for (const rt of nextRoundTimes) {
+        const clean = String(rt || '').trim();
+        if (clean.includes(':')) {
+          const [m, s] = clean.split(':').map(Number);
+          if (!Number.isNaN(m) || !Number.isNaN(s)) {
+            totalSec += (m || 0) * 60 + (s || 0);
+            hasAny = true;
+          }
+        }
+      }
+      const totalFormatted = hasAny
+        ? `${String(Math.floor(totalSec / 60)).padStart(2, '0')}:${String(totalSec % 60).padStart(2, '0')}`
+        : cur.time;
+      return {
+        ...prev,
+        [regId]: {
+          ...cur,
+          roundTimes: nextRoundTimes,
+          time: totalFormatted,
+        },
+      };
+    });
+  };
 
   // Estados do Modal de Aplicação de Penalidade
   const [isPenaltyModalOpen, setIsPenaltyModalOpen] = useState(false);
@@ -815,7 +857,15 @@ export default function HeadJudgePage() {
         timeSeconds = 21 * 60;
       }
       const repsPart = repsCount > 0 ? ` + ${repsCount} reps` : '';
-      const timePart = rawTime ? ` (${rawTime})` : '';
+      const roundDetails = (state.roundTimes || [])
+        .map((rt, idx) => (String(rt || '').trim() ? `R${idx + 1} ${String(rt).trim()}` : ''))
+        .filter(Boolean)
+        .join(', ');
+      const timePart = rawTime
+        ? roundDetails
+          ? ` (${rawTime} | ${roundDetails})`
+          : ` (${rawTime})`
+        : '';
       timeFormatted = `${roundsCount}R${repsPart}${timePart}`;
       isCompleted = roundsCount >= 5;
     } else if (isWod3) {
@@ -879,7 +929,7 @@ export default function HeadJudgePage() {
         time: timeSeconds !== undefined ? String(timeFormatted || timeSeconds) : undefined,
         reps: repsCount !== undefined ? String(repsCount) : undefined,
         weight: weightLoadedKg !== undefined ? String(weightLoadedKg) : undefined,
-        tieBreakTime: state.tiebreak ? '100' : undefined,
+        tieBreakTime: isWod1B ? (String(state.time || '').trim() || undefined) : (state.tiebreak ? '100' : undefined),
         judge: 'Head Judge Oficial',
         photo: state.photoUrl,
       });
@@ -1486,6 +1536,44 @@ export default function HeadJudgePage() {
                                     </button>
                                   ))}
                                 </div>
+                                <div className="pt-2">
+                                  <label className="text-[11px] text-zinc-400 block mb-1">Tempo por Round (mm:ss):</label>
+                                  <div className="grid grid-cols-5 gap-1.5">
+                                    {[0, 1, 2, 3, 4].map((rIdx) => (
+                                      <input
+                                        key={rIdx}
+                                        type="text"
+                                        placeholder={`R${rIdx + 1}`}
+                                        value={(currentState.roundTimes && currentState.roundTimes[rIdx]) || ''}
+                                        onChange={(e) => handleUpdateRoundTime(regId, rIdx, e.target.value)}
+                                        className="w-full px-1.5 py-1 rounded-lg bg-zinc-800 border border-zinc-700 text-[11px] font-bold text-center text-white"
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 pt-2">
+                                  <div>
+                                    <label className="text-[11px] text-zinc-400 block mb-1">Reps extras (desempate):</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      placeholder="0"
+                                      value={currentState.reps || ''}
+                                      onChange={(e) => handleUpdateDeskField(regId, 'reps', e.target.value)}
+                                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs font-bold text-white"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[11px] text-zinc-400 block mb-1">Tempo (mm:ss):</label>
+                                    <input
+                                      type="text"
+                                      placeholder="14:20"
+                                      value={currentState.time || ''}
+                                      onChange={(e) => handleUpdateDeskField(regId, 'time', e.target.value)}
+                                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs font-bold text-white"
+                                    />
+                                  </div>
+                                </div>
                               </div>
                             )}
 
@@ -1925,6 +2013,44 @@ export default function HeadJudgePage() {
                                       {r} R
                                     </button>
                                   ))}
+                                </div>
+                                <div className="pt-2">
+                                  <label className="text-[11px] text-zinc-400 block mb-1">Tempo por Round (mm:ss):</label>
+                                  <div className="grid grid-cols-5 gap-1.5">
+                                    {[0, 1, 2, 3, 4].map((rIdx) => (
+                                      <input
+                                        key={rIdx}
+                                        type="text"
+                                        placeholder={`R${rIdx + 1}`}
+                                        value={(currentState.roundTimes && currentState.roundTimes[rIdx]) || ''}
+                                        onChange={(e) => handleUpdateRoundTime(regId, rIdx, e.target.value)}
+                                        className="w-full px-1.5 py-1 rounded-lg bg-zinc-800 border border-zinc-700 text-[11px] font-bold text-center text-white"
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 pt-2">
+                                  <div>
+                                    <label className="text-[11px] text-zinc-400 block mb-1">Reps extras (desempate):</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      placeholder="0"
+                                      value={currentState.reps || ''}
+                                      onChange={(e) => handleUpdateDeskField(regId, 'reps', e.target.value)}
+                                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs font-bold text-white"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[11px] text-zinc-400 block mb-1">Tempo (mm:ss):</label>
+                                    <input
+                                      type="text"
+                                      placeholder="14:20"
+                                      value={currentState.time || ''}
+                                      onChange={(e) => handleUpdateDeskField(regId, 'time', e.target.value)}
+                                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs font-bold text-white"
+                                    />
+                                  </div>
                                 </div>
                               </div>
                             </div>

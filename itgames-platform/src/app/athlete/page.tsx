@@ -200,7 +200,11 @@ export default function AthletePortalPage() {
             categoryId: String(s.category),
             workoutId: String(s.codeWorkout),
             registrationId: `reg_${s.codeTeam}`,
-            rawValue: s.result || String(s.point ?? ''),
+            timeFormatted: s.time || s.result || undefined,
+            repsCount: s.reps ? Number(s.reps) : undefined,
+            weightLoadedKg: s.weight ? Number(s.weight) : undefined,
+            tieBreakTime: s.tieBreakTime || undefined,
+            rawValue: s.time || s.result || String(s.point ?? ''),
             numericValue: Number(s.point ?? 0),
             points: Number(s.point ?? 0),
             status: (s.scoreStatus || 'approved') as any,
@@ -1153,15 +1157,34 @@ export default function AthletePortalPage() {
             {/* TABELA DE LEADERBOARD COMPLETA DA CATEGORIA */}
             <div className="pt-4 border-t border-zinc-800 space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                <h4 className="text-sm font-bold text-white flex items-center gap-2 flex-wrap">
                   <Trophy className="w-4 h-4 text-amber-400" />
                   <span>Leaderboard da Categoria: {currentCategory?.name || 'Geral'}</span>
+                  {((currentCategory as any)?.frozen || (activeGame?.status as string) === 'frozen') ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                      Em Revisão
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                      Prévia • Sujeito a Alterações
+                    </span>
+                  )}
                 </h4>
                 <span className="text-xs text-zinc-400">
                   {categoryTeams.length} Atletas / Equipes inscritos
                 </span>
               </div>
 
+              {((currentCategory as any)?.frozen || (activeGame?.status as string) === 'frozen') ? (
+                <div className="p-8 rounded-2xl border border-rose-500/30 bg-rose-500/5 text-center space-y-2">
+                  <div className="text-sm font-black text-rose-400 uppercase tracking-wider">
+                    Categoria em Revisão — Sigilo da Mesa
+                  </div>
+                  <p className="text-xs text-zinc-400 max-w-md mx-auto">
+                    As pontuações desta categoria estão temporariamente bloqueadas pela Mesa do Head Judge até a liberação oficial.
+                  </p>
+                </div>
+              ) : (
               <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-950/60">
                 <table className="w-full text-left text-xs text-zinc-300">
                   <thead className="bg-zinc-900/90 text-[10px] uppercase font-bold text-zinc-400 border-b border-zinc-800">
@@ -1244,6 +1267,7 @@ export default function AthletePortalPage() {
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
 
             <div className="text-center pt-2">
