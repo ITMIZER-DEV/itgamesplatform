@@ -149,29 +149,36 @@ export default function AthletePortalPage() {
       }
 
       let hts = storage.getHeats(game.id);
+      const wds = storage.getWorkouts(game.id);
       try {
-        const apiHeats = await apiClient.listHeats(game.code || game.id).catch(() => null);
-        if (apiHeats && Array.isArray(apiHeats) && apiHeats.length > 0) {
-          hts = apiHeats.map((h: any) => ({
-            id: h.id,
-            gameId: h.gameCode || game.id,
-            categoryId: String(h.categoryId),
-            workoutId: String(h.workoutCode),
-            heatNumber: h.heatNumber,
-            startTime: h.startTime || '',
-            status: h.status || 'scheduled',
-            lanes: (h.slots || []).map((s: any) => ({
-              laneNumber: s.laneNumber,
-              teamId: String(s.teamCode),
-            })),
-          }));
+        if (wds.length > 0) {
+          const allApiHeats = (
+            await Promise.all(
+              wds.map((w) => apiClient.fetchHeats(game.code || game.id, Number(w.id)).catch(() => [])),
+            )
+          ).flat();
+          if (allApiHeats.length > 0) {
+            hts = allApiHeats.map((h: any) => ({
+              id: h.id,
+              gameId: h.gameCode || game.id,
+              categoryId: String(h.categoryId),
+              workoutId: String(h.workoutCode),
+              heatNumber: h.heatNumber,
+              startTime: h.startTime || '',
+              status: h.status || 'scheduled',
+              laneAssignments: (h.slots || []).map((s: any) => ({
+                lane: s.laneNumber,
+                teamId: String(s.teamCode),
+              })),
+            }));
+          }
         }
       } catch {
         // fallback storage
       }
 
       setTeams(tms);
-      setWorkouts(storage.getWorkouts(game.id));
+      setWorkouts(wds);
       setHeats(hts);
       setScores(storage.getScores(game.id));
       setCategories(storage.getCategories(game.id));
