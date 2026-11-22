@@ -206,7 +206,7 @@ export default function AthletePortalPage() {
             status: (s.scoreStatus || 'approved') as any,
             recordedAt: s.updatedAt || new Date().toISOString(),
             recordedBy: s.judge || 'Arena',
-          }));
+          })) as ScoreEntry[];
         }
       } catch {
         // fallback storage
