@@ -161,6 +161,7 @@ export default function AthletePortalPage() {
             description: w.description || '',
             type: (w.type || 'for_time') as any,
             timeCapSeconds: w.timeCap ? parseInt(String(w.timeCap).split(':')[0], 10) * 60 : undefined,
+            movementStandards: Array.isArray(w.movementStandards) ? w.movementStandards : [],
           }));
         }
         if (wds.length > 0) {
