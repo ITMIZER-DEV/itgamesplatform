@@ -160,7 +160,7 @@ export default function AthletePortalPage() {
             title: w.title,
             description: w.description || '',
             type: (w.type || 'for_time') as any,
-            timeCapSeconds: w.timeCap ? parseInt(String(w.timeCap).split(':')[0], 10) * 60 : undefined,
+            timeCapSeconds: w.timeCap ? parseInt(String(w.timeCap).split(':')[0], 10) * 60 : 600,
             movementStandards: Array.isArray(w.movementStandards) ? w.movementStandards : [],
           }));
         }
