@@ -212,28 +212,6 @@ export default function AthletePortalPage() {
         // fallback storage
       }
 
-      let scrs = storage.getScores(game.id);
-      try {
-        const apiScores = await apiClient.listScores(game.code || game.id).catch(() => null);
-        if (apiScores && Array.isArray(apiScores) && apiScores.length > 0) {
-          scrs = apiScores.map((s: any) => ({
-            id: `scr_${s.codeTeam}_${s.codeWorkout}`,
-            gameId: s.game || game.id,
-            categoryId: String(s.category),
-            workoutId: String(s.codeWorkout),
-            registrationId: `reg_${s.codeTeam}`,
-            rawValue: s.result || String(s.point ?? ''),
-            numericValue: Number(s.point ?? 0),
-            points: Number(s.point ?? 0),
-            status: (s.scoreStatus || 'approved') as any,
-            recordedAt: s.updatedAt || new Date().toISOString(),
-            recordedBy: s.judge || 'Arena',
-          })) as unknown as ScoreEntry[];
-        }
-      } catch {
-        // fallback storage
-      }
-
       setTeams(tms);
       setWorkouts(wds);
       setHeats(hts);
