@@ -181,7 +181,7 @@ export default function AthletePortalPage() {
               status: h.status || 'scheduled',
               laneAssignments: (h.slots || []).map((s: any) => ({
                 lane: s.laneNumber,
-                registrationId: String(s.teamCode),
+                registrationId: `reg_${s.teamCode}`,
               })),
             }));
           }
