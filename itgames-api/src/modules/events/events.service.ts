@@ -1089,9 +1089,9 @@ export class EventsService {
     const normalizeCpf = (v?: string | null) => String(v || '').replace(/\D/g, '');
     const dbUser = await this.prisma.user.findUnique({
       where: { id: user.id },
-      include: { athleteProfile: true },
+      select: { cpf: true, email: true, name: true },
     });
-    const userCpf = normalizeCpf(dbUser?.athleteProfile?.cpf);
+    const userCpf = normalizeCpf(dbUser?.cpf);
     const userEmail = String(dbUser?.email || user.email || '').toLowerCase().trim();
     const userName = String(dbUser?.name || user.name || '').toLowerCase().trim();
 
