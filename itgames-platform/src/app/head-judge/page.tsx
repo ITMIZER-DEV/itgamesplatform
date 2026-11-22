@@ -227,7 +227,13 @@ export default function HeadJudgePage() {
             registerNumber: team?.registerNumber || `#${s.codeTeam}`,
             judgeName: s.judge || 'Árbitro Oficial',
             timeFormatted: s.time ? (typeof s.time === 'number' ? `${Math.floor(s.time/60)}:${String(s.time%60).padStart(2, '0')}` : String(s.time)) : undefined,
-            timeSeconds: typeof s.time === 'number' ? s.time : undefined,
+            timeSeconds: typeof s.time === 'number'
+              ? s.time
+              : typeof s.time === 'string' && s.time.includes(':')
+                ? (() => { const [m, sec] = s.time.split(':').map(Number); return (m || 0) * 60 + (sec || 0); })()
+                : typeof s.time === 'string' && /CAP\s*\+(\d+)/i.test(s.time)
+                  ? 300 + Number(s.time.match(/CAP\s*\+(\d+)/i)![1])
+                  : undefined,
             repsCount: typeof s.reps === 'number' ? s.reps : (s.reps ? Number(s.reps) : undefined),
             weightLoadedKg: typeof s.weight === 'number' ? s.weight : (s.weight ? Number(String(s.weight).replace(/\D/g, '')) : undefined),
             isCompleted: true,
