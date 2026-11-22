@@ -149,8 +149,20 @@ export default function AthletePortalPage() {
       }
 
       let hts = storage.getHeats(game.id);
-      const wds = storage.getWorkouts(game.id);
+      let wds = storage.getWorkouts(game.id);
       try {
+        const apiWods = await apiClient.listWorkouts(game.code || game.id).catch(() => null);
+        if (apiWods && Array.isArray(apiWods) && apiWods.length > 0) {
+          wds = apiWods.map((w: any) => ({
+            id: String(w.code),
+            gameId: w.game || game.id,
+            categoryId: String(w.categoryId),
+            title: w.title,
+            description: w.description || '',
+            type: (w.type || 'for_time') as any,
+            timeCapSeconds: w.timeCap ? parseInt(String(w.timeCap).split(':')[0], 10) * 60 : undefined,
+          }));
+        }
         if (wds.length > 0) {
           const allApiHeats = (
             await Promise.all(
