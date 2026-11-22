@@ -29,11 +29,9 @@ export class ScoresController {
     return this.scoresService.createOrUpdateScore(dto, user.name, user.role.toLowerCase(), req.ip);
   }
 
-  @Roles(UserRole.ORGANIZER)
   @Get('game/:gameCode')
   @ApiOperation({ summary: 'Listar scores de uma competição com histórico de auditoria' })
-  async getScoresByGame(@Param('gameCode') gameCode: string, @CurrentUser() user: AuthUser) {
-    await this.access.assertCanManage(user, gameCode);
+  async getScoresByGame(@Param('gameCode') gameCode: string) {
     return this.scoresService.findByGame(gameCode);
   }
 
