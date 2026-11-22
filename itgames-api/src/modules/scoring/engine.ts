@@ -11,9 +11,12 @@ const TOTAL_UNIT = { points_table: 'PTS', rank_sum: 'SOMA', total_time: 'TEMPO' 
 
 function toResult(s: EngineScore, cap: number): WorkoutResult {
   const time = parseTime(s.time);
-  const reps = parseInt(s.reps || '', 10) || 0;
+  const rawReps = parseInt(s.reps || '', 10) || 0;
+  const roundMatch = String(s.time || '').match(/(\d+)\s*R\b/i);
+  const rounds = roundMatch ? parseInt(roundMatch[1], 10) || 0 : 0;
+  const reps = rounds > 0 ? rounds * 10000 + rawReps : rawReps;
   // Se bateu o cap ou tem reps faltantes marcadas no for_time, tomou CAP
-  const isCap = cap > 0 && reps > 0 && time >= cap;
+  const isCap = cap > 0 && rawReps > 0 && time >= cap;
   return {
     time,
     reps,
@@ -29,6 +32,12 @@ function display(type: string, r: WorkoutResult): string {
   if (type === 'for_time') return r.completed ? formatTime(total) : (r.reps > 0 ? `CAP +${r.reps}` : `CAP`);
   if (type === 'amrap' || type === 'emom') {
     const tb = r.tieBreak > 0 ? ` (${formatTime(r.tieBreak)})` : '';
+    if (r.reps >= 10000) {
+      const rounds = Math.floor(r.reps / 10000);
+      const extra = r.reps % 10000;
+      const extraPart = extra > 0 ? ` + ${extra} reps` : '';
+      return `${rounds}R${extraPart}${tb}`;
+    }
     const unit = r.reps === 1 ? 'round' : 'rounds';
     return `${r.reps} ${unit}${tb}`;
   }
