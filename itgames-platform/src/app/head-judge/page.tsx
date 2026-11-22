@@ -805,11 +805,19 @@ export default function HeadJudgePage() {
         timeSeconds = (parts[0] || 0) * 60 + (parts[1] || 0);
       }
     } else if (isWod1B) {
-      roundsCount = state.rounds ?? 3;
-      timeFormatted = `${roundsCount} rounds`;
-      timeSeconds = 21 * 60;
+      roundsCount = Number(state.rounds ?? 3);
       repsCount = Number(state.reps) || 0;
-      isCompleted = roundsCount === 5;
+      const rawTime = String(state.time || '').trim();
+      if (rawTime.includes(':')) {
+        const parts = rawTime.split(':').map(Number);
+        timeSeconds = (parts[0] || 0) * 60 + (parts[1] || 0);
+      } else {
+        timeSeconds = 21 * 60;
+      }
+      const repsPart = repsCount > 0 ? ` + ${repsCount} reps` : '';
+      const timePart = rawTime ? ` (${rawTime})` : '';
+      timeFormatted = `${roundsCount}R${repsPart}${timePart}`;
+      isCompleted = roundsCount >= 5;
     } else if (isWod3) {
       const wA = Number(state.weightA) || 0;
       const wB = Number(state.weightB) || 0;
