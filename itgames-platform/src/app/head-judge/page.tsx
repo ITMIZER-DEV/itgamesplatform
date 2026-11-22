@@ -860,14 +860,14 @@ export default function HeadJudgePage() {
       await apiClient.submitScore({
         game: activeGame.code || activeGame.id,
         category: Number(team.categoryId) || 1,
-        codeTeam: Number(team.id) || 1,
+        codeTeam: Number(String(team.id).replace(/\D/g, '')) || 1,
         idEvent: Number(targetWod.id) || 1,
-        time: timeSeconds,
-        reps: repsCount,
-        weight: weightLoadedKg,
-        tieBreakTime: state.tiebreak ? 100 : undefined,
-        scoreStatus: 'approved_by_head_judge',
-        photo: state.photoUrl
+        time: timeSeconds !== undefined ? String(timeFormatted || timeSeconds) : undefined,
+        reps: repsCount !== undefined ? String(repsCount) : undefined,
+        weight: weightLoadedKg !== undefined ? String(weightLoadedKg) : undefined,
+        tieBreakTime: state.tiebreak ? '100' : undefined,
+        judge: 'Head Judge Oficial',
+        photo: state.photoUrl,
       });
     } catch (e) {
       console.warn('Persistência remota da API offline, salvo localmente.');
