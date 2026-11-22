@@ -212,6 +212,28 @@ export default function AthletePortalPage() {
         // fallback storage
       }
 
+      let scrs = storage.getScores(game.id);
+      try {
+        const apiScores = await apiClient.listScores(game.code || game.id).catch(() => null);
+        if (apiScores && Array.isArray(apiScores) && apiScores.length > 0) {
+          scrs = apiScores.map((s: any) => ({
+            id: `scr_${s.codeTeam}_${s.codeWorkout}`,
+            gameId: s.game || game.id,
+            categoryId: String(s.category),
+            workoutId: String(s.codeWorkout),
+            registrationId: `reg_${s.codeTeam}`,
+            rawValue: s.result || String(s.point ?? ''),
+            numericValue: Number(s.point ?? 0),
+            points: Number(s.point ?? 0),
+            status: (s.scoreStatus || 'approved') as any,
+            recordedAt: s.updatedAt || new Date().toISOString(),
+            recordedBy: s.judge || 'Arena',
+          })) as unknown as ScoreEntry[];
+        }
+      } catch {
+        // fallback storage
+      }
+
       setTeams(tms);
       setWorkouts(wds);
       setHeats(hts);
@@ -346,15 +368,15 @@ export default function AthletePortalPage() {
     }
   };
 
-  // Minhas Baterias e Raias
-  const athleteHeats: { workout: WorkoutRule; heat: Heat; lane: number }[] = [];
+  // Minhas Baterias e Raias (agrupa WODs combo -A e -B no mesmo horário/bateria em um único card)
+  const rawAthleteHeats: { workout: WorkoutRule; heat: Heat; lane: number }[] = [];
   if (selectedTeam) {
     heats.forEach(h => {
       const laneInfo = h.laneAssignments.find(l => l.registrationId === selectedTeam.id);
       if (laneInfo) {
         const wod = workouts.find(w => w.id === h.workoutId);
         if (wod) {
-          athleteHeats.push({
+          rawAthleteHeats.push({
             workout: wod,
             heat: h,
             lane: laneInfo.lane
@@ -362,6 +384,31 @@ export default function AthletePortalPage() {
         }
       }
     });
+  }
+
+  const athleteHeats: { workout: WorkoutRule; heat: Heat; lane: number }[] = [];
+  const comboMap = new Map<string, number>();
+  for (const item of rawAthleteHeats) {
+    const isAB = /-\s*[AB]\b/i.test(item.workout.title || '');
+    const baseMatch = String(item.workout.title || '').match(/^(.*?)-\s*[AB]\b/i);
+    if (isAB && baseMatch && item.heat.startTime) {
+      const key = `${baseMatch[1].trim().toUpperCase()}__${item.heat.startTime}__${item.heat.heatNumber}__${item.lane}`;
+      const existingIdx = comboMap.get(key);
+      if (existingIdx !== undefined) {
+        const existing = athleteHeats[existingIdx];
+        athleteHeats[existingIdx] = {
+          ...existing,
+          workout: {
+            ...existing.workout,
+            title: `${baseMatch[1].trim()} - A + B (Combo)`,
+            description: `${existing.workout.description} + ${item.workout.description}`,
+          },
+        };
+        continue;
+      }
+      comboMap.set(key, athleteHeats.length);
+    }
+    athleteHeats.push(item);
   }
 
   // Meus Scores
