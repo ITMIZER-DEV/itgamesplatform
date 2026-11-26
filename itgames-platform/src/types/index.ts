@@ -115,6 +115,8 @@ export interface Heat {
   categoryId: string;
   heatNumber: number;
   startTime: string;
+  // Arena da bateria quando o cronograma roda arenas simultâneas; ausente = arena única
+  arena?: number;
   status: 'scheduled' | 'calling' | 'in_progress' | 'completed';
   laneAssignments: {
     lane: number;

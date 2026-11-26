@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { 
   FileSpreadsheet, 
   Printer, 
@@ -33,17 +34,23 @@ import {
   ZoomIn,
   Check,
   X,
-  FileCheck
+  FileCheck,
+  ArrowRight
 } from 'lucide-react';
 import { storage } from '@/lib/storage';
 import { useGames } from '@/lib/use-games';
+import { getArenaSelection, pickExisting, usePersistArenaSelection } from '@/lib/arena-selection';
 import { apiClient } from '@/lib/api-client';
 import { GameEvent, Category, WorkoutRule, TeamRegistration, Heat, SumulaTemplate, WorkoutType, EventType, ScoreEntry } from '@/types';
-import { replaceSumulaVariables, DEFAULT_SUMULA_TEMPLATES } from '@/lib/sumula-presets';
+import { DEFAULT_SUMULA_TEMPLATES } from '@/lib/sumula-presets';
+import { replaceSumulaVariables } from '@/lib/sumula-replacer';
+import { SUMMER_GAMES_LOGO_BASE64 } from '@/lib/summer-logo-base64';
 import { OFFICIAL_WOD_PRESETS, WodPreset } from '@/lib/wod-presets';
 import { toast } from 'sonner';
 import { AclGuard } from '@/components/auth/AclGuard';
+import { arenaLabel, mapHeat } from '@/lib/arena-data';
 
+// v2.1 - Súmulas Inteligentes Summer Games com Base64 e SVG Universal
 export default function SumulasStudioPage() {
   const { games, activeGame } = useGames();
   const [categories, setCategories] = useState<Category[]>([]);
@@ -53,27 +60,18 @@ export default function SumulasStudioPage() {
   const [templates, setTemplates] = useState<SumulaTemplate[]>([]);
   const [scores, setScores] = useState<ScoreEntry[]>([]);
 
-  // Aba ativa: 'print_batch' | 'template_studio' | 'wod_builder' | 'head_judge_desk'
-  const [activeTab, setActiveTab] = useState<'print_batch' | 'template_studio' | 'wod_builder' | 'head_judge_desk'>('print_batch');
+  // Aba ativa: 'print_batch' | 'template_studio' | 'wod_builder' (a homologação fica no /head-judge)
+  const [activeTab, setActiveTab] = useState<'print_batch' | 'template_studio' | 'wod_builder'>('print_batch');
 
-  // Estados da Mesa do Head Judge
-  const [zoomPhotoUrl, setZoomPhotoUrl] = useState<string | null>(null);
-  const [deskHeatNumber, setDeskHeatNumber] = useState<string>('1');
-  const [deskScoresState, setDeskScoresState] = useState<Record<string, {
-    time: string;
-    isCap: boolean;
-    reps: string;
-    weightA: string;
-    weightB: string;
-    rounds: number;
-    tiebreak: string;
-    photoUrl: string | null;
-  }>>({});
 
   // Filtros de Impressão
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string>('');
   const [selectedHeatNumber, setSelectedHeatNumber] = useState<string>('all');
+  // Impressão: por categoria/WOD ou por horário da arena (junta as categorias de uma bateria mista)
+  const [printMode, setPrintMode] = useState<'category' | 'arena'>('category');
+  const [selectedBlock, setSelectedBlock] = useState<string>('');
+  const [selectedSlot, setSelectedSlot] = useState<string>('all');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
 
   // Estados do Editor de Template de Súmula
@@ -95,12 +93,34 @@ export default function SumulasStudioPage() {
   const [wodTieBreak, setWodTieBreak] = useState<'time' | 'reps' | 'none'>('time');
 
   const printContainerRef = useRef<HTMLDivElement>(null);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState('');
 
   useEffect(() => {
     storage.initDefaultsIfEmpty();
 
+    // Evita o laço "grava no armazenamento → evento de atualização → recarrega tudo": ignora os eventos
+    // disparados pela própria carga e só a carga mais recente atualiza a tela.
+    let loading = false;
+    let seq = 0;
     const loadData = async () => {
       const game = activeGame;
+      const mySeq = ++seq;
+      loading = true;
+      try {
+        await loadGame(game, mySeq);
+      } finally {
+        // eventos síncronos já passaram; libera depois do ciclo atual
+        setTimeout(() => {
+          if (mySeq === seq) loading = false;
+        }, 0);
+      }
+    };
+    const onStorageUpdated = () => {
+      if (!loading) loadData();
+    };
+
+    const loadGame = async (game: typeof activeGame, mySeq: number) => {
 
       if (game) {
         const gId = game.code || game.id;
@@ -162,7 +182,11 @@ export default function SumulasStudioPage() {
               categoryName: cats.find(c => c.id === String(w.category))?.name || `Categoria ${w.category}`,
               title: w.title || `WOD ${w.code}`,
               type: w.type || 'for_time',
-              timeCapSeconds: 21 * 60,
+              timeCapSeconds: (() => {
+                const [m, sec] = String(w.timeCap || '').split(':').map(Number);
+                const total = (m || 0) * 60 + (sec || 0);
+                return total > 0 ? total : 600;
+              })(),
               description: w.description || '',
               sumulaTemplateId: w.sumulaTemplate || 'crossfit-wod1-combo-row-deathby',
               sumulaTemplateName: tmpls.find(t => t.id === w.sumulaTemplate)?.name || 'Súmula Padrão A4',
@@ -181,7 +205,7 @@ export default function SumulasStudioPage() {
               registerNumber: r.number || `#${r.code}`,
               amountPaid: r.amount || 0,
               paymentStatus: (r.status as any) || 'paid',
-              registeredAt: new Date().toISOString(),
+              registeredAt: r.createdAt || r.registeredAt || '',
               checkedIn: r.check || false,
               validationStatus: 'valid',
               athletes: (r.athletes || []).map((a: any) => ({
@@ -189,7 +213,7 @@ export default function SumulasStudioPage() {
                 name: a.name,
                 cpf: a.cpf,
                 phone: a.phonenumber,
-                gender: a.gender || 'M',
+                gender: a.gender || '',
                 tshirtSize: a.tshirtSize || 'M',
                 birthDate: a.birthDate,
                 checkIn: a.check || false,
@@ -197,10 +221,24 @@ export default function SumulasStudioPage() {
             })) as any;
             storage.setTeamsForGame(game.id, tms);
           }
+
+          // Baterias reais do sistema (horário e raia de cada dupla); o armazenamento local fica só de reserva
+          if (apiWods && apiWods.length > 0) {
+            const lists = await Promise.all(
+              wods.map((w) =>
+                apiClient
+                  .fetchHeats(gId, Number(w.id))
+                  .then((list) => list.map((h) => mapHeat(h, gId)))
+                  .catch(() => null),
+              ),
+            );
+            if (lists.some((l) => l !== null)) hts = lists.flatMap((l) => l || []);
+          }
         } catch (err) {
           console.warn('[Sumulas] Fallback para storage local', err);
         }
 
+        if (mySeq !== seq) return; // chegou uma carga mais nova
         setCategories(cats);
         setWorkouts(wods);
         setTeams(tms);
@@ -209,15 +247,17 @@ export default function SumulasStudioPage() {
         const scs = storage.getScores(game.id);
         setScores(scs);
 
-        // Priorizar categoria 2 (Iniciante Dupla Feminina) se disponível
-        const defaultCat = cats.find(c => c.id === '2') || cats[0];
+        // Retoma a seleção feita em outra tela (Baterias, Head Judge, Juiz)
+        const shared = getArenaSelection(game.code);
         if (cats.length > 0 && !selectedCategoryId) {
-          setSelectedCategoryId(defaultCat?.id || cats[0].id);
-          setWodCategoryId(defaultCat?.id || cats[0].id);
+          const catId = pickExisting(cats, shared.categoryId);
+          setSelectedCategoryId(catId);
+          setWodCategoryId(catId);
         }
         if (wods.length > 0 && !selectedWorkoutId) {
-          setSelectedWorkoutId(wods[0].id);
+          setSelectedWorkoutId(pickExisting(wods, shared.workoutId));
         }
+
         if (tmpls.length > 0 && !selectedTemplateId) {
           const comboTmpl = tmpls.find(t => t.id === 'crossfit-wod1-combo-row-deathby');
           const defaultTmpl = comboTmpl || tmpls.find(t => t.type === game.eventType) || tmpls[0];
@@ -239,7 +279,12 @@ export default function SumulasStudioPage() {
           const qTmpl = params.get('templateId');
           const qTab = params.get('tab');
 
-          if (qTab === 'head_judge_desk' || qTab === 'template_studio' || qTab === 'wod_builder' || qTab === 'print_batch') {
+          if (qTab === 'head_judge_desk') {
+            // a mesa de homologação foi unificada no Head Judge
+            window.location.replace('/head-judge');
+            return;
+          }
+          if (qTab === 'template_studio' || qTab === 'wod_builder' || qTab === 'print_batch') {
             setActiveTab(qTab);
           }
 
@@ -268,8 +313,8 @@ export default function SumulasStudioPage() {
     };
 
     loadData();
-    window.addEventListener('itgames_storage_updated', loadData);
-    return () => window.removeEventListener('itgames_storage_updated', loadData);
+    window.addEventListener('itgames_storage_updated', onStorageUpdated);
+    return () => window.removeEventListener('itgames_storage_updated', onStorageUpdated);
   }, [activeGame]);
 
   const currentCategory = categories.find(c => c.id === selectedCategoryId) || categories[0];
@@ -280,21 +325,121 @@ export default function SumulasStudioPage() {
   const filteredTeams = teams.filter(t => t.categoryId === currentCategory?.id && t.paymentStatus !== 'cancelled');
   const workoutHeats = heats.filter(h => h.workoutId === currentWorkout?.id);
 
+  // Helper inteligente para selecionar o melhor template por categoria e WOD
+  const getSmartTemplateId = (
+    wod?: WorkoutRule,
+    category?: Category,
+    allTemplates: SumulaTemplate[] = []
+  ): string => {
+    if (wod?.sumulaTemplateId && allTemplates.some(t => t.id === wod.sumulaTemplateId)) {
+      return wod.sumulaTemplateId;
+    }
+    const bound = allTemplates.find(t => (wod?.id && t.workoutId === wod.id) || (category?.id && t.categoryId === category.id));
+    if (bound) return bound.id;
+
+    const wTitle = (wod?.title || '').toUpperCase();
+    const cName = (category?.name || '').toUpperCase();
+
+    // WOD 1 (Combo 1-A e 1-B / Remo)
+    if (wTitle.includes('WOD 1') || wTitle.includes('1-A') || wTitle.includes('1-B') || wTitle.includes('ROW') || wTitle.includes('DEATH BY')) {
+      if (cName.includes('INICIANTE')) return 'crossfit-wod1-combo-iniciante';
+      if (cName.includes('SCALED')) return 'crossfit-wod1-combo-scaled';
+      if (cName.includes('AMADOR')) return 'crossfit-wod1-combo-amador';
+      return 'crossfit-wod1-combo-row-deathby';
+    }
+
+    // WOD 2 (Sync & Burn)
+    if (wTitle.includes('WOD 2') || wTitle.includes('SYNC & BURN') || wTitle.includes('SYNC')) {
+      if (cName.includes('INICIANTE')) return 'crossfit-wod2-sync-burn-iniciante';
+      if (cName.includes('SCALED')) return 'crossfit-wod2-sync-burn-scaled';
+      if (cName.includes('AMADOR')) return 'crossfit-wod2-sync-burn-amador';
+      return 'crossfit-wod2-sync-burn';
+    }
+
+    // WOD 3 (Maximum Lift)
+    if (wTitle.includes('WOD 3') || wTitle.includes('MAXIMUM LIFT') || wTitle.includes('CARGA') || wTitle.includes('1RM')) {
+      return 'crossfit-wod3-maximum-lift';
+    }
+
+    // WOD 4 (Double Trouble / Combo 4-A e 4-B)
+    if (wTitle.includes('WOD 4') || wTitle.includes('4-A') || wTitle.includes('4-B') || wTitle.includes('DOUBLE TROUBLE')) {
+      if (cName.includes('INICIANTE')) return 'crossfit-wod4-double-trouble-iniciante';
+      if (cName.includes('SCALED') && (cName.includes('MASC') || cName.includes('HOMENS'))) return 'crossfit-wod4-double-trouble-scaled-masc';
+      if (cName.includes('SCALED') && (cName.includes('FEM') || cName.includes('MULHER'))) return 'crossfit-wod4-double-trouble-scaled-fem';
+      if (cName.includes('SCALED')) return 'crossfit-wod4-double-trouble-scaled-fem';
+      if (cName.includes('AMADOR')) return 'crossfit-wod4-double-trouble-amador-misto';
+      return 'crossfit-wod4-double-trouble-iniciante';
+    }
+
+    return 'crossfit-wod1-combo-row-deathby';
+  };
+
+  // Layout acompanha o WOD e a categoria escolhidos (inclusive quando a seleção vem salva de outra tela)
+  useEffect(() => {
+    if (!templates.length || !currentWorkout) return;
+    const smartId = getSmartTemplateId(currentWorkout, currentCategory, templates);
+    if (smartId && templates.some((t) => t.id === smartId)) setSelectedTemplateId(smartId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentWorkout?.id, currentCategory?.id, templates.length]);
+
   // Mapear itens para impressão em lote
   interface SumulaItemData {
     team: TeamRegistration;
     heatNumber: number | string;
     laneNumber: number | string;
     heatTime: string;
+    // Modo arena: cada súmula leva o WOD, a categoria e o layout da própria dupla
+    workout?: WorkoutRule;
+    category?: Category;
+    templateId?: string;
   }
+
+  // A raia guarda o código da inscrição; a lista de duplas usa "reg_<código>"
+  const sameTeam = (t: TeamRegistration, regId: string) => t.id === regId || t.id === `reg_${regId}`;
 
   const sumulasToPrint: SumulaItemData[] = [];
 
-  if (workoutHeats.length > 0) {
+  // Blocos de WOD ("WOD 1" junta 1-A e 1-B) e horários da arena com as categorias de cada um
+  const blockOf = (w?: WorkoutRule) => w?.title.match(/WOD\s*(\d+)/i)?.[1] ?? w?.id ?? '';
+  const blocks = [...new Set(workouts.map((w) => blockOf(w)))].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+  const currentBlock = blocks.includes(selectedBlock) ? selectedBlock : blocks[0] ?? '';
+  // Em provas A/B a súmula é uma só (layout combo): usa a primeira prova do bloco em cada categoria
+  const primaryWorkoutIds = new Set(
+    categories.flatMap((c) => {
+      const parts = workouts
+        .filter((w) => blockOf(w) === currentBlock && (w.categoryId === c.id || w.categoryIds?.includes(c.id)))
+        .sort((a, b) => a.title.localeCompare(b.title, 'pt-BR', { numeric: true }));
+      return parts[0] ? [parts[0].id] : [];
+    }),
+  );
+  const arenaHeats = heats
+    .filter((h) => primaryWorkoutIds.has(h.workoutId))
+    .sort((a, b) => a.startTime.localeCompare(b.startTime) || (a.laneAssignments[0]?.lane ?? 0) - (b.laneAssignments[0]?.lane ?? 0));
+  const arenaSlots = [...new Set(arenaHeats.map((h) => h.startTime))].map((time, idx) => {
+    const cats = [...new Set(arenaHeats.filter((h) => h.startTime === time).map((h) => h.categoryId))];
+    return { time, number: idx + 1, cats };
+  });
+
+  if (printMode === 'arena') {
+    arenaHeats.forEach((heat) => {
+      if (selectedSlot !== 'all' && selectedSlot !== heat.startTime) return;
+      const wod = workouts.find((w) => w.id === heat.workoutId);
+      const cat = categories.find((c) => c.id === heat.categoryId);
+      const templateId = getSmartTemplateId(wod, cat, templates);
+      [...heat.laneAssignments]
+        .sort((a, b) => a.lane - b.lane)
+        .forEach((lane) => {
+          const team = teams.find((t) => sameTeam(t, lane.registrationId) && t.paymentStatus !== 'cancelled');
+          if (team) {
+            sumulasToPrint.push({ team, heatNumber: heat.heatNumber, laneNumber: lane.lane, heatTime: heat.startTime, workout: wod, category: cat, templateId });
+          }
+        });
+    });
+  } else if (workoutHeats.length > 0) {
     workoutHeats.forEach(heat => {
       if (selectedHeatNumber === 'all' || selectedHeatNumber === String(heat.heatNumber)) {
         heat.laneAssignments.forEach(lane => {
-          const team = filteredTeams.find(t => t.id === lane.registrationId);
+          const team = filteredTeams.find(t => sameTeam(t, lane.registrationId));
           if (team) {
             sumulasToPrint.push({
               team,
@@ -322,44 +467,11 @@ export default function SumulasStudioPage() {
     });
   }
 
-  // Baterias e Raias da Categoria para a Mesa do Head Judge
-  const allCategoryLanes: SumulaItemData[] = [];
-  if (workoutHeats.length > 0) {
-    workoutHeats.forEach(heat => {
-      heat.laneAssignments.forEach(lane => {
-        const team = filteredTeams.find(t => t.id === lane.registrationId);
-        if (team) {
-          allCategoryLanes.push({
-            team,
-            heatNumber: heat.heatNumber,
-            laneNumber: lane.lane,
-            heatTime: heat.startTime
-          });
-        }
-      });
-    });
-  } else {
-    const lanesPerHeat = activeGame?.lanesCount || 4;
-    filteredTeams.forEach((team, idx) => {
-      const heatNum = Math.floor(idx / lanesPerHeat) + 1;
-      const laneNum = (idx % lanesPerHeat) + 1;
-      allCategoryLanes.push({
-        team,
-        heatNumber: heatNum,
-        laneNumber: laneNum,
-        heatTime: `${String(8 + Math.floor((idx * 25) / 60)).padStart(2, '0')}:${String((idx * 25) % 60).padStart(2, '0')}`
-      });
-    });
-  }
 
-  const distinctHeats = Array.from(new Set(allCategoryLanes.map(item => Number(item.heatNumber)))).sort((a, b) => a - b);
-  const activeDeskHeatLanes = allCategoryLanes.filter(item => String(item.heatNumber) === String(deskHeatNumber));
-  const deskHeatHomologatedCount = activeDeskHeatLanes.filter(item => {
-    return scores.some(s => s.workoutId === currentWorkout?.id && s.registrationId === item.team.id && s.scoreStatus === 'approved_by_head_judge');
-  }).length;
 
   // Tags disponíveis para inserção com 1 clique
   const AVAILABLE_TAGS = [
+    { tag: '#GAMELOGO#', label: 'Logo do Campeonato' },
     { tag: '#GAMENAME#', label: 'Nome do Evento' },
     { tag: '#CATEGORYNAME#', label: 'Categoria' },
     { tag: '#REGISTERNUMBER#', label: 'Nº Inscrição (BIB)' },
@@ -372,7 +484,11 @@ export default function SumulasStudioPage() {
     { tag: '#TIE_BREAK_RULE#', label: 'Critério Tie-break' },
     { tag: '#HEAT_NUMBER#', label: 'Nº Bateria' },
     { tag: '#LANE_NUMBER#', label: 'Nº Raia' },
-    { tag: '#HEAT_TIME#', label: 'Horário Previsto' }
+    { tag: '#HEAT_TIME#', label: 'Horário Previsto' },
+    { tag: '#ATHLETE_1_NAME#', label: 'Atleta 1' },
+    { tag: '#ATHLETE_2_NAME#', label: 'Atleta 2' },
+    { tag: '#ATHLETE_1_BAR#', label: 'Barra Atleta 1' },
+    { tag: '#ATHLETE_2_BAR#', label: 'Barra Atleta 2' }
   ];
 
   const handleInsertTag = (tag: string) => {
@@ -641,172 +757,91 @@ export default function SumulasStudioPage() {
   const getCatName = (id?: string) => categories.find(c => c.id === id)?.name;
   const getWodName = (id?: string) => workouts.find(w => w.id === id)?.title;
 
-  // Upload e leitura de foto da súmula em Base64
-  const handlePhotoUpload = (regId: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      toast.error('O arquivo selecionado deve ser uma imagem (JPG, PNG, WEBP)');
+  const handleDownloadPdf = async () => {
+    if (!printContainerRef.current) {
+      toast.error('Nenhuma súmula encontrada para exportar');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result as string;
-      setDeskScoresState(prev => ({
-        ...prev,
-        [regId]: {
-          ...(prev[regId] || {
-            time: '04:30',
-            isCap: false,
-            reps: '0',
-            weightA: '0',
-            weightB: '0',
-            rounds: 3,
-            tiebreak: '',
-            photoUrl: null
-          }),
-          photoUrl: base64
-        }
-      }));
-      toast.success('Foto da súmula física anexada com sucesso!');
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleUpdateDeskField = (regId: string, field: string, value: any) => {
-    setDeskScoresState(prev => ({
-      ...prev,
-      [regId]: {
-        ...(prev[regId] || {
-          time: '04:30',
-          isCap: false,
-          reps: '0',
-          weightA: '0',
-          weightB: '0',
-          rounds: 3,
-          tiebreak: '',
-          photoUrl: null
-        }),
-        [field]: value
-      }
-    }));
-  };
-
-  const handleHomologateScore = async (team: TeamRegistration, laneNum: number, heatNum: number) => {
-    const state = deskScoresState[team.id];
-    if (!state?.photoUrl) {
-      toast.error('REGRA OBRIGATÓRIA: Anexe a foto da súmula física assinada antes de homologar!', {
-        duration: 5000,
-        icon: '⚠️'
-      });
+    const cards = printContainerRef.current.querySelectorAll('.sumula-page-break');
+    if (!cards || cards.length === 0) {
+      toast.error('Nenhuma súmula carregada na visualização');
       return;
     }
 
-    if (!currentWorkout || !activeGame) return;
-
-    const isWod1A = currentWorkout.title.includes('1-A') || currentWorkout.title.toLowerCase().includes('row') || currentWorkout.title.toLowerCase().includes('remo');
-    const isWod1B = currentWorkout.title.includes('1-B') || currentWorkout.title.toLowerCase().includes('death by');
-    const isWod3 = currentWorkout.title.includes('3') || currentWorkout.title.toLowerCase().includes('hang clean') || currentWorkout.title.toLowerCase().includes('lift') || currentWorkout.type === 'max_load' || currentWorkout.type === 'complex';
-
-    let timeFormatted: string | undefined = undefined;
-    let timeSeconds: number | undefined = undefined;
-    let repsCount: number | undefined = undefined;
-    let roundsCount: number | undefined = undefined;
-    let weightLoadedKg: number | undefined = undefined;
-    let isCompleted = true;
-
-    if (isWod1A) {
-      if (state.isCap) {
-        isCompleted = false;
-        const missingMeters = Number(state.reps) || 0;
-        timeFormatted = `CAP +${missingMeters}m`;
-        timeSeconds = 5 * 60 + missingMeters;
-        repsCount = missingMeters;
-      } else {
-        timeFormatted = state.time || '04:30';
-        const parts = (timeFormatted || '0:0').split(':').map(Number);
-        timeSeconds = (parts[0] || 0) * 60 + (parts[1] || 0);
-      }
-    } else if (isWod1B) {
-      roundsCount = state.rounds ?? 3;
-      timeFormatted = `${roundsCount} rounds`;
-      timeSeconds = 21 * 60;
-      repsCount = Number(state.reps) || 0;
-      isCompleted = roundsCount === 5;
-    } else if (isWod3) {
-      const wA = Number(state.weightA) || 0;
-      const wB = Number(state.weightB) || 0;
-      weightLoadedKg = wA + wB;
-      timeFormatted = `${weightLoadedKg} kg`;
-    } else {
-      if (state.isCap) {
-        isCompleted = false;
-        const missingReps = Number(state.reps) || 0;
-        timeFormatted = `CAP +${missingReps}`;
-        timeSeconds = 10 * 60 + missingReps;
-        repsCount = missingReps;
-      } else {
-        timeFormatted = state.time || '08:30';
-        const parts = (timeFormatted || '0:0').split(':').map(Number);
-        timeSeconds = (parts[0] || 0) * 60 + (parts[1] || 0);
-      }
-    }
-
-    const targetTeamName = team.teamName || (team as any).name || 'Equipe';
-
-    const newScore: ScoreEntry = {
-      id: `score_${activeGame.id}_${currentWorkout.id}_${team.id}`,
-      gameId: activeGame.id,
-      workoutId: currentWorkout.id,
-      categoryId: team.categoryId,
-      registrationId: team.id,
-      teamName: targetTeamName,
-      registerNumber: team.registerNumber || team.id,
-      heatNumber: heatNum,
-      lane: laneNum,
-      judgeName: 'Head Judge Oficial',
-      timeFormatted,
-      timeSeconds,
-      repsCount,
-      roundsCount,
-      weightLoadedKg,
-      tieBreakTimeFormatted: state.tiebreak || undefined,
-      isCompleted,
-      isWO: false,
-      isDisqualified: false,
-      photoSumulaUrl: state.photoUrl,
-      scoreStatus: 'approved_by_head_judge',
-      approvedBy: 'Head Judge Oficial',
-      approvedAt: new Date().toISOString(),
-      submittedAt: new Date().toISOString()
-    };
-
-    storage.saveScore(newScore, 'Head Judge Oficial', 'head_judge', `Homologação de súmula física com foto comprovatória`);
-    setScores(storage.getScores(activeGame.id));
+    setIsExportingPdf(true);
+    setPdfProgress(`Iniciando geração de ${cards.length} folhas A4...`);
+    toast.loading(`Gerando arquivo PDF (${cards.length} súmulas)...`, { id: 'pdf-toast' });
 
     try {
-      await apiClient.submitScore({
-        game: activeGame.code || activeGame.id,
-        category: Number(team.categoryId) || 1,
-        codeTeam: Number(team.id) || 1,
-        idEvent: Number(currentWorkout.id) || 1,
-        time: timeSeconds,
-        reps: repsCount,
-        weight: weightLoadedKg,
-        tieBreakTime: state.tiebreak ? 100 : undefined,
-        scoreStatus: 'approved_by_head_judge',
-        photo: state.photoUrl
-      });
-    } catch (e) {
-      console.warn('Persistência remota da API não executada ou offline, score salvo localmente com sucesso.');
-    }
+      const { jsPDF } = await import('jspdf');
+      const html2canvas = (await import('html2canvas')).default;
 
-    toast.success(`Súmula da equipe ${targetTeamName} (Raia ${laneNum}) HOMOLOGADA com foto! Placar atualizado.`, {
-      icon: '✅'
-    });
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true,
+      });
+
+      for (let i = 0; i < cards.length; i++) {
+        setPdfProgress(`Processando folha ${i + 1} de ${cards.length}...`);
+        // Captura só o conteúdo da súmula (sem a moldura da tela)
+        const cardElement = ((cards[i] as HTMLElement).querySelector('.sumula-content') as HTMLElement) || (cards[i] as HTMLElement);
+
+        const canvas = await html2canvas(cardElement, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+          windowWidth: 1200,
+          ignoreElements: (element) => element.classList.contains('no-print')
+        });
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        if (i > 0) {
+          pdf.addPage('a4', 'portrait');
+        }
+        // Encaixa proporcionalmente numa A4 com margem de 8 mm (sem esticar nem cortar)
+        const margin = 8;
+        const maxW = 210 - margin * 2;
+        const maxH = 297 - margin * 2;
+        const ratio = canvas.height / canvas.width;
+        let w = maxW;
+        let h = w * ratio;
+        if (h > maxH) {
+          h = maxH;
+          w = h / ratio;
+        }
+        pdf.addImage(imgData, 'JPEG', (210 - w) / 2, margin, w, h, undefined, 'FAST');
+      }
+
+      const safeCat = (printMode === 'arena' ? `Arena_WOD${currentBlock}` : currentCategory?.name || 'Geral').replace(/[^a-zA-Z0-9_\-]/g, '_');
+      const safeWod = (printMode === 'arena' ? (selectedSlot === 'all' ? 'todas' : selectedSlot) : currentWorkout?.title || 'WOD').replace(/[^a-zA-Z0-9_\-]/g, '_');
+      pdf.save(`Sumulas_${safeCat}_${safeWod}.pdf`);
+
+      toast.success(`PDF baixado com sucesso! (${cards.length} páginas)`, { id: 'pdf-toast' });
+    } catch (err: any) {
+      console.error('Erro ao gerar PDF:', err);
+      toast.error(`Falha ao gerar PDF: ${err.message || 'Erro desconhecido'}`, { id: 'pdf-toast' });
+    } finally {
+      setIsExportingPdf(false);
+      setPdfProgress('');
+    }
   };
+
+  // Seleção compartilhada com Baterias, Mesa do Head Judge, App do Juiz e Leaderboard
+  usePersistArenaSelection(
+    activeGame?.code,
+    {
+      categoryId: selectedCategoryId,
+      workoutId: selectedWorkoutId,
+      heat: selectedHeatNumber !== 'all' ? selectedHeatNumber : undefined,
+    },
+    categories.length > 0,
+  );
 
   return (
     <AclGuard resource="sumulas" requiredRoleLabel="Organizadores e Mesa Técnica">
@@ -856,12 +891,40 @@ export default function SumulasStudioPage() {
           </button>
 
           <button
+            onClick={handleDownloadPdf}
+            disabled={isExportingPdf || sumulasToPrint.length === 0}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs shadow-lg shadow-blue-500/20 transition-transform active:scale-95 disabled:opacity-50"
+            title="Baixar arquivo PDF de todas as súmulas para salvar no dispositivo"
+          >
+            {isExportingPdf ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>{pdfProgress || 'GERANDO PDF...'}</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4" />
+                <span>SALVAR PDF ({sumulasToPrint.length} FOLHAS A4)</span>
+              </>
+            )}
+          </button>
+
+          <button
             onClick={() => window.print()}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-black text-xs shadow-lg shadow-amber-500/20 transition-transform active:scale-95"
           >
             <Printer className="w-4 h-4" />
             <span>IMPRIMIR EM LOTE ({sumulasToPrint.length} FOLHAS A4)</span>
           </button>
+
+          <Link
+            href="/sumulas/pdf"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-100 font-bold text-xs"
+            title="Kit completo do dia e ZIP com um PDF por bateria"
+          >
+            <Download className="w-4 h-4" />
+            <span>PDFS DO DIA</span>
+          </Link>
         </div>
       </div>
 
@@ -903,20 +966,15 @@ export default function SumulasStudioPage() {
           <span>3. Construtor de WODs & Presets</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab('head_judge_desk')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-            activeTab === 'head_judge_desk' 
-              ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-black shadow-lg shadow-emerald-500/20 font-black' 
-              : 'text-zinc-400 hover:text-emerald-400'
-          }`}
+        {/* A homologação das súmulas (foto + lançamento) fica só na Mesa do Head Judge */}
+        <Link
+          href="/head-judge"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all text-zinc-400 hover:text-emerald-400"
         >
           <FileCheck className="w-4 h-4 text-emerald-400" />
-          <span>4. Mesa do Head Judge (Lançamento & Auditoria)</span>
-          <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-950 text-emerald-300 border border-emerald-500/40">
-            FOTO OBRIGATÓRIA
-          </span>
-        </button>
+          <span>Homologar na Mesa do Head Judge</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
       </div>
 
       {/* ────────────────────────────────────────────────────────────────────────── */}
@@ -938,7 +996,65 @@ export default function SumulasStudioPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 gap-2 sm:max-w-md">
+              {([
+                ['category', 'Por categoria', 'Uma categoria e um WOD'],
+                ['arena', 'Por horário da arena', 'Todas as categorias de cada bateria'],
+              ] as const).map(([mode, title, hint]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setPrintMode(mode)}
+                  className={`px-3 py-2 rounded-xl border text-left ${
+                    printMode === mode ? 'border-amber-500 bg-amber-500/10 text-white' : 'border-zinc-700 bg-zinc-900 text-zinc-400'
+                  }`}
+                >
+                  <div className="text-xs font-bold">{title}</div>
+                  <div className="text-[11px] opacity-80">{hint}</div>
+                </button>
+              ))}
+            </div>
+
+            {printMode === 'arena' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">1. WOD</label>
+                  <select
+                    value={currentBlock}
+                    onChange={(e) => {
+                      setSelectedBlock(e.target.value);
+                      setSelectedSlot('all');
+                    }}
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-medium text-white focus:outline-none focus:border-amber-500"
+                  >
+                    {blocks.map((b) => (
+                      <option key={b} value={b}>{/^\d+$/.test(b) ? `WOD ${b}` : workouts.find((w) => w.id === b)?.title || b}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">2. Horário da bateria</label>
+                  <select
+                    value={selectedSlot}
+                    onChange={(e) => setSelectedSlot(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-medium text-white focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="all">Todas as baterias do WOD ({arenaSlots.length})</option>
+                    {arenaSlots.map((slot) => (
+                      <option key={slot.time} value={slot.time}>
+                        {slot.time} · Bateria {slot.number}
+                        {slot.cats.length > 1 ? ' (mista)' : ''} · {slot.cats.map((id) => getCatName(id) || id).join(' + ')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <p className="sm:col-span-2 text-[11px] text-zinc-500">
+                  Ordem da arena: horário e raia. Cada súmula usa o layout da categoria e do WOD da própria dupla.
+                </p>
+              </div>
+            )}
+
+            <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 ${printMode === 'arena' ? 'hidden' : ''}`}>
               <div>
                 <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">
                   1. Categoria
@@ -948,9 +1064,12 @@ export default function SumulasStudioPage() {
                   onChange={(e) => {
                     const newCatId = e.target.value;
                     setSelectedCategoryId(newCatId);
-                    // Sugerir template vinculado à categoria se houver
-                    const bound = templates.find(t => t.categoryId === newCatId);
-                    if (bound) setSelectedTemplateId(bound.id);
+                    const nextCat = categories.find(c => c.id === newCatId);
+                    const nextWod = workouts.find(w => w.id === selectedWorkoutId);
+                    const smartId = getSmartTemplateId(nextWod, nextCat, templates);
+                    if (smartId && templates.some(t => t.id === smartId)) {
+                      setSelectedTemplateId(smartId);
+                    }
                   }}
                   className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-medium text-white focus:outline-none focus:border-amber-500"
                 >
@@ -970,16 +1089,14 @@ export default function SumulasStudioPage() {
                     const newWodId = e.target.value;
                     setSelectedWorkoutId(newWodId);
                     const targetWod = workouts.find(w => w.id === newWodId);
-                    if (targetWod) {
-                      if (targetWod.categoryId && categories.some(c => c.id === targetWod.categoryId)) {
-                        setSelectedCategoryId(targetWod.categoryId);
-                      }
-                      if (targetWod.sumulaTemplateId && templates.some(t => t.id === targetWod.sumulaTemplateId)) {
-                        setSelectedTemplateId(targetWod.sumulaTemplateId);
-                      } else {
-                        const bound = templates.find(t => t.workoutId === newWodId);
-                        if (bound) setSelectedTemplateId(bound.id);
-                      }
+                    let nextCat: Category | undefined = currentCategory;
+                    if (targetWod?.categoryId && categories.some(c => c.id === targetWod.categoryId)) {
+                      setSelectedCategoryId(targetWod.categoryId);
+                      nextCat = categories.find(c => c.id === targetWod.categoryId);
+                    }
+                    const smartId = getSmartTemplateId(targetWod, nextCat, templates);
+                    if (smartId && templates.some(t => t.id === smartId)) {
+                      setSelectedTemplateId(smartId);
                     }
                   }}
                   className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-medium text-white focus:outline-none focus:border-amber-500"
@@ -1003,7 +1120,7 @@ export default function SumulasStudioPage() {
                   {workoutHeats.length > 0 ? (
                     workoutHeats.map(h => (
                       <option key={h.id} value={String(h.heatNumber)}>
-                        Bateria #{h.heatNumber} ({h.startTime})
+                        Bateria #{h.heatNumber} ({h.startTime}){h.arena ? ` · ${arenaLabel(h.arena)}` : ''}
                       </option>
                     ))
                   ) : (
@@ -1053,6 +1170,15 @@ export default function SumulasStudioPage() {
                 <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-bold border border-amber-500/30">
                   {sumulasToPrint.length} súmulas prontas
                 </span>
+                <button
+                  onClick={handleDownloadPdf}
+                  disabled={isExportingPdf || sumulasToPrint.length === 0}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[11px] shadow transition-transform active:scale-95 disabled:opacity-50"
+                  title="Baixar arquivo PDF das súmulas filtradas"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{isExportingPdf ? 'Exportando...' : 'Salvar PDF'}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -1061,34 +1187,44 @@ export default function SumulasStudioPage() {
           <div className="space-y-6" ref={printContainerRef}>
             {sumulasToPrint.map((item, index) => {
               const athletesNames = item.team.athletes.map(a => a.name).join(' • ');
-              const renderedHtml = replaceSumulaVariables(currentTemplate?.htmlContent || '', {
+              const itemWorkout = item.workout ?? currentWorkout;
+              const itemCategory = item.category ?? currentCategory;
+              const itemTemplate = (item.templateId && templates.find(t => t.id === item.templateId)) || currentTemplate;
+              const isWod4 = itemWorkout?.title.includes('WOD 4') || itemWorkout?.title.includes('4-A') || itemWorkout?.title.includes('DOUBLE TROUBLE');
+              const renderedHtml = replaceSumulaVariables(itemTemplate?.htmlContent || '', {
                 gameName: activeGame?.name,
-                categoryName: currentCategory?.name,
+                gameLogo: SUMMER_GAMES_LOGO_BASE64,
+                categoryName: itemCategory?.name,
+                categoryId: itemCategory?.id,
                 registerNumber: item.team.registerNumber,
                 teamName: item.team.teamName,
                 athletesList: athletesNames,
+                athletes: item.team.athletes.map(a => ({ name: a.name, gender: a.gender })),
                 boxAffiliate: item.team.athletes[0]?.boxOrAffiliate || 'Independente',
-                eventTitle: currentWorkout?.title,
-                workoutDescription: currentWorkout?.description,
-                timeCap: `${Math.floor((currentWorkout?.timeCapSeconds || 600) / 60)}:00`,
-                tieBreakRule: currentWorkout?.tieBreakMetric === 'time' ? 'Tempo do Round 2' : 'Repetições válidas',
+                eventTitle: itemWorkout?.title,
+                workoutDescription: itemWorkout?.description,
+                timeCap: `${Math.floor((itemWorkout?.timeCapSeconds || 600) / 60)}:00`,
+                tieBreakRule: itemWorkout?.tieBreakMetric === 'time' ? 'Tempo do Round 2' : 'Repetições válidas',
                 heatNumber: item.heatNumber,
                 laneNumber: item.laneNumber,
-                heatTime: item.heatTime
+                heatTime: item.heatTime,
+                wodCodeA: isWod4 ? 'WOD 4-A' : 'WOD 1-A',
+                wodCodeB: isWod4 ? 'WOD 4-B' : 'WOD 1-B',
+                originUrl: typeof window !== 'undefined' ? window.location.origin : undefined
               });
 
               return (
                 <div 
                   key={`${item.team.id}-${index}`}
-                  className="sumula-page-break bg-white text-black p-4 sm:p-6 rounded-2xl shadow-xl border border-zinc-300 max-w-4xl mx-auto my-4"
+                  className="sumula-page-break bg-white text-black p-3 sm:p-5 rounded-xl shadow-2xl border border-zinc-300 w-full max-w-[210mm] min-h-[297mm] mx-auto my-6 print:border-none print:shadow-none print:p-0 print:my-0 print:max-w-none print:min-h-0 print:rounded-none flex flex-col justify-between"
                 >
                   <div className="no-print mb-2 pb-2 border-b border-zinc-200 flex items-center justify-between text-xs text-zinc-500 font-semibold">
-                    <span>Súmula {index + 1} de {sumulasToPrint.length} • Bateria #{item.heatNumber} | Raia #{item.laneNumber}</span>
+                    <span>Súmula {index + 1} de {sumulasToPrint.length} • {item.heatTime} • Bateria #{item.heatNumber} | Raia #{item.laneNumber}{item.category ? ` • ${item.category.name}` : ''}</span>
                     <span className="text-amber-700 font-bold">{item.team.teamName} ({item.team.registerNumber})</span>
                   </div>
 
-                  <div className="overflow-x-auto print:overflow-visible">
-                    <div className="min-w-[660px] sm:min-w-0 print:min-w-0" dangerouslySetInnerHTML={{ __html: renderedHtml }} />
+                  <div className="overflow-x-auto print:overflow-visible flex-1 flex flex-col justify-between">
+                    <div className="sumula-content min-w-[660px] sm:min-w-0 print:min-w-0 flex-1 flex flex-col justify-between bg-white" dangerouslySetInnerHTML={{ __html: renderedHtml }} />
                   </div>
                 </div>
               );
@@ -1338,23 +1474,27 @@ export default function SumulasStudioPage() {
               <label className="text-xs font-bold text-zinc-300 uppercase tracking-wider block">
                 Prévia em Tempo Real (Formato A4):
               </label>
-              <div className="bg-white text-black p-6 rounded-2xl shadow-2xl border border-zinc-400 max-w-3xl mx-auto">
+              <div className="bg-white text-black p-4 sm:p-6 rounded-xl shadow-2xl border border-zinc-400 w-full max-w-[210mm] min-h-[297mm] mx-auto overflow-auto">
                 <div 
                   dangerouslySetInnerHTML={{ 
                     __html: replaceSumulaVariables(editingHtmlContent, {
-                      gameName: activeGame?.name || 'ItGames CrossFit Championship',
+                      gameName: activeGame?.name || 'SUMMER CROSS 2026 INTERBOX',
+                      gameLogo: SUMMER_GAMES_LOGO_BASE64,
                       categoryName: categories.find(c => c.id === editingCategoryId)?.name || currentCategory?.name || 'Trio Scale',
+                      categoryId: editingCategoryId || currentCategory?.id || '2',
                       registerNumber: '#101',
                       teamName: 'Lucas Silveira (Exemplo)',
-                      athletesList: 'Lucas Silveira • Mateus Rossi • Carlos Lima',
+                      athletesList: 'Lucas Silveira • Mateus Rossi',
                       boxAffiliate: 'CrossFit IronSP',
-                      eventTitle: workouts.find(w => w.id === editingWorkoutId)?.title || 'WOD 1 - The Inferno',
-                      workoutDescription: workouts.find(w => w.id === editingWorkoutId)?.description || '3 Rounds For Time:\n• 21 Cal Echo Bike\n• 15 Toes-to-Bar\n• 9 Thrusters (60kg)',
-                      timeCap: '10:00',
-                      tieBreakRule: 'Tempo Round 2',
+                      eventTitle: workouts.find(w => w.id === editingWorkoutId)?.title || 'WOD 1 • Combo 1-A & 1-B',
+                      workoutDescription: workouts.find(w => w.id === editingWorkoutId)?.description || 'Remo 1000m + Death By Thruster e BMU',
+                      timeCap: '21:00',
+                      tieBreakRule: 'Tempo dos rounds',
                       heatNumber: 1,
                       laneNumber: 4,
-                      heatTime: '09:00'
+                      heatTime: '09:00',
+                      wodCodeA: '1A',
+                      wodCodeB: '1B'
                     }) 
                   }} 
                 />
@@ -1530,564 +1670,6 @@ export default function SumulasStudioPage() {
         </div>
       )}
 
-      {/* ────────────────────────────────────────────────────────────────────────── */}
-      {/* 4. ABA DA MESA DO HEAD JUDGE (LANÇAMENTO & AUDITORIA COM FOTO OBRIGATÓRIA) */}
-      {/* ────────────────────────────────────────────────────────────────────────── */}
-      {activeTab === 'head_judge_desk' && (
-        <div className="space-y-6">
-
-          {/* CABEÇALHO & SELETORES DA MESA */}
-          <div className="glass-panel rounded-2xl p-6 border border-zinc-800 space-y-5">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-4">
-              <div>
-                <div className="flex items-center gap-2 text-emerald-400 text-xs font-black uppercase tracking-wider">
-                  <FileCheck className="w-4 h-4" />
-                  <span>Central Oficial de Homologação</span>
-                </div>
-                <h2 className="text-xl sm:text-2xl font-black text-white mt-1">
-                  Mesa do Head Judge: Lançamento de Súmulas Físicas
-                </h2>
-                <p className="text-xs text-zinc-400 mt-1">
-                  Receba as súmulas de papel preenchidas pelos juízes de pista, anexe a foto comprovatória assinada e homologue para atualizar o Leaderboard instantaneamente.
-                </p>
-              </div>
-
-              {/* BADGE DE REGRA MANDATÓRIA */}
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold">
-                <Camera className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>Foto física obrigatória por súmula</span>
-              </div>
-            </div>
-
-            {/* SELETORES: CATEGORIA, WOD E BATERIA */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">
-                  1. Categoria
-                </label>
-                <select
-                  value={selectedCategoryId}
-                  onChange={(e) => {
-                    setSelectedCategoryId(e.target.value);
-                    setDeskHeatNumber('1');
-                  }}
-                  className="w-full px-3 py-2.5 rounded-xl bg-zinc-900 border border-zinc-700 text-white font-bold text-xs"
-                >
-                  {categories.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">
-                  2. Workout / Prova
-                </label>
-                <select
-                  value={selectedWorkoutId}
-                  onChange={(e) => setSelectedWorkoutId(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-zinc-900 border border-zinc-700 text-white font-bold text-xs"
-                >
-                  {categoryWorkouts.map(w => (
-                    <option key={w.id} value={w.id}>
-                      {w.title}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">
-                  3. Bateria (Heat da Mesa)
-                </label>
-                <select
-                  value={deskHeatNumber}
-                  onChange={(e) => setDeskHeatNumber(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-zinc-900 border border-emerald-500/50 text-emerald-400 font-bold text-xs"
-                >
-                  {distinctHeats.length > 0 ? (
-                    distinctHeats.map(hNum => (
-                      <option key={hNum} value={String(hNum)}>
-                        BATERIA (HEAT) #{hNum}
-                      </option>
-                    ))
-                  ) : (
-                    <option value="1">BATERIA (HEAT) #1</option>
-                  )}
-                </select>
-              </div>
-            </div>
-
-            {/* BARRA DE PROGRESSO DA BATERIA */}
-            <div className="pt-2">
-              <div className="flex items-center justify-between text-xs font-bold mb-2">
-                <span className="text-zinc-300">
-                  Progresso da Bateria #{deskHeatNumber}: {deskHeatHomologatedCount} de {activeDeskHeatLanes.length} súmulas homologadas
-                </span>
-                <span className="text-emerald-400">
-                  {activeDeskHeatLanes.length > 0
-                    ? Math.round((deskHeatHomologatedCount / activeDeskHeatLanes.length) * 100)
-                    : 0}% Concluído
-                </span>
-              </div>
-              <div className="w-full h-2.5 rounded-full bg-zinc-800 overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500"
-                  style={{
-                    width: `${activeDeskHeatLanes.length > 0 ? (deskHeatHomologatedCount / activeDeskHeatLanes.length) * 100 : 0}%`
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* LISTA DE RAIAS DA BATERIA */}
-          <div className="space-y-4">
-            {activeDeskHeatLanes.length === 0 ? (
-              <div className="p-8 text-center rounded-2xl bg-zinc-900/60 border border-zinc-800 text-zinc-400 text-xs">
-                Nenhuma equipe encontrada para a Bateria #{deskHeatNumber} nesta categoria.
-              </div>
-            ) : (
-              activeDeskHeatLanes.map((item) => {
-                const team = item.team;
-                const regId = team.id;
-                const existingScore = scores.find(s => s.workoutId === currentWorkout?.id && s.registrationId === regId);
-                const isHomologated = Boolean(existingScore && existingScore.scoreStatus === 'approved_by_head_judge');
-                const currentState = deskScoresState[regId] || {
-                  time: existingScore?.timeFormatted || '04:30',
-                  isCap: existingScore ? !existingScore.isCompleted : false,
-                  reps: String(existingScore?.repsCount || '0'),
-                  weightA: '0',
-                  weightB: '0',
-                  rounds: existingScore?.roundsCount || 3,
-                  tiebreak: existingScore?.tieBreakTimeFormatted || '',
-                  photoUrl: existingScore?.photoSumulaUrl || null
-                };
-
-                const currentPhoto = currentState.photoUrl || existingScore?.photoSumulaUrl;
-
-                const isWod1A = currentWorkout?.title.includes('1-A') || currentWorkout?.title.toLowerCase().includes('row') || currentWorkout?.title.toLowerCase().includes('remo');
-                const isWod1B = currentWorkout?.title.includes('1-B') || currentWorkout?.title.toLowerCase().includes('death by');
-                const isWod3 = currentWorkout?.title.includes('3') || currentWorkout?.title.toLowerCase().includes('hang clean') || currentWorkout?.title.toLowerCase().includes('lift') || currentWorkout?.type === 'max_load' || currentWorkout?.type === 'complex';
-
-                const teamDisplayName = team.teamName || (team as any).name || 'Equipe';
-                const teamBox = team.athletes?.[0]?.boxOrAffiliate || (team as any).boxOrGym;
-
-                return (
-                  <div
-                    key={regId}
-                    className={`rounded-2xl border transition-all p-5 ${
-                      isHomologated 
-                        ? 'bg-zinc-900/90 border-emerald-500/40 shadow-lg shadow-emerald-950/20' 
-                        : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700'
-                    }`}
-                  >
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-
-                      {/* COLUNA 1: DADOS DA EQUIPE & RAIA */}
-                      <div className="lg:col-span-3 space-y-2 border-b lg:border-b-0 lg:border-r border-zinc-800 pb-4 lg:pb-0 lg:pr-4">
-                        <div className="flex items-center gap-2">
-                          <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 font-black text-xs">
-                            RAIA #{item.laneNumber}
-                          </span>
-                          <span className="text-[11px] font-bold text-zinc-400">
-                            HEAT #{item.heatNumber}
-                          </span>
-                        </div>
-
-                        <div>
-                          <div className="text-base font-black text-white flex items-center gap-1.5">
-                            <span>{teamDisplayName}</span>
-                            <span className="text-xs text-amber-400 font-bold">
-                              (#{team.registerNumber || team.id})
-                            </span>
-                          </div>
-                          {team.athletes && team.athletes.length > 0 && (
-                            <p className="text-xs text-zinc-400 mt-0.5">
-                              {team.athletes.map(a => a.name).join(' • ')}
-                            </p>
-                          )}
-                          {teamBox && (
-                            <p className="text-[11px] text-zinc-500 font-semibold mt-0.5">
-                              Box: {teamBox}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="pt-2">
-                          {isHomologated ? (
-                            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold">
-                              <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>HOMOLOGADO</span>
-                            </div>
-                          ) : (
-                            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold">
-                              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                              <span>PENDENTE DE SÚMULA</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* COLUNA 2: FOTO COMPROBATÓRIA OBRIGATÓRIA */}
-                      <div className="lg:col-span-4 space-y-2 border-b lg:border-b-0 lg:border-r border-zinc-800 pb-4 lg:pb-0 lg:pr-4">
-                        <div className="flex items-center justify-between">
-                          <label className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider flex items-center gap-1">
-                            <Camera className="w-3.5 h-3.5 text-amber-400" />
-                            <span>Foto da Súmula Física:</span>
-                          </label>
-                          <span className="text-[10px] font-black text-rose-400 uppercase">
-                            *Obrigatório
-                          </span>
-                        </div>
-
-                        {currentPhoto ? (
-                          <div className="space-y-2">
-                            <div className="relative group rounded-xl overflow-hidden border border-emerald-500/40 bg-zinc-950 h-28 flex items-center justify-center">
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={currentPhoto}
-                                alt={`Súmula ${teamDisplayName}`}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                              />
-                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                <button
-                                  onClick={() => setZoomPhotoUrl(currentPhoto)}
-                                  className="p-2 rounded-lg bg-zinc-800 text-white hover:bg-zinc-700 text-xs font-bold flex items-center gap-1"
-                                >
-                                  <ZoomIn className="w-4 h-4 text-amber-400" />
-                                  <span>Ampliar</span>
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-between">
-                              <button
-                                onClick={() => setZoomPhotoUrl(currentPhoto)}
-                                className="text-[11px] font-bold text-amber-400 hover:underline flex items-center gap-1"
-                              >
-                                <ZoomIn className="w-3.5 h-3.5" />
-                                <span>Ver em Tela Cheia (Zoom)</span>
-                              </button>
-
-                              <label className="text-[11px] font-bold text-zinc-400 hover:text-white cursor-pointer">
-                                <span>Substituir</span>
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  capture="environment"
-                                  className="hidden"
-                                  onChange={(e) => handlePhotoUpload(regId, e)}
-                                />
-                              </label>
-                            </div>
-                          </div>
-                        ) : (
-                          <label className="border-2 border-dashed border-zinc-700 hover:border-amber-500/80 rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors bg-zinc-950/40 h-28">
-                            <Camera className="w-6 h-6 text-amber-400" />
-                            <span className="text-xs font-bold text-zinc-300 text-center">
-                              Fotografar / Anexar Súmula Assinada
-                            </span>
-                            <span className="text-[10px] text-zinc-500">
-                              (Câmera do celular ou arquivo JPG/PNG)
-                            </span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              capture="environment"
-                              className="hidden"
-                              onChange={(e) => handlePhotoUpload(regId, e)}
-                            />
-                          </label>
-                        )}
-                      </div>
-
-                      {/* COLUNA 3: INPUTS ESPECÍFICOS DO WOD & BOTÃO DE HOMOLOGAÇÃO */}
-                      <div className="lg:col-span-5 space-y-3 flex flex-col justify-between">
-                        
-                        {/* WOD 1-A: 800M ROW (TEMPO OU CAP + METROS) */}
-                        {isWod1A && (
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-amber-400">
-                                WOD 1-A (800m Row):
-                              </span>
-                              <div className="flex items-center gap-2 text-xs">
-                                <label className="flex items-center gap-1 cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={currentState.isCap}
-                                    onChange={(e) => handleUpdateDeskField(regId, 'isCap', e.target.checked)}
-                                    className="rounded border-zinc-700 text-amber-500 focus:ring-amber-500"
-                                  />
-                                  <span className="text-zinc-300 font-bold">Deu TIME CAP (5:00)?</span>
-                                </label>
-                              </div>
-                            </div>
-
-                            {currentState.isCap ? (
-                              <div>
-                                <label className="text-[11px] text-zinc-400 block mb-1">
-                                  Quantos metros FALTARAM para completar os 800m?
-                                </label>
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="number"
-                                    placeholder="Ex: 188"
-                                    value={currentState.reps}
-                                    onChange={(e) => handleUpdateDeskField(regId, 'reps', e.target.value)}
-                                    className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white font-bold text-xs"
-                                  />
-                                  <span className="text-xs text-zinc-400 font-bold">metros</span>
-                                </div>
-                                <p className="text-[10px] text-amber-400 font-semibold mt-1">
-                                  Resultado Oficial: 5:00 + {currentState.reps || 0}m
-                                </p>
-                              </div>
-                            ) : (
-                              <div>
-                                <label className="text-[11px] text-zinc-400 block mb-1">
-                                  Tempo de Conclusão dos 800m (mm:ss):
-                                </label>
-                                <input
-                                  type="text"
-                                  placeholder="04:32"
-                                  value={currentState.time}
-                                  onChange={(e) => handleUpdateDeskField(regId, 'time', e.target.value)}
-                                  className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white font-bold text-xs"
-                                />
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* WOD 1-B: DEATH BY (ROUNDS FECHADOS 1 A 5) */}
-                        {isWod1B && (
-                          <div className="space-y-2">
-                            <span className="text-xs font-bold text-amber-400 block">
-                              WOD 1-B (Death By Thrusters + Pull-ups):
-                            </span>
-                            <div>
-                              <label className="text-[11px] text-zinc-400 block mb-1.5">
-                                Quantos Rounds Completos a equipe fechou dentro do tempo?
-                              </label>
-                              <div className="grid grid-cols-5 gap-1.5">
-                                {[1, 2, 3, 4, 5].map(r => (
-                                  <button
-                                    key={r}
-                                    type="button"
-                                    onClick={() => handleUpdateDeskField(regId, 'rounds', r)}
-                                    className={`py-1.5 rounded-lg text-xs font-black transition-all ${
-                                      currentState.rounds === r
-                                        ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
-                                        : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-                                    }`}
-                                  >
-                                    {r} {r === 1 ? 'Round' : 'Rounds'}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div>
-                              <label className="text-[11px] text-zinc-400 block mb-1">
-                                Tie-Break (Tempo do último round fechado ou repetições extras):
-                              </label>
-                              <input
-                                type="text"
-                                placeholder="Ex: 01:45 ou 12 reps"
-                                value={currentState.tiebreak}
-                                onChange={(e) => handleUpdateDeskField(regId, 'tiebreak', e.target.value)}
-                                className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white font-bold text-xs"
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* WOD 3: MAXIMUM LIFT (HANG CLEAN N' JERK - ATLETA A + B = TOTAL) */}
-                        {isWod3 && (
-                          <div className="space-y-2">
-                            <span className="text-xs font-bold text-amber-400 block">
-                              WOD 3: Maximum Lift (Hang Clean n&apos; Jerk):
-                            </span>
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <label className="text-[10px] text-zinc-400 block mb-1">
-                                  Atleta A (kg):
-                                </label>
-                                <input
-                                  type="number"
-                                  placeholder="Ex: 75"
-                                  value={currentState.weightA}
-                                  onChange={(e) => handleUpdateDeskField(regId, 'weightA', e.target.value)}
-                                  className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white font-bold text-xs"
-                                />
-                              </div>
-                              <div>
-                                <label className="text-[10px] text-zinc-400 block mb-1">
-                                  Atleta B (kg):
-                                </label>
-                                <input
-                                  type="number"
-                                  placeholder="Ex: 60"
-                                  value={currentState.weightB}
-                                  onChange={(e) => handleUpdateDeskField(regId, 'weightB', e.target.value)}
-                                  className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white font-bold text-xs"
-                                />
-                              </div>
-                            </div>
-
-                            {/* TOTAL AUTOMÁTICO DA DUPLA */}
-                            <div className="flex items-center justify-between p-2 rounded-xl bg-amber-500/10 border border-amber-500/30">
-                              <span className="text-xs font-bold text-zinc-300">
-                                Carga Total da Dupla (A + B):
-                              </span>
-                              <span className="text-base font-black text-amber-400">
-                                {(Number(currentState.weightA) || 0) + (Number(currentState.weightB) || 0)} kg
-                              </span>
-                            </div>
-
-                            <div>
-                              <label className="text-[10px] text-zinc-400 block mb-1">
-                                Tie-Break (Nº da Tentativa Válida ou Tempo):
-                              </label>
-                              <input
-                                type="text"
-                                placeholder="Ex: 4ª Tentativa (02:10)"
-                                value={currentState.tiebreak}
-                                onChange={(e) => handleUpdateDeskField(regId, 'tiebreak', e.target.value)}
-                                className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white font-bold text-xs"
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* WOD 2 OU OUTROS: SYNC & BURN (TIME CAP 10:00 + REPS) */}
-                        {!isWod1A && !isWod1B && !isWod3 && (
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-amber-400">
-                                Resultado da Prova:
-                              </span>
-                              <label className="flex items-center gap-1 cursor-pointer text-xs">
-                                <input
-                                  type="checkbox"
-                                  checked={currentState.isCap}
-                                  onChange={(e) => handleUpdateDeskField(regId, 'isCap', e.target.checked)}
-                                  className="rounded border-zinc-700 text-amber-500 focus:ring-amber-500"
-                                />
-                                <span className="text-zinc-300 font-bold">Deu TIME CAP?</span>
-                              </label>
-                            </div>
-
-                            {currentState.isCap ? (
-                              <div>
-                                <label className="text-[11px] text-zinc-400 block mb-1">
-                                  Quantas repetições FALTARAM para fechar a prova?
-                                </label>
-                                <input
-                                  type="number"
-                                  placeholder="Ex: 15 reps"
-                                  value={currentState.reps}
-                                  onChange={(e) => handleUpdateDeskField(regId, 'reps', e.target.value)}
-                                  className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white font-bold text-xs"
-                                />
-                              </div>
-                            ) : (
-                              <div>
-                                <label className="text-[11px] text-zinc-400 block mb-1">
-                                  Tempo de Conclusão (mm:ss):
-                                </label>
-                                <input
-                                  type="text"
-                                  placeholder="08:45"
-                                  value={currentState.time}
-                                  onChange={(e) => handleUpdateDeskField(regId, 'time', e.target.value)}
-                                  className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white font-bold text-xs"
-                                />
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* BOTÃO DE HOMOLOGAÇÃO COM VALIDAÇÃO DE FOTO */}
-                        <div className="pt-2">
-                          {currentPhoto ? (
-                            <button
-                              onClick={() => handleHomologateScore(team, Number(item.laneNumber), Number(item.heatNumber))}
-                              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-transform active:scale-95"
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                              <span>{isHomologated ? 'ATUALIZAR HOMOLOGAÇÃO & PLACAR' : 'HOMOLOGAR SÚMULA & ATUALIZAR PLACAR'}</span>
-                            </button>
-                          ) : (
-                            <div className="w-full p-2.5 rounded-xl bg-zinc-800/80 border border-amber-500/40 text-amber-300 text-xs font-bold text-center flex items-center justify-center gap-2 cursor-not-allowed">
-                              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                              <span>Anexe a foto da súmula física para liberar a homologação</span>
-                            </div>
-                          )}
-                        </div>
-
-                      </div>
-
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-        </div>
-      )}
-
-      {/* ────────────────────────────────────────────────────────────────────────── */}
-      {/* MODAL DE ZOOM DE FOTO DA SÚMULA (LIGHTBOX EM TELA CHEIA) */}
-      {/* ────────────────────────────────────────────────────────────────────────── */}
-      {zoomPhotoUrl && (
-        <div 
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in"
-          onClick={() => setZoomPhotoUrl(null)}
-        >
-          <div 
-            className="relative max-w-4xl max-h-[90vh] w-full bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-bold text-white">
-                <Camera className="w-4 h-4 text-amber-400" />
-                <span>Auditoria Visual de Súmula Física Assinada</span>
-              </div>
-              <button
-                onClick={() => setZoomPhotoUrl(null)}
-                className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 overflow-auto flex items-center justify-center bg-black/40 min-h-[400px]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={zoomPhotoUrl}
-                alt="Súmula Ampliada"
-                className="max-h-[75vh] w-auto object-contain rounded-lg shadow-2xl"
-              />
-            </div>
-
-            <div className="p-3 bg-zinc-900 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-400">
-              <span>Verifique a assinatura dos atletas e do juiz antes de homologar.</span>
-              <button
-                onClick={() => setZoomPhotoUrl(null)}
-                className="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs"
-              >
-                Fechar Visualização
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       </div>
     </AclGuard>

@@ -5,6 +5,7 @@ import { AuthUser } from '../../common/types/auth-user';
 import { PrismaService } from '../../prisma/prisma.service';
 import { computeBoard } from './engine';
 import { Board, EngineInput } from './types';
+import { ACTIVE_ONLY } from '../../common/prisma-filters/active';
 
 // Status de súmula que ficam fora do placar: rascunho não é súmula enviada.
 // Os demais (inclusive provisórios) entram, e 'voided' entra marcado como anulado.
@@ -150,7 +151,7 @@ export class BoardService {
         orderBy: { code: 'asc' },
       }),
       db.workout.findMany({
-        where: { game: code },
+        where: { game: code, ...ACTIVE_ONLY },
         select: { code: true, category: true, title: true, type: true, timeCap: true },
         orderBy: { code: 'asc' },
       }),

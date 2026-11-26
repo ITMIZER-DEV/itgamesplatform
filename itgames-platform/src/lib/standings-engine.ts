@@ -24,6 +24,48 @@ export interface CategoryStandingResult {
   updatedScores: ScoreEntry[];
 }
 
+// Resultado de AMRAP/Death By: os rounds vêm escritos no texto do resultado, em qualquer formato da arena:
+// "5R (12:19 | R1 02:55 ...)" (Mesa do Head Judge), "5 Rounds (11:58)", "3 Rds + 12 reps" (App do Juiz).
+// O campo reps guarda só as reps extras. Mesma leitura do motor da API (scoring/engine.ts).
+const ROUNDS_RE = /(\d+)\s*(?:rounds?|rds?|r)\b/i;
+const EXTRA_REPS_RE = /\+\s*(\d+)\s*reps?\b/i;
+const PAREN_TIME_RE = /\(\s*(\d{1,2}:\d{2}(?:\.\d+)?)/;
+
+/** Carga gravada como texto ("147.5", "87.5kg", "92,5 kg") → kg; vazio ou inválido vira undefined. */
+export function parseKg(value: unknown): number | undefined {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  const n = parseFloat(String(value ?? '').replace(',', '.').replace(/[^\d.]/g, ''));
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function toSeconds(v?: string | null): number {
+  const parts = String(v || '').trim().split(':').map((p) => parseFloat(p) || 0);
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return 0;
+}
+
+export function readRoundsResult(score: ScoreEntry): { rounds: number; reps: number; tieBreakSeconds: number } {
+  const text = String(score.timeFormatted || '');
+  const raw = score as ScoreEntry & { tieBreakTime?: string };
+  let rounds = score.roundsCount ?? 0;
+  if (!rounds) {
+    const m = text.match(ROUNDS_RE);
+    if (m) rounds = parseInt(m[1], 10) || 0;
+  }
+  let reps = score.repsCount ?? 0;
+  if (!reps && rounds > 0) {
+    const extra = text.match(EXTRA_REPS_RE);
+    if (extra) reps = parseInt(extra[1], 10) || 0;
+  }
+  let tieBreakSeconds = score.tieBreakSeconds || toSeconds(score.tieBreakTimeFormatted) || toSeconds(raw.tieBreakTime);
+  if (!tieBreakSeconds) {
+    const paren = text.match(PAREN_TIME_RE);
+    if (paren) tieBreakSeconds = toSeconds(paren[1]);
+  }
+  return { rounds, reps, tieBreakSeconds };
+}
+
 function getWorkoutKind(workout: WorkoutRule): 'max_load' | 'amrap' | 'for_time' {
   const titleLower = (workout.title || '').toLowerCase();
   if (
@@ -77,9 +119,8 @@ export function computeWorkoutRanking(
   pointsTable: number[] = DEFAULT_POINTS_TABLE,
 ): { rows: WorkoutRankRow[]; updatedScores: ScoreEntry[] } {
   const kind = getWorkoutKind(workout);
-  const categoryTeams = teams.filter(
-    (t) => t.categoryId === workout.categoryId || t.paymentStatus !== 'cancelled',
-  );
+  // Inscrição cancelada não entra na classificação
+  const categoryTeams = teams.filter((t) => t.paymentStatus !== 'cancelled');
   const activeTeams = categoryTeams.filter((t) => t.categoryId === workout.categoryId || !workout.categoryId);
 
   const rawRows = activeTeams.map((team) => {
@@ -116,15 +157,16 @@ export function computeWorkoutRanking(
     }
 
     if (kind === 'amrap') {
-      const rounds = score.roundsCount ?? 0;
-      const reps = score.repsCount ?? 0;
+      const { rounds, reps, tieBreakSeconds } = readRoundsResult(score);
       const totalPerformance = rounds * 10000 + reps - penaltySec;
+      // Rounds → reps → menor tempo (soma dos rounds fechados); sem tempo anotado perde o desempate
+      const tieKey = tieBreakSeconds > 0 ? tieBreakSeconds : 99999;
       return {
         team,
         score,
         hasResult: true,
         isDisqualifiedOrWo: false,
-        sortKey: -totalPerformance,
+        sortKey: -totalPerformance * 100000 + tieKey,
         primaryMetric: rounds,
         secondaryMetric: reps,
         displayValue: formatScoreDisplay(score, kind),
@@ -246,7 +288,8 @@ export function computeCategoryStandings(
   scores: ScoreEntry[],
   pointsTable: number[] = DEFAULT_POINTS_TABLE,
 ): CategoryStandingResult {
-  const categoryTeams = teams.filter((t) => t.categoryId === category.id);
+  // Inscrição cancelada não entra no leaderboard
+  const categoryTeams = teams.filter((t) => t.categoryId === category.id && t.paymentStatus !== 'cancelled');
   const categoryWorkouts = sortWorkoutsNaturally(
     workouts.filter((w) => w.categoryId === category.id || w.categoryIds?.includes(category.id)),
   );

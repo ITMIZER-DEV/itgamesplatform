@@ -487,6 +487,18 @@ export const DEFAULT_SUMULA_TEMPLATES: SumulaTemplate[] = [
         <span style="font-size: 9px; color: #64748b;">(Soma dos tempos dos rounds fechados)</span>
       </div>
     </div>
+    <!-- TABELA RÁPIDA DE SOMAS FREQUENTES (APOIO RÁPIDO AO JUIZ) -->
+    <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; margin-top: 6px; font-size: 8.5px; color: #334155;">
+      <strong>📋 REFERÊNCIA RÁPIDA (BARRA 20KG + ANILHAS IGUAIS NOS 2 LADOS):</strong>
+      <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; text-align: center; margin-top: 2px; font-family: monospace;">
+        <span style="background: #fff; padding: 2px; border-radius: 2px; border: 1px solid #e2e8f0;">+2x(20kg) = <strong>60 kg</strong></span>
+        <span style="background: #fff; padding: 2px; border-radius: 2px; border: 1px solid #e2e8f0;">+2x(15kg) = <strong>50 kg</strong></span>
+        <span style="background: #fff; padding: 2px; border-radius: 2px; border: 1px solid #e2e8f0;">+2x(10kg) = <strong>40 kg</strong></span>
+        <span style="background: #fff; padding: 2px; border-radius: 2px; border: 1px solid #e2e8f0;">+2x(5kg) = <strong>30 kg</strong></span>
+        <span style="background: #fff; padding: 2px; border-radius: 2px; border: 1px solid #e2e8f0;">+2x(2kg) = <strong>24 kg</strong></span>
+        <span style="background: #fff; padding: 2px; border-radius: 2px; border: 1px solid #e2e8f0;">+2x(1kg) = <strong>22 kg</strong></span>
+      </div>
+    </div>
   </div>
 
   <!-- ASSINATURAS E VALIDAÇÃO -->
@@ -578,7 +590,7 @@ export const DEFAULT_SUMULA_TEMPLATES: SumulaTemplate[] = [
           <td style="padding: 6px; text-align: left; font-weight: bold;">30 CAL AIR BIKE</td>
           <td style="padding: 6px; font-weight: bold;">30</td>
           <td style="padding: 6px; font-weight: bold; font-family: monospace;">80 REPS</td>
-          <td style="padding: 6px; font-size: 9px; color: #666;">[ &nbsp; ] OK &nbsp; (Tie: ___:___)</td>
+          <td style="padding: 6px; font-size: 9px; color: #666;">[ &nbsp; ] OK</td>
         </tr>
         <tr>
           <td style="padding: 6px; font-weight: bold; background: #fff;">3</td>
@@ -648,6 +660,18 @@ export const DEFAULT_SUMULA_TEMPLATES: SumulaTemplate[] = [
         <span style="font-family: monospace; font-size: 12px; font-weight: bold; border-bottom: 1.5px solid #000; width: 90px; text-align: center;">____ : ____</span>
       </div>
     </div>
+    <!-- TABELA RÁPIDA DE SOMAS FREQUENTES (APOIO RÁPIDO AO JUIZ) -->
+    <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; margin-top: 6px; font-size: 8.5px; color: #334155;">
+      <strong>📋 REFERÊNCIA RÁPIDA (BARRA 20KG + ANILHAS IGUAIS NOS 2 LADOS):</strong>
+      <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; text-align: center; margin-top: 2px; font-family: monospace;">
+        <span style="background: #fff; padding: 2px; border-radius: 2px; border: 1px solid #e2e8f0;">+2x(20kg) = <strong>60 kg</strong></span>
+        <span style="background: #fff; padding: 2px; border-radius: 2px; border: 1px solid #e2e8f0;">+2x(15kg) = <strong>50 kg</strong></span>
+        <span style="background: #fff; padding: 2px; border-radius: 2px; border: 1px solid #e2e8f0;">+2x(10kg) = <strong>40 kg</strong></span>
+        <span style="background: #fff; padding: 2px; border-radius: 2px; border: 1px solid #e2e8f0;">+2x(5kg) = <strong>30 kg</strong></span>
+        <span style="background: #fff; padding: 2px; border-radius: 2px; border: 1px solid #e2e8f0;">+2x(2kg) = <strong>24 kg</strong></span>
+        <span style="background: #fff; padding: 2px; border-radius: 2px; border: 1px solid #e2e8f0;">+2x(1kg) = <strong>22 kg</strong></span>
+      </div>
+    </div>
   </div>
 
   <!-- ASSINATURAS E VALIDAÇÃO -->
@@ -670,190 +694,94 @@ export const DEFAULT_SUMULA_TEMPLATES: SumulaTemplate[] = [
   },
   {
     id: 'crossfit-wod3-maximum-lift',
-    name: 'CrossFit - WOD 3: MAXIMUM LIFT (1 Hang Clean n\' Jerk - Escada de Carga)',
+    name: 'WOD 3 • Maximum Lift: anilhas por atleta (1 Hang Clean n\' Jerk em Dupla A4)',
     type: 'crossfit',
     workoutType: 'max_load',
     isDefault: true,
     createdAt: new Date().toISOString(),
     htmlContent: `
-<div class="sumula-card" style="font-family: Arial, sans-serif; max-width: 190mm; margin: 0 auto; border: 2px solid #000; padding: 10px 12px; background: #fff; color: #000; font-size: 11px;">
-  <!-- CABEÇALHO -->
-  <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 8px;">
-    <div style="display: flex; align-items: center; gap: 10px;">
-      <img src="/brand/logo-itgames-black.png" alt="ITGAMES" style="height: 28px; width: auto; object-fit: contain;" />
-      <div>
-        <h1 style="font-size: 15px; font-weight: 900; margin: 0; text-transform: uppercase;">#GAMENAME#</h1>
-        <p style="font-size: 10px; margin: 1px 0 0 0; color: #333; font-weight: bold;">SÚMULA OFICIAL DE PROVA | #CATEGORYNAME#</p>
-      </div>
+<div class="sumula-card" style="font-family: Arial, Helvetica, sans-serif; width: 100%; max-width: 194mm; margin: 0 auto; padding: 14px 16px; background: #ffffff; color: #111827; font-size: 12px; line-height: 1.4; box-sizing: border-box;">
+
+  <!-- CABEÇALHO PADRÃO -->
+  <div style="display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #111827; padding-bottom: 10px; margin-bottom: 10px;">
+    <img src="#GAMELOGO#" alt="Logo do campeonato" style="height: 56px; max-width: 160px; object-fit: contain; display: block;" />
+    <div style="flex: 1; min-width: 0;">
+      <div style="font-size: 9px; font-weight: 700; letter-spacing: 1px; color: #6b7280; text-transform: uppercase;">#GAMENAME# · Súmula oficial de prova</div>
+      <div style="font-size: 19px; font-weight: 900; text-transform: uppercase; margin-top: 1px;">WOD 3: Maximum Lift</div>
+      <div style="font-size: 10px; color: #4b5563;">1 Hang Clean n' Jerk · Carga máxima válida da dupla em kg · até 6 tentativas por atleta</div>
     </div>
-    <div style="text-align: right; background: #000; color: #fff; padding: 3px 8px; border-radius: 4px;">
-      <span style="font-size: 13px; font-weight: 900;">INSCRIÇÃO: #REGISTERNUMBER#</span>
+    <div style="text-align: right; flex-shrink: 0;">
+      <div style="display: inline-block; border: 1.5px solid #111827; border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 800; text-transform: uppercase; white-space: nowrap;">#CATEGORYNAME#</div>
+      <div style="margin-top: 4px; font-size: 10px; color: #6b7280;">Inscrição <strong style="color: #111827; font-size: 14px;">#REGISTERNUMBER#</strong></div>
     </div>
   </div>
 
-  <!-- DADOS DA BATERIA, RAIA E EQUIPE -->
-  <div style="display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 6px; background: #f4f4f5; padding: 6px 8px; border-radius: 4px; margin-bottom: 8px; border: 1px solid #d4d4d8; font-size: 10.5px;">
-    <div><strong>BATERIA:</strong> <span style="font-size: 13px; font-weight: 900; color: #d97706;">#HEAT_NUMBER#</span></div>
-    <div><strong>RAIA:</strong> <span style="font-size: 13px; font-weight: 900; color: #2563eb;">#LANE_NUMBER#</span></div>
-    <div><strong>EQUIPE:</strong> <strong style="font-size: 12px;">#TEAMNAME#</strong></div>
-  </div>
-  <div style="background: #fafafa; border: 1px solid #e4e4e7; padding: 4px 8px; border-radius: 4px; margin-bottom: 8px; font-size: 10px; color: #444;">
-    <strong>Integrantes:</strong> #ATHLETES_LIST# &nbsp;|&nbsp; <strong>Box:</strong> #BOX_AFFILIATE# &nbsp;|&nbsp; <strong>Horário Bateria:</strong> #HEAT_TIME#
-  </div>
-
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- BLOCO WOD 3: MAXIMUM LIFT -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <div style="border: 2px solid #b91c1c; border-radius: 4px; padding: 8px; margin-bottom: 8px; background: #fffcfc;">
-    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #b91c1c; padding-bottom: 4px; margin-bottom: 6px;">
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span style="background: #b91c1c; color: #fff; font-weight: 900; font-size: 12px; padding: 2px 8px; border-radius: 3px;">WOD 3</span>
-        <strong style="font-size: 13px; text-transform: uppercase; color: #7f1d1d;">MAXIMUM LIFT — 1 HANG CLEAN N' JERK</strong>
-      </div>
-      <div style="background: #fee2e2; border: 1px solid #f87171; color: #991b1b; padding: 2px 8px; border-radius: 4px; font-weight: 900; font-size: 11px;">
-        🏋️ ESCADA DE CARGA EM DUPLA • MAIOR CARGA VENCE (KG)
-      </div>
+  <!-- BATERIA / RAIA / HORÁRIO / EQUIPE -->
+  <div style="border: 1px solid #d1d5db; border-radius: 4px; padding: 8px 12px; margin-bottom: 10px;">
+    <div style="display: grid; grid-template-columns: 0.8fr 0.8fr 1fr 2.6fr; gap: 8px; align-items: baseline;">
+      <div><span style="color: #6b7280;">Bateria</span> <strong style="font-size: 15px;">#HEAT_NUMBER#</strong></div>
+      <div><span style="color: #6b7280;">Raia</span> <strong style="font-size: 15px;">#LANE_NUMBER#</strong></div>
+      <div><span style="color: #6b7280;">Horário</span> <strong style="font-size: 15px;">#HEAT_TIME#</strong></div>
+      <div><span style="color: #6b7280;">Equipe</span> <strong style="font-size: 13px;">#TEAMNAME#</strong></div>
     </div>
-
-    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 4px 8px; margin-bottom: 8px; font-size: 10px; color: #334155;">
-      <strong>PADRÃO DO MOVIMENTO:</strong> A barra sai suspensa acima dos joelhos (Hang). Clean válido com recepção em Power ou Squat. Finalização com Jerk (Push Jerk ou Split) com bloqueio completo de joelhos, quadris e cotovelos alinhados com a barra sobre a cabeça. Aguardar sinal de "DOWN" do árbitro.
+    <div style="border-top: 1px solid #e5e7eb; margin-top: 5px; padding-top: 4px; font-size: 10px; color: #374151;">
+      <strong>Integrantes:</strong> #ATHLETES_LIST# &nbsp;·&nbsp; <strong>Box:</strong> #BOX_AFFILIATE#
     </div>
-
-    <!-- TABELA DAS 10 TENTATIVAS DA ESCADA DE CARGA -->
-    <table style="width: 100%; border-collapse: collapse; font-size: 9.5px; text-align: center; margin-bottom: 6px;" border="1">
-      <thead>
-        <tr style="background: #fecaca; font-weight: bold; color: #7f1d1d;">
-          <th style="padding: 3px; width: 50px;">TENT.</th>
-          <th style="padding: 3px; width: 100px;">ATLETA A (KG)</th>
-          <th style="padding: 3px; width: 100px;">ATLETA B (KG)</th>
-          <th style="padding: 3px; width: 120px; background: #fee2e2; color: #991b1b;">TOTAL DUPLA (KG)</th>
-          <th style="padding: 3px; width: 120px;">VALIDAÇÃO JUIZ</th>
-          <th style="padding: 3px;">CRONÔMETRO / TIE</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td style="padding: 2.5px; font-weight: bold; background: #fff;">1ª</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-weight: 900; font-family: monospace; background: #fff5f5;">_______ kg</td>
-          <td style="padding: 2.5px;">[ &nbsp; ] BOM &nbsp; [ &nbsp; ] NO-REP</td>
-          <td style="padding: 2.5px; font-family: monospace;">___ : ___</td>
-        </tr>
-        <tr style="background: #fafafa;">
-          <td style="padding: 2.5px; font-weight: bold;">2ª</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-weight: 900; font-family: monospace; background: #fff5f5;">_______ kg</td>
-          <td style="padding: 2.5px;">[ &nbsp; ] BOM &nbsp; [ &nbsp; ] NO-REP</td>
-          <td style="padding: 2.5px; font-family: monospace;">___ : ___</td>
-        </tr>
-        <tr>
-          <td style="padding: 2.5px; font-weight: bold; background: #fff;">3ª</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-weight: 900; font-family: monospace; background: #fff5f5;">_______ kg</td>
-          <td style="padding: 2.5px;">[ &nbsp; ] BOM &nbsp; [ &nbsp; ] NO-REP</td>
-          <td style="padding: 2.5px; font-family: monospace;">___ : ___</td>
-        </tr>
-        <tr style="background: #fafafa;">
-          <td style="padding: 2.5px; font-weight: bold;">4ª</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-weight: 900; font-family: monospace; background: #fff5f5;">_______ kg</td>
-          <td style="padding: 2.5px;">[ &nbsp; ] BOM &nbsp; [ &nbsp; ] NO-REP</td>
-          <td style="padding: 2.5px; font-family: monospace;">___ : ___</td>
-        </tr>
-        <tr>
-          <td style="padding: 2.5px; font-weight: bold; background: #fff;">5ª</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-weight: 900; font-family: monospace; background: #fff5f5;">_______ kg</td>
-          <td style="padding: 2.5px;">[ &nbsp; ] BOM &nbsp; [ &nbsp; ] NO-REP</td>
-          <td style="padding: 2.5px; font-family: monospace;">___ : ___</td>
-        </tr>
-        <tr style="background: #fafafa;">
-          <td style="padding: 2.5px; font-weight: bold;">6ª</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-weight: 900; font-family: monospace; background: #fff5f5;">_______ kg</td>
-          <td style="padding: 2.5px;">[ &nbsp; ] BOM &nbsp; [ &nbsp; ] NO-REP</td>
-          <td style="padding: 2.5px; font-family: monospace;">___ : ___</td>
-        </tr>
-        <tr>
-          <td style="padding: 2.5px; font-weight: bold; background: #fff;">7ª</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-weight: 900; font-family: monospace; background: #fff5f5;">_______ kg</td>
-          <td style="padding: 2.5px;">[ &nbsp; ] BOM &nbsp; [ &nbsp; ] NO-REP</td>
-          <td style="padding: 2.5px; font-family: monospace;">___ : ___</td>
-        </tr>
-        <tr style="background: #fafafa;">
-          <td style="padding: 2.5px; font-weight: bold;">8ª</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-weight: 900; font-family: monospace; background: #fff5f5;">_______ kg</td>
-          <td style="padding: 2.5px;">[ &nbsp; ] BOM &nbsp; [ &nbsp; ] NO-REP</td>
-          <td style="padding: 2.5px; font-family: monospace;">___ : ___</td>
-        </tr>
-        <tr>
-          <td style="padding: 2.5px; font-weight: bold; background: #fff;">9ª</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-weight: 900; font-family: monospace; background: #fff5f5;">_______ kg</td>
-          <td style="padding: 2.5px;">[ &nbsp; ] BOM &nbsp; [ &nbsp; ] NO-REP</td>
-          <td style="padding: 2.5px; font-family: monospace;">___ : ___</td>
-        </tr>
-        <tr style="background: #fafafa;">
-          <td style="padding: 2.5px; font-weight: bold;">10ª</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-family: monospace;">______ kg</td>
-          <td style="padding: 2.5px; font-weight: 900; font-family: monospace; background: #fff5f5;">_______ kg</td>
-          <td style="padding: 2.5px;">[ &nbsp; ] BOM &nbsp; [ &nbsp; ] NO-REP</td>
-          <td style="padding: 2.5px; font-family: monospace;">___ : ___</td>
-        </tr>
-      </tbody>
+  </div>
+  <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; border: 1px solid #d1d5db; border-radius: 4px; padding: 5px 10px; font-size: 10px;">
+    <div><strong>Barra base:</strong> &nbsp; [#BAR_MASC_MARK#] Masc 20 kg &nbsp; [#BAR_FEM_MARK#] Fem 15 kg</div>
+    <div style="white-space: nowrap; color: #374151;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #2563eb; vertical-align: 0px; margin-right: 2px;"></span>20k &nbsp; <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #eab308; vertical-align: 0px; margin-right: 2px;"></span>15k &nbsp; <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #111827; vertical-align: 0px; margin-right: 2px;"></span>10k &nbsp; <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #6b7280; vertical-align: 0px; margin-right: 2px;"></span>5k &nbsp; <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #9ca3af; vertical-align: 0px; margin-right: 2px;"></span>2k &nbsp; <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #d1d5db; vertical-align: 0px; margin-right: 2px;"></span>1k</div>
+  </div>
+  <div style="font-size: 9px; color: #6b7280; margin-top: 3px;">Anote em cada coluna a quantidade de anilhas daquele peso na barra (ex.: duas de 20k + quatro de 10k + barra 20 kg = 100 kg).</div>
+  
+  <div style="margin-top: 7px;">
+    <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 2px;">
+      <strong>ATLETA 1: #ATHLETE_1_NAME#</strong>
+      <span style="color: #374151;">Barra base: <strong>#ATHLETE_1_BAR#</strong></span>
+    </div>
+    <table style="width: 100%; border-collapse: collapse; font-size: 11px; border: 1px solid #d1d5db;">
+      <thead><tr style="background: #f3f4f6; font-size: 10px; color: #374151;"><th style="padding: 3px; text-align: center;">Tent.</th><th style="padding: 3px; text-align: center;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #2563eb; vertical-align: 0px; margin-right: 2px;"></span>20k</th><th style="padding: 3px; text-align: center;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #eab308; vertical-align: 0px; margin-right: 2px;"></span>15k</th><th style="padding: 3px; text-align: center;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #111827; vertical-align: 0px; margin-right: 2px;"></span>10k</th><th style="padding: 3px; text-align: center;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #6b7280; vertical-align: 0px; margin-right: 2px;"></span>5k</th><th style="padding: 3px; text-align: center;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #9ca3af; vertical-align: 0px; margin-right: 2px;"></span>2k</th><th style="padding: 3px; text-align: center;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #d1d5db; vertical-align: 0px; margin-right: 2px;"></span>1k</th><th style="padding: 3px; text-align: center;">Carga total</th><th style="padding: 3px; text-align: center;">Válida?</th></tr></thead>
+      <tbody><tr style=""><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><strong>1ª</strong></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; min-width: 36px; border-bottom: 1px solid #111827;">&nbsp;</span> kg</td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>OK &nbsp;<span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>NO</td></tr><tr style=" background: #fafafa;"><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><strong>2ª</strong></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; min-width: 36px; border-bottom: 1px solid #111827;">&nbsp;</span> kg</td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>OK &nbsp;<span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>NO</td></tr><tr style=""><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><strong>3ª</strong></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; min-width: 36px; border-bottom: 1px solid #111827;">&nbsp;</span> kg</td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>OK &nbsp;<span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>NO</td></tr><tr style=" background: #fafafa;"><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><strong>4ª</strong></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; min-width: 36px; border-bottom: 1px solid #111827;">&nbsp;</span> kg</td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>OK &nbsp;<span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>NO</td></tr><tr style=""><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><strong>5ª</strong></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; min-width: 36px; border-bottom: 1px solid #111827;">&nbsp;</span> kg</td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>OK &nbsp;<span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>NO</td></tr><tr style=" background: #fafafa;"><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><strong>6ª</strong></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; min-width: 36px; border-bottom: 1px solid #111827;">&nbsp;</span> kg</td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>OK &nbsp;<span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>NO</td></tr></tbody>
     </table>
-
-    <!-- APURAÇÃO E CARGA MÁXIMA HOMOLOGADA -->
-    <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 4px; padding: 8px;">
-      <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px; align-items: center;">
-        <div style="border: 2px solid #b91c1c; background: #fef2f2; border-radius: 4px; padding: 8px; text-align: center;">
-          <span style="font-size: 11px; font-weight: 900; color: #991b1b; text-transform: uppercase;">
-            🏆 MAIOR CARGA TOTAL VÁLIDA DA DUPLA (ATLETA A + B):
-          </span>
-          <div style="font-size: 26px; font-weight: 900; font-family: monospace; color: #000; border-bottom: 2px solid #b91c1c; padding: 2px 0; margin-top: 2px;">
-            ________ KG
-          </div>
-          <span style="font-size: 9px; color: #7f1d1d;">(Soma das maiores cargas válidas ou maior peso levantado com sucesso)</span>
-        </div>
-
-        <div style="border: 1px solid #cbd5e1; background: #fff; border-radius: 4px; padding: 8px; text-align: center;">
-          <span style="font-size: 10px; font-weight: bold; color: #475569; text-transform: uppercase;">
-            ⏱️ TIE-BREAK (DESEMPATE):
-          </span>
-          <div style="font-size: 18px; font-weight: 900; font-family: monospace; color: #000; border-bottom: 1.5px solid #000; padding: 2px 0; margin-top: 2px;">
-            ___ : ___ . ___
-          </div>
-          <span style="font-size: 8.5px; color: #64748b;">(Tempo em que a maior carga foi levantada)</span>
-        </div>
+    <div style="text-align: right; font-size: 10px; margin-top: 3px;"><strong>Maior carga válida do atleta 1:</strong> <span style="display: inline-block; min-width: 60px; border-bottom: 1px solid #111827;">&nbsp;</span> kg</div>
+  </div>
+  
+  <div style="margin-top: 7px;">
+    <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 2px;">
+      <strong>ATLETA 2: #ATHLETE_2_NAME#</strong>
+      <span style="color: #374151;">Barra base: <strong>#ATHLETE_2_BAR#</strong></span>
+    </div>
+    <table style="width: 100%; border-collapse: collapse; font-size: 11px; border: 1px solid #d1d5db;">
+      <thead><tr style="background: #f3f4f6; font-size: 10px; color: #374151;"><th style="padding: 3px; text-align: center;">Tent.</th><th style="padding: 3px; text-align: center;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #2563eb; vertical-align: 0px; margin-right: 2px;"></span>20k</th><th style="padding: 3px; text-align: center;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #eab308; vertical-align: 0px; margin-right: 2px;"></span>15k</th><th style="padding: 3px; text-align: center;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #111827; vertical-align: 0px; margin-right: 2px;"></span>10k</th><th style="padding: 3px; text-align: center;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #6b7280; vertical-align: 0px; margin-right: 2px;"></span>5k</th><th style="padding: 3px; text-align: center;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #9ca3af; vertical-align: 0px; margin-right: 2px;"></span>2k</th><th style="padding: 3px; text-align: center;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #d1d5db; vertical-align: 0px; margin-right: 2px;"></span>1k</th><th style="padding: 3px; text-align: center;">Carga total</th><th style="padding: 3px; text-align: center;">Válida?</th></tr></thead>
+      <tbody><tr style=""><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><strong>1ª</strong></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; min-width: 36px; border-bottom: 1px solid #111827;">&nbsp;</span> kg</td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>OK &nbsp;<span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>NO</td></tr><tr style=" background: #fafafa;"><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><strong>2ª</strong></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; min-width: 36px; border-bottom: 1px solid #111827;">&nbsp;</span> kg</td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>OK &nbsp;<span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>NO</td></tr><tr style=""><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><strong>3ª</strong></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; min-width: 36px; border-bottom: 1px solid #111827;">&nbsp;</span> kg</td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>OK &nbsp;<span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>NO</td></tr><tr style=" background: #fafafa;"><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><strong>4ª</strong></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; min-width: 36px; border-bottom: 1px solid #111827;">&nbsp;</span> kg</td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>OK &nbsp;<span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>NO</td></tr><tr style=""><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><strong>5ª</strong></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; min-width: 36px; border-bottom: 1px solid #111827;">&nbsp;</span> kg</td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>OK &nbsp;<span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>NO</td></tr><tr style=" background: #fafafa;"><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><strong>6ª</strong></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"></td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; min-width: 36px; border-bottom: 1px solid #111827;">&nbsp;</span> kg</td><td style="padding: 0 3px; height: 27px; border-top: 1px solid #e5e7eb; border-left: 1px solid #f1f5f9; text-align: center;"><span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>OK &nbsp;<span style="display: inline-block; width: 13px; height: 13px; border: 1.5px solid #111827; border-radius: 2px; vertical-align: -3px; margin-right: 6px;"></span>NO</td></tr></tbody>
+    </table>
+    <div style="text-align: right; font-size: 10px; margin-top: 3px;"><strong>Maior carga válida do atleta 2:</strong> <span style="display: inline-block; min-width: 60px; border-bottom: 1px solid #111827;">&nbsp;</span> kg</div>
+  </div>
+  <div style="display: flex; gap: 10px; align-items: stretch; margin-top: 10px;">
+    <div style="flex: 1; display: grid; grid-template-columns: 1.6fr 1fr; gap: 8px;">
+      <div style="border: 1.5px solid #111827; border-radius: 4px; padding: 10px 12px;">
+        <div style="font-size: 9px; color: #6b7280; text-transform: uppercase; font-weight: 700;">Score oficial · carga total da dupla (atleta 1 + atleta 2)</div>
+        <div style="margin-top: 6px; font-size: 14px; font-weight: 800;"><span style="display: inline-block; min-width: 110px; border-bottom: 1px solid #111827;">&nbsp;</span> kg</div>
       </div>
+      <div style="border: 1.5px solid #111827; border-radius: 4px; padding: 10px 12px;">
+        <div style="font-size: 9px; color: #6b7280; text-transform: uppercase; font-weight: 700;">Tie-break</div>
+        <div style="margin-top: 6px;"><span style="font-family: monospace; font-size: 16px; letter-spacing: 1px;">___ : ___ . ___</span></div>
+      </div>
+    </div>
+    <div style="text-align: center; flex-shrink: 0; width: 86px;">
+      <img src="#QRCODE#" alt="QR WOD 3" style="width: 74px; height: 74px; display: block; margin: 0 auto;" />
+      <div style="font-size: 8px; color: #6b7280; margin-top: 2px; text-transform: uppercase;">Lançar WOD 3</div>
     </div>
   </div>
-
-  <!-- ASSINATURAS E VALIDAÇÃO -->
-  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 10px; text-align: center; margin-top: 8px; padding-top: 6px; border-top: 1px solid #d4d4d8;">
+  <!-- ASSINATURAS -->
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 36px; font-size: 11px; text-align: center; margin-top: 40px;">
     <div>
-      <div style="border-top: 1.5px solid #000; margin-top: 20px; padding-top: 2px;">
-        <strong>ÁRBITRO OFICIAL DE RAIA (JUIZ)</strong><br/>
-        <span style="font-size: 9px; color: #555;">Nome legível e rubrica</span>
-      </div>
+      <div style="border-top: 1.5px solid #111827; padding-top: 2px; font-weight: bold;">JUIZ DE RAIA</div>
+      <span style="font-size: 9px; color: #6b7280;">Nome legível e rubrica</span>
     </div>
     <div>
-      <div style="border-top: 1.5px solid #000; margin-top: 20px; padding-top: 2px;">
-        <strong>CAPITÃO DA EQUIPE / ATLETA</strong><br/>
-        <span style="font-size: 9px; color: #555;">Concordo com as cargas e validações anotadas</span>
-      </div>
+      <div style="border-top: 1.5px solid #111827; padding-top: 2px; font-weight: bold;">CAPITÃO / ATLETA</div>
+      <span style="font-size: 9px; color: #6b7280;">Concordo com o resultado anotado</span>
     </div>
   </div>
 </div>

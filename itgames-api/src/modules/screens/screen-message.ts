@@ -33,6 +33,8 @@ export interface HeatCallSpotlight {
   heatNumber: number;
   totalHeats: number;
   startTime: string;
+  /** Arena da bateria (cronograma com arenas simultâneas). */
+  arena?: number;
   message?: string;
   lanes: HeatCallLane[];
   triggeredAt: string;

@@ -83,32 +83,34 @@ export function Navbar() {
     switch (session.role) {
       case 'SUPER_ADMIN':
         return [
-          { href: '/admin', label: '👑 Governança Global', shortLabel: 'Admin', icon: ShieldCheck, badge: 'Master' },
-          { href: '/head-judge', label: '⚖️ Mesa Head Judge', shortLabel: 'Head', icon: Gavel, badge: 'Oficial', highlight: true },
+          { href: '/admin', label: 'Administração', shortLabel: 'Admin', icon: ShieldCheck },
+          { href: '/head-judge', label: 'Head Judge', shortLabel: 'Head', icon: Gavel },
           { href: '/sumulas', label: 'Súmulas A4', shortLabel: 'Súmulas', icon: FileSpreadsheet },
+          { href: '/sumulas/pdf', label: 'PDFs das Súmulas', shortLabel: 'PDFs', icon: FileSpreadsheet },
           { href: '/heats', label: 'Baterias & Raias', shortLabel: 'Baterias', icon: Activity },
-          { href: '/judge', label: '⚖️ Juiz', shortLabel: 'Juiz', icon: Gavel },
+          { href: '/judge', label: 'Juiz', shortLabel: 'Juiz', icon: Gavel },
           { href: '/telas', label: 'Telões', shortLabel: 'Telões', icon: Tv },
-          { href: '/leaderboard', label: 'Leaderboard', shortLabel: 'Placar', icon: Trophy, badge: 'Live' },
+          { href: '/leaderboard', label: 'Leaderboard', shortLabel: 'Placar', icon: Trophy },
           { href: '/perfil', label: 'Meu Perfil', shortLabel: 'Perfil', icon: User },
         ];
 
       case 'ORGANIZER':
         return [
-          { href: '/admin', label: '🏢 Painel do Organizador', shortLabel: 'Painel', icon: LayoutDashboard, badge: 'Gestão' },
-          { href: '/head-judge', label: '⚖️ Mesa Head Judge', shortLabel: 'Head', icon: Gavel, badge: 'Oficial', highlight: true },
+          { href: '/admin', label: 'Painel', shortLabel: 'Painel', icon: LayoutDashboard },
+          { href: '/head-judge', label: 'Head Judge', shortLabel: 'Head', icon: Gavel },
           { href: '/sumulas', label: 'Súmulas A4', shortLabel: 'Súmulas', icon: FileSpreadsheet },
+          { href: '/sumulas/pdf', label: 'PDFs das Súmulas', shortLabel: 'PDFs', icon: FileSpreadsheet },
           { href: '/heats', label: 'Baterias & Raias', shortLabel: 'Baterias', icon: Activity },
           { href: '/telas', label: 'Telões', shortLabel: 'Telões', icon: Tv },
-          { href: '/leaderboard', label: 'Leaderboard', shortLabel: 'Placar', icon: Trophy, badge: 'Live' },
+          { href: '/leaderboard', label: 'Leaderboard', shortLabel: 'Placar', icon: Trophy },
           { href: '/athlete/register', label: 'Inscrever-me como competidor', shortLabel: 'Inscrição', icon: Sparkles },
           { href: '/perfil', label: 'Meu Perfil', shortLabel: 'Perfil', icon: User },
         ];
 
       case 'JUDGE':
         return [
-          { href: '/head-judge', label: '⚖️ Mesa Head Judge', shortLabel: 'Head', icon: Gavel, badge: 'Oficial', highlight: true },
-          { href: '/judge', label: '⚖️ App de Arbitragem', shortLabel: 'Juiz', icon: Gavel },
+          { href: '/head-judge', label: 'Head Judge', shortLabel: 'Head', icon: Gavel },
+          { href: '/judge', label: 'App de Arbitragem', shortLabel: 'Juiz', icon: Gavel },
           { href: '/heats', label: 'Baterias do Dia', shortLabel: 'Baterias', icon: Activity },
           { href: '/leaderboard', label: 'Leaderboard', shortLabel: 'Placar', icon: Trophy },
           { href: '/perfil', label: 'Meu Perfil', shortLabel: 'Perfil', icon: User },
@@ -116,17 +118,17 @@ export function Navbar() {
 
       case 'ATHLETE':
         return [
-          { href: '/athlete', label: '🏃 Meu Portal do Atleta', shortLabel: 'Portal', icon: UserCheck, badge: 'Competidor' },
-          { href: '/athlete/register', label: 'Nova Inscrição', shortLabel: 'Inscrever', icon: Sparkles, badge: 'Camisetas' },
-          { href: '/leaderboard', label: 'Leaderboard', shortLabel: 'Placar', icon: Trophy, badge: 'Live' },
+          { href: '/athlete', label: 'Meu Portal', shortLabel: 'Portal', icon: UserCheck },
+          { href: '/athlete/register', label: 'Nova Inscrição', shortLabel: 'Inscrever', icon: Sparkles },
+          { href: '/leaderboard', label: 'Leaderboard', shortLabel: 'Placar', icon: Trophy },
           { href: '/perfil', label: 'Meu Perfil', shortLabel: 'Perfil', icon: User },
         ];
 
       case 'GUEST':
       default:
         return [
-          { href: '/leaderboard', label: 'Leaderboard Oficial', shortLabel: 'Placar', icon: Trophy, badge: 'Live' },
-          { href: '/athlete/register', label: 'Inscrição na Competição', shortLabel: 'Inscrever', icon: Sparkles, badge: 'Camisetas' },
+          { href: '/leaderboard', label: 'Leaderboard Oficial', shortLabel: 'Placar', icon: Trophy },
+          { href: '/athlete/register', label: 'Inscrição na Competição', shortLabel: 'Inscrever', icon: Sparkles },
         ];
     }
   };

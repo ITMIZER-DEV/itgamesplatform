@@ -21,8 +21,13 @@ function getServerSnapshot(): Theme {
   return 'dark';
 }
 
+/** Tema atual ('dark' | 'light'), atualizado quando o usuário troca. */
+export function useTheme(): Theme {
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
 export function ThemeToggle({ floating = false }: { floating?: boolean }) {
-  const theme = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const theme = useTheme();
   const isLight = theme === 'light';
 
   const toggle = () => {
@@ -45,11 +50,12 @@ export function ThemeToggle({ floating = false }: { floating?: boolean }) {
       aria-label={label}
       aria-pressed={isLight}
       title={label}
-      className={`no-print p-2 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white transition-colors ${
+      className={`no-print inline-flex items-center gap-2 px-2.5 py-2 rounded-xl border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-semibold transition-colors ${
         floating ? 'fixed top-3 right-3 z-50' : ''
       }`}
     >
       {isLight ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+      <span className="hidden xl:inline">{isLight ? 'Escuro' : 'Claro'}</span>
     </button>
   );
 }

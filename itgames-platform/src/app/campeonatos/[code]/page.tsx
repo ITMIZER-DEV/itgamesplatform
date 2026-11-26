@@ -55,6 +55,7 @@ interface PublicHeat {
   id: string;
   heatNumber: number;
   startTime: string;
+  arena?: number | null;
   status: string;
   categoryId: number;
   slots: {
@@ -449,7 +450,7 @@ export default function PublicGamePage() {
                               Bateria #{h.heatNumber}
                             </span>
                             <span className="text-zinc-400 font-semibold text-[11px]">
-                              {h.startTime} • {HEAT_STATUS[h.status] || h.status}
+                              {h.startTime}{h.arena ? ` • Arena ${h.arena}` : ''} • {HEAT_STATUS[h.status] || h.status}
                             </span>
                           </div>
                           <ul className="divide-y divide-zinc-800 text-xs">

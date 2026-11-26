@@ -44,13 +44,13 @@ function byTeam(input: EngineInput) {
 }
 
 describe('computeBoard — pontos por posição (points_table)', () => {
-  it('calcula posições densas e pontos por WOD, com W.O. e sem score em último + 1', () => {
+  it('calcula posições (empate pula a seguinte) e pontos por WOD, com W.O. e sem score depois de todos os que pontuaram', () => {
     const t = byTeam(fixtureA());
-    expect([1, 2, 3, 4].map((c) => t(c).wods[0].rank)).toEqual([2, 1, 1, 3]);
-    expect([1, 2, 3, 4].map((c) => t(c).wods[0].points)).toEqual([95, 100, 100, 90]);
-    expect([1, 2, 3, 4].map((c) => t(c).wods[1].rank)).toEqual([1, 2, 2, 3]);
-    expect([1, 2, 3, 4].map((c) => t(c).wods[1].points)).toEqual([100, 95, 95, 90]);
-    expect([1, 2, 3, 4].map((c) => t(c).totalPoints)).toEqual([195, 195, 195, 180]);
+    expect([1, 2, 3, 4].map((c) => t(c).wods[0].rank)).toEqual([3, 1, 1, 4]);
+    expect([1, 2, 3, 4].map((c) => t(c).wods[0].points)).toEqual([90, 100, 100, 85]);
+    expect([1, 2, 3, 4].map((c) => t(c).wods[1].rank)).toEqual([1, 2, 2, 4]);
+    expect([1, 2, 3, 4].map((c) => t(c).wods[1].points)).toEqual([100, 95, 95, 85]);
+    expect([1, 2, 3, 4].map((c) => t(c).totalPoints)).toEqual([190, 195, 195, 170]);
   });
 
   it('exibe o resultado conforme o tipo do WOD e marca W.O.', () => {
@@ -59,19 +59,20 @@ describe('computeBoard — pontos por posição (points_table)', () => {
     expect(t(1).wods[1]).toMatchObject({ title: 'WOD 2', display: '150 kg', status: 'scored' });
     expect(t(4).wods[0]).toMatchObject({ display: 'W.O.', status: 'wo' });
     expect(t(4).wods[1].status).toBe('wo');
-    expect(t(1).totalDisplay).toBe('195');
+    expect(t(1).totalDisplay).toBe('190');
   });
 
   it('desempata pelo último WOD (last_workout)', () => {
     const rows = rowsOf(fixtureA());
-    expect(rows.map((r) => r.teamCode)).toEqual([1, 2, 3, 4]);
-    expect(rows.map((r) => r.rank)).toEqual([1, 2, 2, 3]);
+    // 2 e 3 empatam em pontos e no último WOD; 1 vem depois e a posição pula
+    expect(rows.map((r) => r.teamCode)).toEqual([2, 3, 1, 4]);
+    expect(rows.map((r) => r.rank)).toEqual([1, 1, 3, 4]);
   });
 
-  it('com most_wins, as três equipes com uma vitória empatam em 1º', () => {
+  it('com most_wins, 2 e 3 (mesmos pontos e uma vitória cada) empatam em 1º', () => {
     const rows = rowsOf(fixtureA({}, { tiebreak: 'most_wins' }));
-    expect(rows.map((r) => r.teamCode)).toEqual([1, 2, 3, 4]);
-    expect(rows.map((r) => r.rank)).toEqual([1, 1, 1, 2]);
+    expect(rows.map((r) => r.teamCode)).toEqual([2, 3, 1, 4]);
+    expect(rows.map((r) => r.rank)).toEqual([1, 1, 3, 4]);
   });
 
   it('preenche os metadados do placar', () => {
@@ -95,24 +96,21 @@ describe('computeBoard — soma de posições (rank_sum)', () => {
     const board = computeBoard(input, NOW);
     const rows = board.categories[0].rows;
     const t = (c: number) => rows.find((r) => r.teamCode === c)!;
-    expect([1, 2, 3, 4].map((c) => t(c).totalPoints)).toEqual([3, 3, 3, 6]);
-    expect(t(4).wods.map((w) => w.points)).toEqual([3, 3]);
-    expect(rows.map((r) => r.teamCode)).toEqual([1, 2, 3, 4]);
-    expect(rows.map((r) => r.rank)).toEqual([1, 2, 2, 3]);
+    expect([1, 2, 3, 4].map((c) => t(c).totalPoints)).toEqual([4, 3, 3, 8]);
+    expect(t(4).wods.map((w) => w.points)).toEqual([4, 4]);
+    expect(rows.map((r) => r.teamCode)).toEqual([2, 3, 1, 4]);
+    expect(rows.map((r) => r.rank)).toEqual([1, 1, 3, 4]);
     expect(board.game.totalUnit).toBe('SOMA');
     expect(board.game.rule.mode).toBe('rank_sum');
   });
 });
 
 describe('computeBoard — equipe cancelada', () => {
-  it('continua na lista marcada como CANCELADA e fica em último + 1', () => {
+  it('inscrição cancelada não entra no leaderboard nem recebe pontos', () => {
     const input = fixtureA({ teams: [team(1), team(2), team(3, 'cancelled'), team(4)] });
     const t = byTeam(input);
-    expect(rowsOf(input)).toHaveLength(4);
-    expect(t(3).status).toBe('cancelled');
-    expect(t(3).wods.map((w) => w.status)).toEqual(['cancelled', 'cancelled']);
-    expect(t(3).wods.map((w) => w.display)).toEqual(['CANCELADA', 'CANCELADA']);
-    expect(t(3).wods.map((w) => w.rank)).toEqual([3, 3]);
+    expect(rowsOf(input).map((r) => r.teamCode)).toEqual(expect.not.arrayContaining([3]));
+    expect(rowsOf(input)).toHaveLength(3);
     expect(t(1).wods.map((w) => w.rank)).toEqual([2, 1]);
     expect(t(2).wods.map((w) => w.rank)).toEqual([1, 2]);
     expect(t(4).wods.map((w) => w.rank)).toEqual([3, 3]);
@@ -142,7 +140,7 @@ describe('computeBoard — casos de borda', () => {
       expect(r.wods[0]).toMatchObject({ status: 'none', display: 'Sem Score', points: 0 });
     }
     const t = (c: number) => rows.find((r) => r.teamCode === c)!;
-    expect([1, 2, 3, 4].map((c) => t(c).totalPoints)).toEqual([100, 95, 95, 90]);
+    expect([1, 2, 3, 4].map((c) => t(c).totalPoints)).toEqual([100, 95, 95, 85]);
   });
 
   it('WOD sem nenhum score fica fora do total', () => {
@@ -153,7 +151,7 @@ describe('computeBoard — casos de borda', () => {
       expect(r.wods[1]).toMatchObject({ status: 'none', display: 'Sem Score', points: 0 });
     }
     const t = (c: number) => rows.find((r) => r.teamCode === c)!;
-    expect([1, 2, 3, 4].map((c) => t(c).totalPoints)).toEqual([95, 100, 100, 90]);
+    expect([1, 2, 3, 4].map((c) => t(c).totalPoints)).toEqual([90, 100, 100, 85]);
   });
 
   it('duas equipes idênticas em tudo têm a mesma posição e ficam em ordem de código', () => {
@@ -176,7 +174,7 @@ describe('computeBoard — casos de borda', () => {
     const rows = rowsOf(fixtureA({ onlyWorkouts: new Set([10]) }));
     const t = (c: number) => rows.find((r) => r.teamCode === c)!;
     expect(t(1).wods[1]).toMatchObject({ status: 'none', display: 'Sem Score', points: 0 });
-    expect([1, 2, 3, 4].map((c) => t(c).totalPoints)).toEqual([95, 100, 100, 90]);
+    expect([1, 2, 3, 4].map((c) => t(c).totalPoints)).toEqual([90, 100, 100, 85]);
   });
 
 });
@@ -199,11 +197,11 @@ function fixtureB(tiebreak?: string, withSplits: 'ambos' | 'so_t6' = 'ambos'): E
 }
 
 describe('computeBoard — total_time (HYROX)', () => {
-  it('ordena por tempo total e manda W.O., sem score e canceladas para o fim', () => {
+  it('ordena por tempo total, manda W.O. e sem score para o fim e deixa canceladas de fora', () => {
     const board = computeBoard(fixtureB('split:Wall Balls'), NOW);
     const rows = board.categories[0].rows;
-    expect(rows.map((r) => r.teamCode)).toEqual([6, 2, 1, 3, 4, 5]);
-    expect(rows.map((r) => r.totalDisplay)).toEqual(['60:10', '60:10', '60:30', '—', '—', '—']);
+    expect(rows.map((r) => r.teamCode)).toEqual([6, 2, 1, 3, 4]);
+    expect(rows.map((r) => r.totalDisplay)).toEqual(['60:10', '60:10', '60:30', '—', '—']);
     expect(board.game.rule.mode).toBe('total_time');
     expect(board.game.totalUnit).toBe('TEMPO');
   });
@@ -213,7 +211,7 @@ describe('computeBoard — total_time (HYROX)', () => {
     const t = (c: number) => rows.find((r) => r.teamCode === c)!;
     expect(t(2).rank).toBe(t(6).rank);
     expect(rows.map((r) => r.teamCode).slice(0, 2)).toEqual([2, 6]);
-    expect(t(1).rank).toBe(t(2).rank + 1);
+    expect(t(1).rank).toBe(t(2).rank + 2);
   });
 
   it('parcial inexistente empata', () => {
@@ -268,7 +266,7 @@ describe.each(['points_table', 'rank_sum', 'total_time'])('computeBoard — dese
   it('most_wins: mais vitórias vence; empate de vitórias mantém a mesma posição', () => {
     const input = fixtureC(mode, 'most_wins');
     expect(order(input)).toEqual([1, 3, 2]);
-    expect(ranks(input)).toEqual([1, 1, 2]);
+    expect(ranks(input)).toEqual([1, 1, 3]);
   });
 
   it('split:<nome>: menor soma de parciais vence', () => {

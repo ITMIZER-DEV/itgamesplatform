@@ -4,6 +4,8 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
+  // Só afeta o `next dev`: libera abrir o front de desenvolvimento pela Tailscale (celular, tablet do juiz).
+  allowedDevOrigins: ["100.114.54.84"],
   async rewrites() {
     const apiTarget = process.env.API_INTERNAL_URL || "http://api:3333";
     return [

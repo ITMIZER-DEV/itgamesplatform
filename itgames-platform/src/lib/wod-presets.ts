@@ -14,6 +14,69 @@ export interface WodPreset {
 }
 
 export const OFFICIAL_WOD_PRESETS: WodPreset[] = [
+  // ─── WODS OFICIAIS SUMMER GAMES INTERBOX 2026 ─────────────────
+  {
+    id: 'preset_summer_wod1',
+    name: 'Summer Games • WOD 1 Combo (Remo 1-A & Death By 1-B)',
+    eventType: 'crossfit',
+    type: 'for_time',
+    defaultTitle: 'WOD 1 • Combo 1-A (Remo) & 1-B (Death By)',
+    defaultTimeCapMinutes: 21,
+    description: 'BLOCO A (00:00 - 05:00): Remo em Dupla (1000m Iniciante/Scaled, 1200m Amador). Menor tempo (se CAP, soma metros faltantes).\n\nREST (05:00 - 06:00): 1 minuto de transição.\n\nBLOCO B (06:00 - 21:00): Death By em 5 blocos de 3 minutos de Thruster + Pull-up/BMU. Maior número de rounds fechados.',
+    standards: [
+      'Remo: Atleta só abandona o remo após o monitor marcar a metragem oficial.',
+      'Thruster: Quebra de paralelo no agachamento e extensão completa com a barra sobre a cabeça.',
+      'Desempate: Menor soma dos tempos dos rounds concluídos.'
+    ],
+    suggestedSumulaTemplateId: 'crossfit-wod1-combo-row-deathby'
+  },
+  {
+    id: 'preset_summer_wod2',
+    name: 'Summer Games • WOD 2 (Sync & Burn)',
+    eventType: 'crossfit',
+    type: 'for_time',
+    defaultTitle: 'WOD 2 • SYNC & BURN',
+    defaultTimeCapMinutes: 10,
+    description: 'For Time (Time Cap: 10:00):\n• 50 Reps (Ab Sit Up / Knee Raises / T2B)\n• 30 Cal Air Bike\n• 30 Sync Burpees (Line / Step Over / BBJO)\n• 20 Sync Snatch (21kg / 40-29kg / 50-37kg)',
+    standards: [
+      'Sincronia obrigatória no Burpee (peito no chão simultâneo).',
+      'Sincronia no Snatch (ambos os atletas com a barra travada sobre a cabeça no topo).',
+      'Desempate: Menor tempo de prova para quem finalizou; maior número de repetições totais (ou menor número de faltantes) para quem tomou CAP (sem tie-break).'
+    ],
+    suggestedSumulaTemplateId: 'crossfit-wod2-sync-burn'
+  },
+  {
+    id: 'preset_summer_wod3',
+    name: 'Summer Games • WOD 3 (Maximum Lift - Escada PR)',
+    eventType: 'crossfit',
+    type: 'max_load',
+    defaultTitle: 'WOD 3 • MAXIMUM LIFT',
+    defaultTimeCapMinutes: 8,
+    description: 'Escada de Carga / 1 Hang Clean n\' Jerk em Dupla.\nMaior carga somada da dupla válida (KG) vence. Tie-break: Menor tempo do levantamento homologado.',
+    standards: [
+      'A barra sai suspensa acima dos joelhos (Hang).',
+      'Clean válido com recepção em Power ou Squat.',
+      'Jerk com bloqueio total de cotovelos, joelhos e quadris. Aguardar "DOWN" do árbitro.'
+    ],
+    suggestedSumulaTemplateId: 'crossfit-wod3-maximum-lift'
+  },
+  {
+    id: 'preset_summer_wod4',
+    name: 'Summer Games • WOD 4 Combo (Double Trouble: 4-A & 4-B)',
+    eventType: 'crossfit',
+    type: 'amrap',
+    defaultTitle: 'WOD 4 • DOUBLE TROUBLE (Combo 4-A & 4-B)',
+    defaultTimeCapMinutes: 12,
+    description: 'BLOCO A (AMRAP 4\'): 6 Shuttle Runs (4m juntos) + Back Squats (Atleta A fixo) + Deadlifts (Atleta B fixo), aumentando +2 reps nos levantamentos a cada round.\n\nREST (4\'): Min 04:00 ao 08:00.\n\nBLOCO B (AMRAP 4\'): 6 Shuttle Runs (4m juntos) + Cleans em Dupla (dobrando reps: 2, 4, 8, 16, 32...).',
+    standards: [
+      'Shuttle Runs: Ambos os atletas devem tocar a linha com a mão juntos.',
+      'Back Squat: Atleta A fixo até o fim do Bloco A.',
+      'Cleans: Somatório livre da dupla, qualquer estilo (Power, Squat ou Muscle).',
+      'Critério Oficial: Pontuação exclusiva por máximo de repetições válidas concluídas (AMRAP puro, sem tie-break).'
+    ],
+    suggestedSumulaTemplateId: 'crossfit-wod4-double-trouble-iniciante'
+  },
+
   // 1. CROSSFIT - FOR TIME
   {
     id: 'preset_cf_for_time',

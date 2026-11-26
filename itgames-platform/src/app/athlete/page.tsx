@@ -41,6 +41,8 @@ import { getCurrentUserSession, UserSession } from '@/lib/acl';
 import { apiClient } from '@/lib/api-client';
 import { toast } from 'sonner';
 import { AclGuard } from '@/components/auth/AclGuard';
+import { arenaLabel } from '@/lib/arena-data';
+import { parseKg } from '@/lib/standings-engine';
 
 export default function AthletePortalPage() {
   const [session, setSession] = useState<UserSession>({ role: 'ATHLETE' });
@@ -178,6 +180,7 @@ export default function AthletePortalPage() {
               workoutId: String(h.workoutCode),
               heatNumber: h.heatNumber,
               startTime: h.startTime || '',
+              ...(h.arena ? { arena: Number(h.arena) } : {}),
               status: h.status || 'scheduled',
               laneAssignments: (h.slots || []).map((s: any) => ({
                 lane: s.laneNumber,
@@ -202,7 +205,7 @@ export default function AthletePortalPage() {
             registrationId: `reg_${s.codeTeam}`,
             timeFormatted: s.time || s.result || undefined,
             repsCount: s.reps ? Number(s.reps) : undefined,
-            weightLoadedKg: s.weight ? Number(s.weight) : undefined,
+            weightLoadedKg: parseKg(s.weight),
             tieBreakTime: s.tieBreakTime || undefined,
             rawValue: s.time || s.result || String(s.point ?? ''),
             numericValue: Number(s.point ?? 0),
@@ -1064,6 +1067,9 @@ export default function AthletePortalPage() {
                         <div className="text-base font-black text-amber-400 font-mono">
                           {item.heat.startTime || '09:00'}
                         </div>
+                        {item.heat.arena && (
+                          <div className="text-xs font-bold text-zinc-300">{arenaLabel(item.heat.arena)}</div>
+                        )}
                       </div>
 
                       <div className="px-3 py-1.5 rounded-xl bg-blue-600 text-white font-black text-xs">

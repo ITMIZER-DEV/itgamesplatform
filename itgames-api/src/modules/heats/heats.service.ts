@@ -1,5 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { planArenaSchedule, PlanOptions } from './arena-schedule';
+import { categoryArenaOrder, extractWodBlockKey, parseRestMinutes, parseTimeCapMinutes } from './heat-time';
+import { ACTIVE_ONLY } from '../../common/prisma-filters/active';
+
+export { extractWodBlockKey, parseRestMinutes, parseTimeCapMinutes };
 
 function getCenterLanesOrder(totalLanes: number): number[] {
   const center = Math.ceil(totalLanes / 2);
@@ -15,45 +20,11 @@ function getCenterLanesOrder(totalLanes: number): number[] {
   return result;
 }
 
-export function parseTimeCapMinutes(timeCap?: string | null, fallback = 10): number {
-  if (!timeCap || !timeCap.trim()) return fallback;
-  const raw = timeCap.trim().toLowerCase();
-  const mmss = raw.match(/^(\d{1,2}):(\d{2})$/);
-  if (mmss) {
-    const mins = Number(mmss[1]);
-    const secs = Number(mmss[2]);
-    return Math.max(1, mins + (secs > 0 ? 1 : 0));
-  }
-  const numMatch = raw.match(/(\d+)/);
-  if (numMatch) {
-    return Math.max(1, Number(numMatch[1]));
-  }
-  return fallback;
-}
-
-export function extractWodBlockKey(title?: string | null, fallbackCode?: number): string {
-  const raw = (title || '').trim();
-  const m = raw.match(/(?:WOD|PROVA|EVENT)\s*(\d+)(?:\s*[.\-_]\s*[A-Za-z0-9]+)?/i);
-  if (m && m[1]) {
-    return `block_${m[1]}`;
-  }
-  return `single_${fallbackCode ?? raw}`;
-}
-
 function formatMinutesToHHMM(totalMinutes: number): string {
   const norm = ((totalMinutes % 1440) + 1440) % 1440;
   const hh = String(Math.floor(norm / 60)).padStart(2, '0');
   const mm = String(norm % 60).padStart(2, '0');
   return `${hh}:${mm}`;
-}
-
-function categoryArenaOrder(name?: string | null, code?: number): number {
-  const n = (name || '').toLowerCase();
-  if (n.includes('iniciante') && n.includes('fem')) return 1;
-  if (n.includes('scaled') && n.includes('fem')) return 2;
-  if (n.includes('scaled') && n.includes('masc')) return 3;
-  if (n.includes('amador') && n.includes('mist')) return 4;
-  return 100 + (code ?? 0);
 }
 
 function parseHourToMinutes(startHour?: string): number {
@@ -70,7 +41,7 @@ function shuffleTeams<T>(items: T[]): T[] {
   return arr;
 }
 
-function distributeTeamsIntoHeats<T>(teams: T[], maxLanes: number, minPerHeat = 3): T[][] {
+function distributeTeamsIntoHeats<T>(teams: T[], maxLanes: number, minPerHeat = 2): T[][] {
   if (teams.length === 0) return [];
   const safeMax = Math.max(1, maxLanes);
   let numHeats = Math.ceil(teams.length / safeMax);
@@ -106,15 +77,17 @@ export class HeatsService {
     startHour: string;
     intervalMinutes: number;
     isFinalSeeding?: boolean;
+    minPerHeat?: number;
   }) {
     const {
       gameCode,
       categoryId,
       workoutCode,
-      totalLanes = 6,
+      totalLanes = 4,
       startHour = '08:00',
       intervalMinutes = 15,
       isFinalSeeding = false,
+      minPerHeat = 2,
     } = params;
 
     // Buscar atletas inscritos na categoria
@@ -181,7 +154,7 @@ export class HeatsService {
     });
     const durationMin = parseTimeCapMinutes(workout?.timeCap, 10);
 
-    const heatGroups = distributeTeamsIntoHeats(orderedTeams, totalLanes, (params as any).minPerHeat ?? 3);
+    const heatGroups = distributeTeamsIntoHeats(orderedTeams, totalLanes, minPerHeat);
     const totalHeats = heatGroups.length;
     const [baseH, baseM] = startHour.split(':').map(Number);
     const createdHeats = [];
@@ -263,6 +236,10 @@ export class HeatsService {
     minPerHeat?: number;
     categoryId?: number;
     isFinalSeeding?: boolean;
+    /** 2 = cronograma com 2 arenas simultâneas (ondas cruzadas); padrão 1. */
+    arenas?: 1 | 2;
+    afternoonStart?: string;
+    minRestMinutes?: number;
   }) {
     const {
       gameCode,
@@ -272,7 +249,7 @@ export class HeatsService {
       subWodRestMinutes = 3,
       categoryTransitionMinutes = 10,
       wodTransitionMinutes = 5,
-      minPerHeat = 3,
+      minPerHeat = 2,
       categoryId,
       isFinalSeeding = false,
     } = params;
@@ -395,6 +372,7 @@ export class HeatsService {
                 workoutCode: wod.code,
                 heatNumber,
                 startTime: isComboAB ? blockStartTime : formatMinutesToHHMM(subCursor),
+                arena: null,
                 status: 'scheduled',
                 slots: {
                   create: heatTeams.map((team, idx) => ({
@@ -409,7 +387,10 @@ export class HeatsService {
             totalHeatsCreated += 1;
             subCursor += durationMin;
             if (wIdx < entry.workouts.length - 1) {
-              subCursor += isComboAB ? 1 : subWodRestMinutes;
+              // A/B: o descanso vem da prova seguinte (WOD 1-B "Rest 1'", WOD 4-B "Após 4' de Rest").
+              subCursor += isComboAB
+                ? parseRestMinutes(entry.workouts[wIdx + 1].description, 1)
+                : subWodRestMinutes;
             }
           }
 
@@ -430,12 +411,92 @@ export class HeatsService {
       return { success: false, message: 'Nenhuma equipe inscrita nas categorias selecionadas.' };
     }
 
+    if (params.arenas === 2) {
+      // Duplas e raias já sorteadas acima; agora distribui os horários nas 2 arenas.
+      const plan = await this.retimeSchedule({
+        gameCode,
+        arenas: 2,
+        startHour,
+        intervalMinutes,
+        afternoonStart: params.afternoonStart,
+        minRestMinutes: params.minRestMinutes,
+        apply: true,
+      });
+      return {
+        success: plan.success,
+        message: plan.message,
+        totalHeats: totalHeatsCreated,
+        totalWorkouts: totalWorkoutsProcessed,
+        endTimeEstimated: plan.summary.end,
+        summary: plan.summary,
+        problems: plan.problems,
+      };
+    }
+
     return {
       success: true,
       totalHeats: totalHeatsCreated,
       totalWorkouts: totalWorkoutsProcessed,
       endTimeEstimated: formatMinutesToHHMM(arenaCursor),
     };
+  }
+
+  /**
+   * Recalcula SÓ horário e arena das baterias existentes do campeonato (duplas e raias não mudam).
+   * Com apply=false devolve o plano para conferência sem gravar.
+   */
+  async retimeSchedule(params: PlanOptions & { gameCode: string; apply?: boolean }) {
+    const { gameCode, apply = false, ...opts } = params;
+    const [categories, workouts, heats] = await Promise.all([
+      this.prisma.category.findMany({ where: { gamesId: gameCode }, select: { code: true, name: true } }),
+      this.prisma.workout.findMany({
+        where: { game: gameCode, ...ACTIVE_ONLY },
+        select: { code: true, category: true, title: true, timeCap: true, description: true },
+      }),
+      this.prisma.heat.findMany({
+        where: { gameCode },
+        select: { id: true, categoryId: true, workoutCode: true, heatNumber: true, slots: { select: { teamCode: true } } },
+      }),
+    ]);
+    if (heats.length === 0) {
+      return {
+        success: false,
+        applied: false,
+        message: 'Nenhuma bateria gerada ainda. Gere as baterias primeiro.',
+        summary: planArenaSchedule([], [], [], opts).summary,
+        problems: [],
+        items: [],
+      };
+    }
+    const plan = planArenaSchedule(
+      categories,
+      workouts,
+      heats.map((h) => ({ ...h, teams: h.slots.map((s) => s.teamCode) })),
+      opts,
+    );
+    const items = plan.items.map((i) => ({
+      categoryId: i.categoryId,
+      categoryName: i.categoryName,
+      wod: i.blockLabel,
+      heatNumber: i.heatNumber,
+      start: formatMinutesToHHMM(i.start),
+      end: formatMinutesToHHMM(i.end),
+      arena: i.arena,
+      teams: i.teams.length,
+    }));
+    if (plan.problems.length > 0) {
+      return { success: false, applied: false, message: plan.problems[0], summary: plan.summary, problems: plan.problems, items };
+    }
+    if (apply) {
+      await this.prisma.$transaction(
+        plan.items.flatMap((i) =>
+          i.heatIds.map((id) =>
+            this.prisma.heat.update({ where: { id }, data: { startTime: formatMinutesToHHMM(i.start), arena: i.arena } }),
+          ),
+        ),
+      );
+    }
+    return { success: true, applied: apply, message: '', summary: plan.summary, problems: [], items };
   }
 
   async findByGameAndWorkout(gameCode: string, workoutCode: number) {

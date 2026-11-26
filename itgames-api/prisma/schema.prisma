@@ -225,6 +225,7 @@ model Heat {
   workoutCode     Int
   heatNumber      Int
   startTime       String         // "09:00"
+  arena           Int?           // 1, 2... (cronograma com arenas simultâneas); null = arena única
   status          String         @default("scheduled") // scheduled, calling, in_progress, completed
   
   game            Game           @relation(fields: [gameCode], references: [code], onDelete: Cascade)

@@ -9,19 +9,41 @@ type Split = { name: string; seconds: number };
 
 const TOTAL_UNIT = { points_table: 'PTS', rank_sum: 'SOMA', total_time: 'TEMPO' } as const;
 
-function toResult(s: EngineScore, cap: number): WorkoutResult {
+// Rounds gravados no texto do resultado, em qualquer formato usado na arena:
+// "5R (13:31 | ...)" (Mesa do Head Judge), "5 Rounds (12:30)" e "3 Rds + 12 reps" (App do Juiz).
+// "45 reps" NÃO conta como rounds.
+const ROUNDS_RE = /(\d+)\s*(?:rounds?|rds?|r)\b/i;
+// Reps extras escritas no texto ("+ 12 reps"), usadas quando o campo reps veio vazio.
+const EXTRA_REPS_RE = /\+\s*(\d+)\s*reps?\b/i;
+// Soma dos tempos escrita entre parênteses: "5R (13:31 | R1 02:40 ...)" → 13:31.
+const PAREN_TIME_RE = /\(\s*(\d{1,2}:\d{2}(?:\.\d+)?)/;
+
+function toResult(s: EngineScore, cap: number, type: string): WorkoutResult {
+  const text = String(s.time || '');
   const time = parseTime(s.time);
-  const rawReps = parseInt(s.reps || '', 10) || 0;
-  const roundMatch = String(s.time || '').match(/(\d+)\s*R\b/i);
+  let rawReps = parseInt(s.reps || '', 10) || 0;
+  const isRounds = type === 'amrap' || type === 'emom';
+  const roundMatch = isRounds ? text.match(ROUNDS_RE) : null;
   const rounds = roundMatch ? parseInt(roundMatch[1], 10) || 0 : 0;
+  if (rounds > 0 && rawReps === 0) {
+    const extra = text.match(EXTRA_REPS_RE);
+    if (extra) rawReps = parseInt(extra[1], 10) || 0;
+  }
   const reps = rounds > 0 ? rounds * 10000 + rawReps : rawReps;
+  // Desempate: o campo próprio vale; sem ele, usa a soma dos tempos escrita no resultado (Death By)
+  let tieBreak = parseTime(s.tieBreakTime);
+  if (!tieBreak && isRounds) {
+    const paren = text.match(PAREN_TIME_RE);
+    if (paren) tieBreak = parseTime(paren[1]);
+  }
   // Se bateu o cap ou tem reps faltantes marcadas no for_time, tomou CAP
   const isCap = cap > 0 && rawReps > 0 && time >= cap;
   return {
     time,
     reps,
     weight: parseFloat((s.weight || '').replace(',', '.')) || 0,
-    tieBreak: parseTime(s.tieBreakTime),
+    tieBreak,
+    repsUnit: isRounds && rounds === 0 && /\breps?\b/i.test(text),
     penalty: s.penaltySeconds || 0,
     completed: time > 0 && (cap === 0 || time <= cap) && !isCap,
   };
@@ -38,7 +60,7 @@ function display(type: string, r: WorkoutResult): string {
       const extraPart = extra > 0 ? ` + ${extra} reps` : '';
       return `${rounds}R${extraPart}${tb}`;
     }
-    const unit = r.reps === 1 ? 'round' : 'rounds';
+    const unit = r.repsUnit ? 'reps' : r.reps === 1 ? 'round' : 'rounds';
     return `${r.reps} ${unit}${tb}`;
   }
   if (type === 'max_load' || type === 'complex') return `${r.weight} kg`;
@@ -74,7 +96,7 @@ function rankWorkout(
     } else if (s.isWO) {
       others.push({ teamCode: team.code, status: 'wo', display: 'W.O.' });
     } else {
-      valid.push({ teamCode: team.code, result: toResult(s, cap), splits: s.splits ?? [] });
+      valid.push({ teamCode: team.code, result: toResult(s, cap, type), splits: s.splits ?? [] });
     }
   }
   // sem nenhum resultado válido, o WOD não conta (ninguém ganha 1º por falta de concorrente)
@@ -86,8 +108,8 @@ function rankWorkout(
   const out = new Map<number, WodEntry>();
   let rank = 1;
   valid.forEach((e, i) => {
-    // posição densa: empate repete a posição e a seguinte não pula
-    if (i > 0 && compareWithinWorkout(type, valid[i - 1].result, e.result) !== 0) rank++;
+    // empate repete a posição e a seguinte pula (8º, 8º, 10º)
+    if (i > 0 && compareWithinWorkout(type, valid[i - 1].result, e.result) !== 0) rank = i + 1;
     // tempo válido: terminou dentro do cap (quando houver)
     const seconds = e.result.completed ? e.result.time + e.result.penalty : undefined;
     out.set(e.teamCode, {
@@ -100,7 +122,8 @@ function rankWorkout(
       splits: e.splits,
     });
   });
-  const lastPlus1 = rank + 1;
+  // sem resultado válido fica logo depois de todos os que pontuaram
+  const lastPlus1 = valid.length + 1;
   for (const o of others) {
     out.set(o.teamCode, { title, display: o.display, rank: lastPlus1, points: pointsOf(lastPlus1), status: o.status });
   }
@@ -145,7 +168,10 @@ export function buildBoard(input: EngineInput, entries: EntriesProvider, now: Da
   const categories = input.categories.map((category) => {
     const workouts = input.workouts.filter((w) => w.category === category.code);
     // ordem por código da equipe: base estável para empates totais
-    const teams = input.teams.filter((t) => t.categoryId === category.code).sort((a, b) => a.code - b.code);
+    // inscrição cancelada não entra no leaderboard (nem linha, nem pontos)
+    const teams = input.teams
+      .filter((t) => t.categoryId === category.code && t.status !== 'cancelled')
+      .sort((a, b) => a.code - b.code);
 
     const perWorkout = workouts.map((workout) => entries(category.code, workout.code));
     let lastCounting = -1;
@@ -231,7 +257,8 @@ export function buildBoard(input: EngineInput, entries: EntriesProvider, now: Da
 
     let rank = 1;
     const boardRows: BoardRow[] = rows.map((r, i) => {
-      if (i > 0 && compare(rows[i - 1], r) !== 0) rank++;
+      // empate repete a posição e a seguinte pula (8º, 8º, 10º)
+      if (i > 0 && compare(rows[i - 1], r) !== 0) rank = i + 1;
       return {
         rank,
         teamCode: r.team.code,

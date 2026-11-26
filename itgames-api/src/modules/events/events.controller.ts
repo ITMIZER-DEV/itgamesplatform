@@ -203,9 +203,11 @@ export class EventsController {
     @Param('code') code: string,
     @Query('categoryId') categoryId?: string,
     @CurrentUser() user?: AuthUser,
+    @Query('all') all?: string,
   ) {
     await this.access.assertCanView(user, code);
-    return this.eventsService.listWorkouts(code, categoryId ? parseInt(categoryId, 10) : undefined);
+    // Provas inativas só aparecem com ?all=1 (gestão); placar, juízes, súmulas e telas não as veem.
+    return this.eventsService.listWorkouts(code, categoryId ? parseInt(categoryId, 10) : undefined, all === '1' || all === 'true');
   }
 
   @Roles(UserRole.ORGANIZER)

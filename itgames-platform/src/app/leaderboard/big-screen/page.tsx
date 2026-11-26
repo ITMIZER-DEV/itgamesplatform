@@ -48,12 +48,9 @@ export default function BigScreenLeaderboardPage() {
   // Detecção em tempo real de bloqueio/congelamento do Leaderboard e Spotlight (Chamada de Raias / Pódio)
   useEffect(() => {
     const checkFreeze = () => {
-      const gCode = activeGame?.code || 'SUMMER2026';
-      const localFreeze =
-        localStorage.getItem('itgames_leaderboard_frozen') === 'true' ||
-        localStorage.getItem('itgames_freeze_leaderboard') === 'true' ||
-        localStorage.getItem('itgames_freeze_leaderboard_SUMMER2026') === 'true' ||
-        (gCode ? localStorage.getItem(`itgames_freeze_leaderboard_${gCode}`) === 'true' : false);
+      const gCode = activeGame?.code || '';
+      // só a chave do campeonato atual: as chaves globais antigas ficavam presas em "true" e congelavam qualquer evento
+      const localFreeze = gCode ? localStorage.getItem(`itgames_freeze_leaderboard_${gCode}`) === 'true' : false;
       const apiFreeze =
         (activeGame?.status as string) === 'frozen' ||
         (activeGame?.status as string) === 'blocked';
@@ -263,7 +260,10 @@ export default function BigScreenLeaderboardPage() {
                 <div className="text-xl sm:text-3xl font-black text-amber-400">
                   BATERIA {spotlight.heatNumber}/{Math.max(spotlight.totalHeats, spotlight.heatNumber)}
                 </div>
-                <div className="text-xs font-mono font-bold text-zinc-200">LARGADA {spotlight.startTime}</div>
+                <div className="text-xs font-mono font-bold text-zinc-200">
+                  LARGADA {spotlight.startTime}
+                  {spotlight.arena ? ` · ARENA ${spotlight.arena}` : ''}
+                </div>
               </div>
               <button
                 onClick={() => {

@@ -31,6 +31,7 @@ export interface HeatCallSpotlight {
   heatNumber: number;
   totalHeats: number;
   startTime: string;
+  arena?: number;
   message?: string;
   lanes: HeatCallLane[];
   triggeredAt: string;

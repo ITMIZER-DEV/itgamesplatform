@@ -23,9 +23,10 @@ import { Category, WorkoutRule, TeamRegistration, Heat } from '@/types';
 import { apiClient, ApiError } from '@/lib/api-client';
 import { saveLocalArenaSpotlight, HeatCallSpotlight } from '@/lib/screens';
 import { useGames } from '@/lib/use-games';
-import { mapCategory, mapHeat, mapRegistration, mapWorkout } from '@/lib/arena-data';
+import { getArenaSelection, usePersistArenaSelection } from '@/lib/arena-selection';
+import { arenaLabel, mapCategory, mapHeat, mapRegistration, mapWorkout } from '@/lib/arena-data';
 import { parseWodTitle, sortWorkoutsNaturally } from '@/lib/board';
-import { buildPdfHeatList, downloadSchedulePdf } from '@/lib/heats-pdf';
+import { buildPdfHeatList, downloadSchedulePdf, downloadDualArenaSchedulePdf } from '@/lib/heats-pdf';
 import { toast } from 'sonner';
 import { AclGuard } from '@/components/auth/AclGuard';
 
@@ -50,6 +51,7 @@ export default function HeatsPage() {
   const [dataErrorState, setDataErrorState] = useState<{ game: string; message: string } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingDualArenaPdf, setIsExportingDualArenaPdf] = useState(false);
   const [heatsData, setHeatsData] = useState<{ key: string; heats: Heat[] } | null>(null);
 
   const fresh = data && data.game === gameCode ? data : null;
@@ -62,24 +64,38 @@ export default function HeatsPage() {
   // seleção do usuário; os valores efetivos são derivados abaixo (sempre válidos para os dados carregados)
   const [pickedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [pickedWorkoutId, setSelectedWorkoutId] = useState<string>('');
-  const currentCategory = categories.find((c) => String(c.id) === String(pickedCategoryId)) || categories[0];
+  // sem escolha nesta tela, retoma a última seleção feita em Súmulas / Head Judge / Juiz
+  const sharedSelection = getArenaSelection(gameCode);
+  const currentCategory =
+    categories.find((c) => String(c.id) === String(pickedCategoryId || sharedSelection.categoryId)) || categories[0];
   const selectedCategoryId = currentCategory?.id ?? '';
   const directCatWorkouts = allWorkouts.filter((w) => String(w.categoryId) === String(selectedCategoryId));
   const workouts = sortWorkoutsNaturally(directCatWorkouts.length > 0 ? directCatWorkouts : allWorkouts);
-  const currentWorkout = workouts.find((w) => String(w.id) === String(pickedWorkoutId)) || workouts[0];
+  const currentWorkout =
+    workouts.find((w) => String(w.id) === String(pickedWorkoutId || sharedSelection.workoutId)) || workouts[0];
   const selectedWorkoutId = currentWorkout?.id ?? '';
+  usePersistArenaSelection(
+    gameCode,
+    { categoryId: selectedCategoryId ? String(selectedCategoryId) : undefined, workoutId: selectedWorkoutId ? String(selectedWorkoutId) : undefined },
+    categories.length > 0,
+  );
 
   // Gerador
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [generateScope, setGenerateScope] = useState<'single_wod' | 'category_all_wods' | 'game_all'>('game_all');
-  const [totalLanes, setTotalLanes] = useState(8);
+  const [totalLanes, setTotalLanes] = useState(4);
   const [startHour, setStartHour] = useState('08:00');
   const [intervalMinutes, setIntervalMinutes] = useState(10);
   const [subWodRestMinutes, setSubWodRestMinutes] = useState(3);
   const [categoryTransitionMinutes, setCategoryTransitionMinutes] = useState(10);
   const [wodTransitionMinutes, setWodTransitionMinutes] = useState(5);
-  const [minPerHeat, setMinPerHeat] = useState(3);
+  const [minPerHeat, setMinPerHeat] = useState(2);
   const [isFinalSeeding, setIsFinalSeeding] = useState(false);
+  // Cronograma: 1 arena (timeline único) ou 2 arenas simultâneas (ondas cruzadas)
+  const [arenasCount, setArenasCount] = useState<1 | 2>(1);
+  const [afternoonStart, setAfternoonStart] = useState('13:00');
+  const [minRestMinutes, setMinRestMinutes] = useState(30);
+  const [isRetiming, setIsRetiming] = useState(false);
 
   // Troca de Raias (Swap)
   const [selectedLaneToSwap, setSelectedLaneToSwap] = useState<{
@@ -222,6 +238,46 @@ export default function HeatsPage() {
     }
   };
 
+  const handleExportDualArenaPdf = async () => {
+    if (!activeGame || isExportingDualArenaPdf) return;
+    setIsExportingDualArenaPdf(true);
+    try {
+      // Baterias gravadas: se já têm arena, o PDF imprime exatamente o cronograma do sistema
+      const lists = await Promise.all(
+        allWorkouts.map((w) =>
+          apiClient
+            .fetchHeats(activeGame.code, Number(w.id))
+            .then((list) => list.map((h) => mapHeat(h, activeGame.code)))
+            .catch(() => [] as Heat[]),
+        ),
+      );
+      const realHeats = buildPdfHeatList(lists.flat(), categories, allWorkouts);
+      downloadDualArenaSchedulePdf({
+        realHeats,
+        gameName: activeGame.name,
+        gameCode: activeGame.code,
+        categories,
+        workouts: allWorkouts,
+        teams: teams.map((t) => ({
+          id: t.id,
+          categoryId: String(t.categoryId),
+          teamName: t.teamName,
+          registerNumber: t.registerNumber,
+          athletes: t.athletes.map((a) => ({ name: a.name })),
+        })),
+        startHour: startHour || '08:00',
+        totalLanes: 4,
+        minPerHeat: 2,
+      });
+      toast.success('PDF do Cronograma 2 Arenas (4 Raias • Mínimo 2 Duplas) gerado com sucesso!');
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível gerar o PDF das 2 Arenas simultâneas.');
+    } finally {
+      setIsExportingDualArenaPdf(false);
+    }
+  };
+
   const openGenerator = () => {
     if (!canEdit) {
       toast.error('Apenas o organizador do campeonato pode gerar baterias.');
@@ -229,8 +285,59 @@ export default function HeatsPage() {
     }
     if (activeGame?.lanesCount && activeGame.lanesCount > 0) {
       setTotalLanes(activeGame.lanesCount);
+    } else {
+      setTotalLanes(4);
     }
+    setMinPerHeat(2);
+    // Abre no formato que já está em uso: se alguma bateria tem arena, o cronograma é de 2 arenas
+    const usesArenas = heats.some((h) => h.arena);
+    setArenasCount(usesArenas ? 2 : 1);
+    if (usesArenas) setIntervalMinutes(5);
     setIsModalOpen(true);
+  };
+
+  const scheduleOptions = () => ({
+    arenas: arenasCount,
+    startHour,
+    intervalMinutes,
+    afternoonStart: afternoonStart || undefined,
+    minRestMinutes,
+  });
+
+  // Só recalcula horário/arena das baterias que já existem: simula, mostra o resumo e grava se confirmar.
+  const handleRetimeSchedule = async () => {
+    if (isRetiming || !activeGame) return;
+    setIsRetiming(true);
+    try {
+      const sim = await apiClient.retimeHeatSchedule({ gameCode: activeGame.code, ...scheduleOptions(), apply: false });
+      if (!sim.success) {
+        toast.error(sim.message || 'Não foi possível montar o cronograma.');
+        return;
+      }
+      const s = sim.summary;
+      const perArena = Object.entries(s.heatsPerArena)
+        .map(([k, v]) => `${k}: ${v} baterias`)
+        .join(' · ');
+      const ok = window.confirm(
+        `Novo cronograma (${arenasCount === 2 ? '2 arenas' : 'arena única'}):\n` +
+          `${s.start} → ${s.end}\n${perArena}\n` +
+          `Menor descanso de uma dupla: ${s.minRestMinutes ?? '-'} min (médio ${s.avgRestMinutes ?? '-'} min)\n\n` +
+          'Duplas e raias continuam as mesmas. Aplicar os novos horários?',
+      );
+      if (!ok) return;
+      const res = await apiClient.retimeHeatSchedule({ gameCode: activeGame.code, ...scheduleOptions(), apply: true });
+      if (!res.success || !res.applied) {
+        toast.error(res.message || 'Não foi possível gravar os horários.');
+        return;
+      }
+      setIsModalOpen(false);
+      reload();
+      toast.success(`Horários recalculados: ${res.summary.start} → ${res.summary.end}.`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Não foi possível recalcular os horários.');
+    } finally {
+      setIsRetiming(false);
+    }
   };
 
   const addMinutesToHour = (baseTime: string, addMinutes: number): string => {
@@ -279,6 +386,7 @@ export default function HeatsPage() {
           minPerHeat,
           categoryId: generateScope === 'category_all_wods' && currentCategory ? Number(currentCategory.id) : undefined,
           isFinalSeeding,
+          ...(arenasCount === 2 ? { arenas: 2 as const, afternoonStart: afternoonStart || undefined, minRestMinutes } : {}),
         });
         if (!res?.success) {
           toast.error(res?.message || 'Não foi possível gerar o cronograma de baterias.');
@@ -420,6 +528,16 @@ export default function HeatsPage() {
           >
             <Printer className="w-4 h-4 text-emerald-400" />
             <span>{isExportingPdf ? 'Gerando PDF...' : 'Baixar Cronograma PDF'}</span>
+          </button>
+
+          <button
+            onClick={handleExportDualArenaPdf}
+            disabled={isExportingDualArenaPdf || teams.length === 0}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-semibold text-xs border border-amber-500/40 transition-colors disabled:opacity-50"
+            title="Exporta em PDF o cronograma simultâneo em 2 Arenas (4 Raias e Mínimo 2 Duplas por Bateria)"
+          >
+            <ArrowLeftRight className="w-4 h-4 text-amber-400" />
+            <span>{isExportingDualArenaPdf ? 'Gerando...' : 'Cronograma 2 Arenas (PDF)'}</span>
           </button>
 
           <button
@@ -646,6 +764,12 @@ export default function HeatsPage() {
                           <Clock className="w-3.5 h-3.5 text-amber-400" />
                           Horário: <strong className="text-white">{heat.startTime}</strong>
                         </span>
+                        {heat.arena && (
+                          <>
+                            <span>•</span>
+                            <strong className="text-white">{arenaLabel(heat.arena)}</strong>
+                          </>
+                        )}
                         <span>•</span>
                         <span>{heat.laneAssignments.length} Raias Ocupadas</span>
                       </div>
@@ -825,6 +949,59 @@ export default function HeatsPage() {
                 </div>
               </div>
 
+              {/* FORMATO DO CRONOGRAMA */}
+              <div className="space-y-2">
+                <label className="text-zinc-300 font-semibold block">Arenas simultâneas:</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([1, 2] as const).map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => {
+                        setArenasCount(n);
+                        setIntervalMinutes(n === 2 ? 5 : 10);
+                      }}
+                      className={`px-3 py-2 rounded-xl border text-left ${
+                        arenasCount === n ? 'border-amber-500 bg-amber-500/10 text-white' : 'border-zinc-700 bg-zinc-900 text-zinc-400'
+                      }`}
+                    >
+                      <div className="font-bold">{n === 1 ? 'Arena única' : '2 arenas'}</div>
+                      <div className="text-xs opacity-80">
+                        {n === 1 ? 'Um WOD por vez, todas as categorias' : 'Ondas de categorias trocam de arena'}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                {arenasCount === 2 && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-zinc-300 font-semibold block mb-1">Início da tarde (após almoço):</label>
+                      <input
+                        type="time"
+                        value={afternoonStart}
+                        onChange={(e) => setAfternoonStart(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-white font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-zinc-300 font-semibold block mb-1">Descanso mínimo da dupla (min):</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="180"
+                        value={minRestMinutes}
+                        onChange={(e) => setMinRestMinutes(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-white font-bold"
+                      />
+                    </div>
+                    <p className="col-span-2 text-xs text-zinc-400">
+                      WODs em pares por turno (1º com o último, 2º com o penúltimo). O descanso entre provas A/B vem da
+                      descrição da prova B (ex.: &quot;Rest 1&apos;&quot;, &quot;Após 4&apos; de Rest&quot;).
+                    </p>
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-zinc-300 font-semibold block mb-1">
@@ -949,6 +1126,16 @@ export default function HeatsPage() {
               >
                 Cancelar
               </button>
+              {heats.length > 0 && generateScope !== 'single_wod' && (
+                <button
+                  onClick={handleRetimeSchedule}
+                  disabled={isRetiming || isGenerating}
+                  className="px-4 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-semibold text-xs disabled:opacity-60"
+                  title="Mantém duplas e raias; muda só horário e arena"
+                >
+                  {isRetiming ? 'Calculando...' : 'Só recalcular horários'}
+                </button>
+              )}
               <button
                 onClick={handleGenerateHeats}
                 disabled={isGenerating}

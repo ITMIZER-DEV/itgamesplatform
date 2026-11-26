@@ -1,0 +1,244 @@
+
+══ Simulação do dia — SUMMER CROSS 2026 INTERBOX (SUMMER2026) • semente 2026
+   Regra: points_table • desempate best_ranks • tabela 100, 94, 88, 84, 80...
+
+▶ INICIANTE - DUPLA FEMININA — 12 duplas, 6 provas
+   WOD 1-A — 800m ROW  [row • cap 05:00]
+     ✔ 1º   FLAUSINO                     03:50                      100 pts
+     ✔ 2º   Devagar e sofrendo           03:52                      94 pts
+     ✔ 3º   Batom e burpees              03:57                      88 pts
+     ✔ 4º   Pink e cérebro               04:05                      84 pts
+     ✔ 5º   Geovanna e Leandra           04:09                      80 pts
+     ✔ 6º   start box                    04:11                      76 pts
+     ✔ 7º   RX Divas                     04:12                      72 pts
+     ✔ 8º   As Frangas                   04:32                      68 pts
+     ✔ 8º   Inimigas do WOD              04:32                      68 pts
+     ✔ 9º   Girls Power                  04:45                      64 pts
+     ✔ 10º  Double Trouble               04:53                      60 pts
+     ✔ 11º  Hoje eu só vim pra me divert CAP +238                   58 pts
+   WOD 1-B — DEATH BY  [death_by • cap 15:00]
+     ✔ 1º   start box                    5R (11:58)                 100 pts
+     ✔ 2º   FLAUSINO                     5R (12:19)                 94 pts
+     ✔ 3º   Girls Power                  5R (12:38)                 88 pts
+     ✔ 4º   Hoje eu só vim pra me divert 5R (12:52)                 84 pts
+     ✔ 5º   Batom e burpees              4R + 12 reps (10:40)       80 pts
+     ✔ 6º   RX Divas                     4R + 9 reps (10:58)        76 pts
+     ✔ 7º   Inimigas do WOD              4R + 1 reps (10:07)        72 pts
+     ✔ 8º   As Frangas                   2R + 24 reps (04:39)       68 pts
+     ✔ 9º   Pink e cérebro               2R + 9 reps (05:30)        64 pts
+     ✔ 10º  Geovanna e Leandra           2R (05:49)                 60 pts
+     ✔ 11º  Devagar e sofrendo           1R + 20 reps (02:57)       58 pts
+     ✔ 12º  Double Trouble               1R + 1 reps (02:10)        56 pts
+   WOD 2 — SYNC & BURN  [for_time • cap 10:00]
+     ✔ 1º   RX Divas                     07:34                      100 pts
+     ✔ 2º   As Frangas                   07:43                      94 pts
+     ✔ 3º   Geovanna e Leandra           07:57                      88 pts
+     ✔ 4º   Devagar e sofrendo           08:22                      84 pts
+     ✔ 5º   Double Trouble               08:28                      80 pts
+     ✔ 6º   Hoje eu só vim pra me divert 09:33                      76 pts
+     ✔ 7º   start box                    09:43                      72 pts
+     ✔ 8º   Pink e cérebro               CAP +2                     68 pts
+     ✔ 9º   FLAUSINO                     CAP +34                    64 pts
+     ✔ 10º  Batom e burpees              CAP +37                    60 pts
+     ✔ 11º  Girls Power                  CAP +38                    58 pts
+     ✔ 12º  Inimigas do WOD              CAP +39                    56 pts
+   WOD 3 — MAXIMUM LIFT  [max_load • cap 06:00]
+     ✔ 1º   Pink e cérebro               190 kg                     100 pts
+     ✔ 2º   Batom e burpees              147.5 kg                   94 pts
+     ✔ 3º   RX Divas                     145 kg                     88 pts
+     ✔ 3º   Inimigas do WOD              145 kg                     88 pts
+     ✔ 4º   Devagar e sofrendo           137.5 kg                   84 pts
+     ✔ 5º   Geovanna e Leandra           105 kg                     80 pts
+     ✔ 6º   FLAUSINO                     92.5 kg                    76 pts
+     ✔ 7º   start box                    87.5 kg                    72 pts
+     ✔ 7º   Double Trouble               87.5 kg                    72 pts
+     ✔ 8º   Hoje eu só vim pra me divert 82.5 kg                    68 pts
+     ✔ 9º   As Frangas                   77.5 kg                    64 pts
+     ✔ 10º  Girls Power                  67.5 kg                    60 pts
+   WOD 4-A — DOUBLE TROUBLE (BLOCO A)  [amrap_reps • cap 04:00]
+     ✔ 1º   start box                    65 reps                    100 pts
+     ✔ 1º   As Frangas                   65 reps                    100 pts
+     ✔ 2º   Batom e burpees              61 reps                    94 pts
+     ✔ 3º   Double Trouble               57 reps                    88 pts
+     ✔ 4º   RX Divas                     51 reps                    84 pts
+     ✔ 5º   Hoje eu só vim pra me divert 43 reps                    80 pts
+     ✔ 6º   Girls Power                  39 reps                    76 pts
+     ✔ 7º   FLAUSINO                     38 reps                    72 pts
+     ✔ 7º   Devagar e sofrendo           38 reps                    72 pts
+     ✔ 7º   Inimigas do WOD              38 reps                    72 pts
+     ✔ 8º   Geovanna e Leandra           32 reps                    68 pts
+     ✔ 9º   Pink e cérebro               22 reps                    64 pts
+   WOD 4-B — DOUBLE TROUBLE (BLOCO B)  [amrap_reps • cap 04:00]
+     ✔ 1º   Batom e burpees              69 reps                    100 pts
+     ✔ 2º   Girls Power                  67 reps                    94 pts
+     ✔ 3º   Hoje eu só vim pra me divert 65 reps                    88 pts
+     ✔ 4º   As Frangas                   60 reps                    84 pts
+     ✔ 5º   Geovanna e Leandra           35 reps                    80 pts
+     ✔ 6º   start box                    31 reps                    76 pts
+     ✔ 7º   FLAUSINO                     29 reps                    72 pts
+     ✔ 8º   Double Trouble               28 reps                    68 pts
+     ✔ 9º   Devagar e sofrendo           26 reps                    64 pts
+     ✔ 10º  RX Divas                     25 reps                    60 pts
+     ✔ 10º  Pink e cérebro               25 reps                    60 pts
+     ✔ 11º  Inimigas do WOD              22 reps                    58 pts
+   ── Classificação geral
+     ✔ 1º   Batom e burpees              516
+     ✔ 2º   start box                    496
+     ✔ 3º   RX Divas                     480
+     ✔ 4º   As Frangas                   478
+     ✔ 5º   FLAUSINO                     478
+     ✔ 6º   Devagar e sofrendo           456
+     ✔ 7º   Geovanna e Leandra           456
+     ✔ 8º   Hoje eu só vim pra me divert 454
+     ✔ 9º   Pink e cérebro               440
+     ✔ 10º  Girls Power                  440
+     ✔ 11º  Double Trouble               424
+     ✔ 12º  Inimigas do WOD              414
+
+▶ SCALED - DUPLA MASCULINA — 5 duplas, 6 provas
+   WOD 1-A — 1000m ROW  [row • cap 05:00]
+     ✔ 1º   Cardio é Castigo             04:09                      100 pts
+     ✔ 2º   Vargas / Jefersson           04:25                      94 pts
+     ✔ 3º   Sofrimento Sincronizado      04:30                      88 pts
+     ✔ 4º   HELDER E PAULO               04:36                      84 pts
+     ✔ 5º   Frangos de Elite             04:58                      80 pts
+   WOD 1-B — DEATH BY  [death_by • cap 15:00]
+     ✔ 1º   Cardio é Castigo             5R (12:25)                 100 pts
+     ✔ 2º   HELDER E PAULO               4R + 21 reps (09:18)       94 pts
+     ✔ 3º   Vargas / Jefersson           3R + 6 reps (06:50)        88 pts
+     ✔ 4º   Sofrimento Sincronizado      2R + 3 reps (04:50)        84 pts
+     ✔ 5º   Frangos de Elite             1R + 1 reps (02:20)        80 pts
+   WOD 2 — SYNC & BURN  [for_time • cap 10:00]
+     ✔ 1º   Sofrimento Sincronizado      07:30                      100 pts
+     ✔ 2º   Frangos de Elite             08:10                      94 pts
+     ✔ 3º   HELDER E PAULO               09:52                      88 pts
+     ✔ 4º   Vargas / Jefersson           CAP +23                    84 pts
+     ✔ 5º   Cardio é Castigo             CAP +36                    80 pts
+   WOD 3 — MAXIMUM LIFT  [max_load • cap 06:00]
+     ✔ 1º   Vargas / Jefersson           170 kg                     100 pts
+     ✔ 2º   HELDER E PAULO               165 kg                     94 pts
+     ✔ 3º   Frangos de Elite             132.5 kg                   88 pts
+     ✔ 4º   Cardio é Castigo             127.5 kg                   84 pts
+     ✔ 5º   Sofrimento Sincronizado      120 kg                     80 pts
+   WOD 4-A — DOUBLE TROUBLE (BLOCO A)  [amrap_reps • cap 04:00]
+     ✔ 1º   Sofrimento Sincronizado      68 reps                    100 pts
+     ✔ 2º   HELDER E PAULO               37 reps                    94 pts
+     ✔ 3º   Cardio é Castigo             29 reps                    88 pts
+     ✔ 4º   Frangos de Elite             27 reps                    84 pts
+     ✔ 5º   Vargas / Jefersson           24 reps                    80 pts
+   WOD 4-B — DOUBLE TROUBLE (BLOCO B)  [amrap_reps • cap 04:00]
+     ✔ 1º   Vargas / Jefersson           35 reps                    100 pts
+     ✔ 2º   Sofrimento Sincronizado      26 reps                    94 pts
+     ✔ 3º   Cardio é Castigo             25 reps                    88 pts
+     ✔ 4º   HELDER E PAULO               20 reps                    84 pts
+     ✔ 4º   Frangos de Elite             20 reps                    84 pts
+   ── Classificação geral
+     ✔ 1º   Vargas / Jefersson           546
+     ✔ 2º   Sofrimento Sincronizado      546
+     ✔ 3º   Cardio é Castigo             540
+     ✔ 4º   HELDER E PAULO               538
+     ✔ 5º   Frangos de Elite             510
+
+▶ SCALED - DUPLA FEMININA — 6 duplas, 6 provas
+   WOD 1-A — 1000m ROW  [row • cap 05:00]
+     ✔ 1º   Lídia & Paulina              04:16                      100 pts
+     ✔ 2º   Larissa e Naiane             04:18                      94 pts
+     ✔ 3º   As corajosas                 04:19                      88 pts
+     ✔ 4º   Marília e Naiara             04:23                      84 pts
+     ✔ 5º   Thauanny/wanesssinha         04:28                      80 pts
+     ✔ 6º   Dupla dinâmica               04:30                      76 pts
+   WOD 1-B — DEATH BY  [death_by • cap 15:00]
+     ✔ 1º   As corajosas                 5R (12:28)                 100 pts
+     ✔ 2º   Dupla dinâmica               5R (12:31)                 94 pts
+     ✔ 3º   Lídia & Paulina              4R + 12 reps (10:17)       88 pts
+     ✔ 4º   Larissa e Naiane             3R + 23 reps (07:48)       84 pts
+     ✔ 5º   Marília e Naiara             2R + 22 reps (05:07)       80 pts
+     ✔ 6º   Thauanny/wanesssinha         1R + 13 reps (02:59)       76 pts
+   WOD 2 — SYNC & BURN  [for_time • cap 10:00]
+     ✔ 1º   Thauanny/wanesssinha         07:23                      100 pts
+     ✔ 2º   As corajosas                 07:55                      94 pts
+     ✔ 3º   Marília e Naiara             08:02                      88 pts
+     ✔ 4º   Dupla dinâmica               CAP +24                    84 pts
+     ✔ 5º   Lídia & Paulina              CAP +36                    80 pts
+     ✔ 6º   Larissa e Naiane             CAP +37                    76 pts
+   WOD 3 — MAXIMUM LIFT  [max_load • cap 06:00]
+     ✔ 1º   Larissa e Naiane             177.5 kg                   100 pts
+     ✔ 2º   Dupla dinâmica               155 kg                     94 pts
+     ✔ 3º   Lídia & Paulina              120 kg                     88 pts
+     ✔ 4º   As corajosas                 110 kg                     84 pts
+     ✔ 5º   Marília e Naiara             107.5 kg                   80 pts
+     ✔ 6º   Thauanny/wanesssinha         85 kg                      76 pts
+   WOD 4-A — DOUBLE TROUBLE (BLOCO A)  [amrap_reps • cap 04:00]
+     ✔ 1º   Dupla dinâmica               63 reps                    100 pts
+     ✔ 2º   Lídia & Paulina              58 reps                    94 pts
+     ✔ 3º   As corajosas                 54 reps                    88 pts
+     ✔ 4º   Marília e Naiara             45 reps                    84 pts
+     ✔ 5º   Larissa e Naiane             31 reps                    80 pts
+     ✔ 6º   Thauanny/wanesssinha         21 reps                    76 pts
+   WOD 4-B — DOUBLE TROUBLE (BLOCO B)  [amrap_reps • cap 04:00]
+     ✔ 1º   Lídia & Paulina              60 reps                    100 pts
+     ✔ 2º   Marília e Naiara             51 reps                    94 pts
+     ✔ 3º   Larissa e Naiane             46 reps                    88 pts
+     ✔ 4º   As corajosas                 45 reps                    84 pts
+     ✔ 4º   Thauanny/wanesssinha         45 reps                    84 pts
+     ✔ 5º   Dupla dinâmica               26 reps                    80 pts
+   ── Classificação geral
+     ✔ 1º   Lídia & Paulina              550
+     ✔ 2º   As corajosas                 538
+     ✔ 3º   Dupla dinâmica               528
+     ✔ 4º   Larissa e Naiane             522
+     ✔ 5º   Marília e Naiara             510
+     ✔ 6º   Thauanny/wanesssinha         492
+
+▶ AMADOR - DUPLA MISTA — 6 duplas, 6 provas
+   WOD 1-A — 1200m ROW  [row • cap 05:00]
+     ✔ 1º   LARRISA E ANTONIO            04:00                      100 pts
+     ✔ 2º   Resistência                  04:49                      94 pts
+     ✔ 3º   Carlos Vaz / Yasmin Santos   04:56                      88 pts
+     ✔ 4º   Ju e Wellington              CAP +94                    84 pts
+     ✔ 5º   Bru& Edu                     CAP +224                   80 pts
+     ✔ 6º   29 30                        CAP +236                   76 pts
+   WOD 1-B — DEATH BY  [death_by • cap 15:00]
+     ✔ 1º   Resistência                  5R (12:47)                 100 pts
+     ✔ 2º   LARRISA E ANTONIO            4R + 12 reps (09:01)       94 pts
+     ✔ 3º   Bru& Edu                     3R + 12 reps (06:54)       88 pts
+     ✔ 4º   Carlos Vaz / Yasmin Santos   3R + 9 reps (07:30)        84 pts
+     ✔ 5º   Ju e Wellington              3R + 2 reps (06:45)        80 pts
+     ✔ 6º   29 30                        2R + 4 reps (04:51)        76 pts
+   WOD 2 — SYNC & BURN  [for_time • cap 10:00]
+     ✔ 1º   29 30                        07:19                      100 pts
+     ✔ 2º   Ju e Wellington              07:46                      94 pts
+     ✔ 3º   Resistência                  08:56                      88 pts
+     ✔ 4º   LARRISA E ANTONIO            09:40                      84 pts
+     ✔ 5º   Bru& Edu                     CAP +2                     80 pts
+     ✔ 6º   Carlos Vaz / Yasmin Santos   CAP +27                    76 pts
+   WOD 3 — MAXIMUM LIFT  [max_load • cap 06:00]
+     ✔ 1º   LARRISA E ANTONIO            185 kg                     100 pts
+     ✔ 2º   Resistência                  172.5 kg                   94 pts
+     ✔ 3º   29 30                        165 kg                     88 pts
+     ✔ 4º   Ju e Wellington              157.5 kg                   84 pts
+     ✔ 5º   Carlos Vaz / Yasmin Santos   127.5 kg                   80 pts
+     ✔ 6º   Bru& Edu                     72.5 kg                    76 pts
+   WOD 4-A — DOUBLE TROUBLE (BLOCO A)  [amrap_reps • cap 04:00]
+     ✔ 1º   Carlos Vaz / Yasmin Santos   61 reps                    100 pts
+     ✔ 2º   Bru& Edu                     57 reps                    94 pts
+     ✔ 3º   Ju e Wellington              56 reps                    88 pts
+     ✔ 4º   LARRISA E ANTONIO            31 reps                    84 pts
+     ✔ 5º   29 30                        30 reps                    80 pts
+     ✔ 6º   Resistência                  27 reps                    76 pts
+   WOD 4-B — DOUBLE TROUBLE (BLOCO B)  [amrap_reps • cap 04:00]
+     ✔ 1º   Bru& Edu                     65 reps                    100 pts
+     ✔ 2º   Carlos Vaz / Yasmin Santos   54 reps                    94 pts
+     ✔ 3º   29 30                        49 reps                    88 pts
+     ✔ 4º   LARRISA E ANTONIO            45 reps                    84 pts
+     ✔ 5º   Resistência                  33 reps                    80 pts
+     ✔ 6º   Ju e Wellington              27 reps                    76 pts
+   ── Classificação geral
+     ✔ 1º   LARRISA E ANTONIO            546
+     ✔ 2º   Resistência                  532
+     ✔ 3º   Carlos Vaz / Yasmin Santos   522
+     ✔ 4º   Bru& Edu                     518
+     ✔ 5º   29 30                        508
+     ✔ 6º   Ju e Wellington              506
+
+══ 203/203 conferências conforme o regulamento • leitura do banco 4120 ms • cálculo do placar 3 ms

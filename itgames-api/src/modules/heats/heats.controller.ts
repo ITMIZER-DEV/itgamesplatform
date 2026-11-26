@@ -53,11 +53,36 @@ export class HeatsController {
       minPerHeat?: number;
       categoryId?: number;
       isFinalSeeding?: boolean;
+      arenas?: 1 | 2;
+      afternoonStart?: string;
+      minRestMinutes?: number;
     },
     @CurrentUser() user: AuthUser,
   ) {
     await this.access.assertCanManage(user, body.gameCode);
     return this.heatsService.generateSchedule(body);
+  }
+
+  @Roles(UserRole.ORGANIZER)
+  @Post('retime-schedule')
+  @ApiOperation({
+    summary: 'Recalcular só horários e arenas das baterias existentes (1 ou 2 arenas), sem mexer em duplas e raias',
+  })
+  async retimeSchedule(
+    @Body()
+    body: {
+      gameCode: string;
+      arenas: 1 | 2;
+      startHour?: string;
+      intervalMinutes?: number;
+      afternoonStart?: string;
+      minRestMinutes?: number;
+      apply?: boolean;
+    },
+    @CurrentUser() user: AuthUser,
+  ) {
+    await this.access.assertCanManage(user, body.gameCode);
+    return this.heatsService.retimeSchedule({ ...body, arenas: Number(body.arenas) === 2 ? 2 : 1 });
   }
 
   @Roles(UserRole.ORGANIZER)

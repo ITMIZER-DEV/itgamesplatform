@@ -99,6 +99,11 @@ export function mapRegistration(r: any, gameCode: string, categoryName?: string)
   } as unknown as TeamRegistration;
 }
 
+/** "Arena 1" quando o cronograma usa arenas simultâneas; vazio em arena única. */
+export function arenaLabel(arena?: number | null): string {
+  return arena ? `Arena ${arena}` : '';
+}
+
 export function mapHeat(h: any, gameCode: string): Heat {
   const slots = [...(h.slots || [])].sort((a: any, b: any) => a.laneNumber - b.laneNumber);
   return {
@@ -108,6 +113,7 @@ export function mapHeat(h: any, gameCode: string): Heat {
     categoryId: String(h.categoryId),
     heatNumber: Number(h.heatNumber),
     startTime: h.startTime || '',
+    ...(h.arena ? { arena: Number(h.arena) } : {}),
     status: HEAT_STATUSES.includes(h.status) ? h.status : 'scheduled',
     laneAssignments: slots.map((s: any) => ({
       slotId: s.id,

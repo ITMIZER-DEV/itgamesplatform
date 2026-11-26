@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { 
   LayoutDashboard, 
   Plus, 
@@ -17,6 +18,7 @@ import {
   XCircle,
   Download,
   ArrowRightLeft,
+  ArrowRight,
   UserPlus,
   Filter,
   Sparkles,
@@ -66,6 +68,7 @@ import { MailSettingsPanel } from '@/components/admin/MailSettingsPanel';
 import { AthletesPanel } from '@/components/admin/AthletesPanel';
 import { GameOrganizersModal } from '@/components/admin/GameOrganizersModal';
 import { BackupRestoreModal } from '@/components/admin/BackupRestoreModal';
+import { ProgramTransferModal } from '@/components/admin/ProgramTransferModal';
 import { EditTeamAthletesModal } from '@/components/admin/EditTeamAthletesModal';
 import { AdminNewRegistrationModal } from '@/components/admin/AdminNewRegistrationModal';
 import { MigrateCategoryModal } from '@/components/admin/MigrateCategoryModal';
@@ -89,6 +92,7 @@ export default function AdminDashboardPage() {
   const [isNewRegistrationModalOpen, setIsNewRegistrationModalOpen] = useState(false);
   const [migratingTeam, setMigratingTeam] = useState<TeamRegistration | null>(null);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [isProgramModalOpen, setIsProgramModalOpen] = useState(false);
 
   // Perfil Ativo: Super Admin (Plataforma Global & Liberações) vs Organizador (Meus Campeonatos)
 
@@ -96,8 +100,8 @@ export default function AdminDashboardPage() {
   const [userRole, setUserRole] = useState<'SUPER_ADMIN' | 'ORGANIZER'>('ORGANIZER');
   const [organizersGame, setOrganizersGame] = useState<{ code: string; name: string } | null>(null);
 
-  // Abas do Painel: championships (Gestão de Campeonatos & Liberações), organizer (WODs & Categorias), registrations_financial (Inscrições, Pagamentos & Kits), judges_staff (Escala de Juízes), audit_center (Homologação de Súmulas), saas_owner (Monetização)
-  const [adminTab, setAdminTab] = useState<'championships' | 'organizer' | 'registrations_financial' | 'judges_staff' | 'audit_center' | 'saas_owner' | 'organizers_mgmt' | 'email' | 'athletes_mgmt'>('championships');
+  // Abas do Painel: championships (Gestão de Campeonatos & Liberações), organizer (WODs & Categorias), registrations_financial (Inscrições, Pagamentos & Kits), judges_staff (Escala de Juízes), saas_owner (Monetização)
+  const [adminTab, setAdminTab] = useState<'championships' | 'organizer' | 'registrations_financial' | 'judges_staff' | 'saas_owner' | 'organizers_mgmt' | 'email' | 'athletes_mgmt'>('championships');
   const [wodFilterCategoryId, setWodFilterCategoryId] = useState<string>('all');
   const [regSearchQuery, setRegSearchQuery] = useState<string>('');
   const [regCategoryFilter, setRegCategoryFilter] = useState<string>('all');
@@ -151,12 +155,6 @@ export default function AdminDashboardPage() {
   // Modal de Exclusão em Cascata (Super Admin)
   const [gameToDelete, setGameToDelete] = useState<GameEvent | null>(null);
   const [isDeletingGame, setIsDeletingGame] = useState(false);
-
-  // Modal de Auditoria e Foto da Súmula
-  const [selectedAuditScore, setSelectedAuditScore] = useState<ScoreEntry | null>(null);
-  const [auditNewTime, setAuditNewTime] = useState<string>('');
-  const [auditNewPoints, setAuditNewPoints] = useState<number>(0);
-  const [auditReason, setAuditReason] = useState<string>('');
 
   // Templates de Súmula para vinculação ao WOD
   const [sumulaTemplates, setSumulaTemplates] = useState<SumulaTemplate[]>([]);
@@ -996,45 +994,6 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Homologar Score (Head Judge Approval)
-  const handleApproveScore = (score: ScoreEntry) => {
-    const updatedScore: ScoreEntry = {
-      ...score,
-      scoreStatus: 'approved_by_head_judge',
-      approvedAt: new Date().toISOString(),
-      approvedBy: 'Head Judge Carlos M.'
-    };
-
-    storage.saveScore(updatedScore, 'Head Judge Carlos M.', 'head_judge', 'Homologação oficial após conferência');
-    setScores(storage.getScores(activeGame?.id));
-    setAuditLogs(storage.getAuditLogs(activeGame?.id));
-    toast.success(`Score de ${score.teamName} homologado com sucesso!`);
-  };
-
-  // Retificar Score com Justificativa e Trilha de Auditoria
-  const handleRectifyScore = () => {
-    if (!selectedAuditScore) return;
-    if (!auditReason.trim()) {
-      toast.error('Justificativa é obrigatória para retificação');
-      return;
-    }
-
-    const updatedScore: ScoreEntry = {
-      ...selectedAuditScore,
-      timeFormatted: auditNewTime || selectedAuditScore.timeFormatted,
-      finalPoints: auditNewPoints || selectedAuditScore.finalPoints,
-      scoreStatus: 'approved_by_head_judge',
-      approvedAt: new Date().toISOString(),
-      approvedBy: 'Head Judge Carlos M.'
-    };
-
-    storage.saveScore(updatedScore, 'Head Judge Carlos M.', 'head_judge', auditReason);
-    setScores(storage.getScores(activeGame?.id));
-    setAuditLogs(storage.getAuditLogs(activeGame?.id));
-    setSelectedAuditScore(null);
-    setAuditReason('');
-    toast.success('Score retificado e registrado no log imutável de auditoria!');
-  };
 
   // 2. Baixar / Confirmar Pagamento Manualmente (Ação do Organizador)
   const handleTogglePaymentStatus = async (teamId: string) => {
@@ -1210,6 +1169,16 @@ export default function AdminDashboardPage() {
           </button>
 
           <button
+            onClick={() => setIsProgramModalOpen(true)}
+            disabled={!activeGame}
+            className="px-3.5 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white font-bold text-xs border border-zinc-700 flex items-center gap-2 transition-colors disabled:opacity-50"
+            title="Exportar / importar WODs, layouts de súmula e timeline do campeonato ativo (sem scores)"
+          >
+            <FileText className="w-4 h-4 text-amber-400" />
+            <span>Programação</span>
+          </button>
+
+          <button
             onClick={openNewGame}
             className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition-transform active:scale-95"
           >
@@ -1281,16 +1250,14 @@ export default function AdminDashboardPage() {
             <Gavel className="w-3.5 h-3.5" />
             <span>Corpo de Juízes ({judges.length})</span>
           </button>
-          <button
-            onClick={() => setAdminTab('audit_center')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
-              adminTab === 'audit_center' 
-                ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20' 
-                : 'text-zinc-400 hover:text-white'
-            }`}
+          {/* Homologação, retificação e auditoria de scores ficam na Mesa do Head Judge (grava na API) */}
+          <Link
+            href="/head-judge"
+            className="px-3.5 py-2 rounded-xl text-xs font-bold transition-all text-zinc-400 hover:text-white inline-flex items-center gap-1.5"
           >
-            Auditoria & Súmulas c/ Foto
-          </button>
+            Homologação & Auditoria
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
           <button
             onClick={() => setAdminTab('athletes_mgmt')}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
@@ -2708,137 +2675,6 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      {/* ────────────────────────────────────────────────────────────────────────── */}
-      {/* 3. ABA DE AUDITORIA & HOMOLOGAÇÃO COM FOTO DA SÚMULA (HEAD JUDGE) */}
-      {/* ────────────────────────────────────────────────────────────────────────── */}
-      {adminTab === 'audit_center' && (
-        <div className="space-y-6">
-          {/* BANNER DE ACESSO DIRETO À MESA DO HEAD JUDGE */}
-          <div className="p-5 rounded-2xl bg-gradient-to-r from-emerald-950/60 via-zinc-900 to-zinc-900 border border-emerald-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="p-3 rounded-xl bg-emerald-500/20 text-emerald-400 shrink-0">
-                <FileCheck className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="text-sm font-black text-white">Mesa do Head Judge: Lançamento de Súmulas Físicas por Bateria</h4>
-                <p className="text-xs text-zinc-400 mt-0.5">
-                  Interface otimizada para digitação rápida das pranchetas dos juízes com anexo obrigatório de foto comprovatória e recálculo imediato do Leaderboard.
-                </p>
-              </div>
-            </div>
-            <a
-              href="/sumulas?tab=head_judge_desk"
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-transform active:scale-95 shrink-0"
-            >
-              <Camera className="w-4 h-4" />
-              <span>ABRIR MESA DO HEAD JUDGE</span>
-            </a>
-          </div>
-
-          <div className="glass-panel rounded-3xl p-6 border border-zinc-800 space-y-4">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Camera className="w-5 h-5 text-amber-400" />
-              Súmulas de Campo & Scores Aguardando Homologação
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {scores.map((score) => (
-                <div 
-                  key={score.id}
-                  className="p-5 rounded-2xl bg-zinc-950 border border-zinc-800 hover:border-zinc-700 flex flex-col justify-between gap-4 transition-all"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-amber-400">{score.registerNumber}</span>
-                        <span className="font-bold text-white">{score.teamName}</span>
-                      </div>
-                      <div className="text-xs text-zinc-400 mt-1">
-                        Árbitro: <strong>{score.judgeName}</strong> • Raia: <strong>#{score.lane}</strong> • Bateria: <strong>#{score.heatNumber}</strong>
-                      </div>
-                      <div className="text-xs text-zinc-300 mt-1 font-semibold">
-                        Score: <strong className="text-emerald-400">{score.timeFormatted || `${score.weightLoadedKg || score.repsCount} pts`}</strong>
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
-                        {score.scoreStatus === 'approved_by_head_judge' ? 'Homologado' : 'Aguardando'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* FOTO ANEXADA OU ALERTA */}
-                  <div className="pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs">
-                    {score.photoSumulaUrl ? (
-                      <span className="text-emerald-400 flex items-center gap-1.5 font-bold">
-                        <Check className="w-4 h-4" />
-                        Foto da Súmula Anexada
-                      </span>
-                    ) : (
-                      <span className="text-zinc-500 flex items-center gap-1.5">
-                        <AlertTriangle className="w-4 h-4 text-amber-500" />
-                        Sem foto física anexada
-                      </span>
-                    )}
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleApproveScore(score)}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-bold text-xs border border-emerald-500/40"
-                      >
-                        Homologar
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedAuditScore(score);
-                          setAuditNewTime(score.timeFormatted || '');
-                          setAuditNewPoints(score.finalPoints || 0);
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-bold text-xs border border-zinc-700 flex items-center gap-1.5"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Auditar</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* LOG IMUTÁVEL DE AUDITORIA */}
-          <div className="glass-panel rounded-3xl p-6 border border-zinc-800 space-y-4">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <History className="w-4 h-4 text-blue-400" />
-              Log Imutável de Auditoria (Trilha de Alterações)
-            </h3>
-
-            <div className="space-y-2">
-              {auditLogs.map((log) => (
-                <div key={log.id} className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs flex items-center justify-between gap-4">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-white">{log.changedBy}</span>
-                      <span className="text-[10px] px-2 py-0.2 rounded bg-zinc-800 text-zinc-400 uppercase font-bold">
-                        {log.role}
-                      </span>
-                      <span className="text-zinc-400">• {log.action}</span>
-                    </div>
-                    <div className="text-zinc-400">
-                      Motivo: <strong className="text-zinc-200">{log.reason}</strong> • Novo Valor: <strong className="text-emerald-400">{log.newValue}</strong>
-                    </div>
-                  </div>
-
-                  <div className="text-right text-[10px] text-zinc-500 font-mono whitespace-nowrap">
-                    {new Date(log.timestamp).toLocaleTimeString('pt-BR')}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {/* 4. ABA DO DONO DO SAAS (SUPER ADMIN MONETIZAÇÃO) */}
@@ -3239,153 +3075,6 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      {/* ────────────────────────────────────────────────────────────────────────── */}
-      {/* MODAL: AUDITORIA SPLIT-SCREEN COM FOTO, ZOOM, ROTAÇÃO E CONFERÊNCIA */}
-      {/* ────────────────────────────────────────────────────────────────────────── */}
-      {selectedAuditScore && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-2 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-3xl max-w-5xl w-full p-6 shadow-2xl space-y-5 max-h-[92vh] flex flex-col justify-between overflow-y-auto">
-            {/* TOPO DO MODAL */}
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 font-bold">
-                  <ShieldCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-white text-base flex items-center gap-2">
-                    Mesa de Triagem Split-Screen • Homologação de Súmula
-                  </h3>
-                  <p className="text-xs text-zinc-400 mt-0.5">
-                    Atleta: <strong className="text-white">{selectedAuditScore.teamName}</strong> ({selectedAuditScore.registerNumber}) • Raia #{selectedAuditScore.lane} • Bateria #{selectedAuditScore.heatNumber} • Árbitro: {selectedAuditScore.judgeName}
-                  </p>
-                </div>
-              </div>
-              <button onClick={() => setSelectedAuditScore(null)} className="text-zinc-500 hover:text-white text-lg p-1">✕</button>
-            </div>
-
-            {/* CONTEÚDO SPLIT SCREEN */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {/* LADO ESQUERDO: FOTO DA SÚMULA FÍSICA */}
-              <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-3 flex flex-col justify-between">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-zinc-400 uppercase flex items-center gap-1.5">
-                    <Camera className="w-3.5 h-3.5 text-amber-400" />
-                    Comprovante Fotográfico de Campo
-                  </span>
-                  {selectedAuditScore.photoSumulaUrl && (
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
-                      Foto HD Presente
-                    </span>
-                  )}
-                </div>
-
-                {selectedAuditScore.photoSumulaUrl ? (
-                  <div className="relative rounded-xl overflow-hidden border border-zinc-800 bg-zinc-900/50 flex items-center justify-center min-h-[260px] max-h-[320px]">
-                    <img 
-                      src={selectedAuditScore.photoSumulaUrl} 
-                      alt="Súmula Física" 
-                      className="w-full h-full object-contain max-h-[320px]"
-                    />
-                  </div>
-                ) : (
-                  <div className="w-full h-64 rounded-xl bg-zinc-900/60 flex flex-col items-center justify-center text-zinc-500 border border-dashed border-zinc-800 p-6 text-center">
-                    <Camera className="w-10 h-10 mb-2 text-zinc-600" />
-                    <span className="text-xs font-semibold text-zinc-400">Nenhuma foto anexada pelo juiz</span>
-                    <span className="text-[11px] text-zinc-600 mt-1">Conferência baseada na assinatura touch e registros do cronômetro</span>
-                  </div>
-                )}
-
-                <div className="text-[11px] text-zinc-500 text-center">
-                  Horário de submissão do campo: {new Date(selectedAuditScore.submittedAt).toLocaleTimeString('pt-BR')}
-                </div>
-              </div>
-
-              {/* LADO DIREITO: SCORE DIGITADO & RETIFICAÇÃO */}
-              <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-4">
-                <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
-                  <span className="text-xs font-bold text-zinc-400 uppercase">Validação dos Dados da Prova</span>
-                  <span className="text-xs font-mono font-bold text-amber-400">
-                    Status: {selectedAuditScore.scoreStatus === 'approved_by_head_judge' ? 'Homologado' : 'Em Análise'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <label className="text-[11px] font-bold text-zinc-400 block mb-1">Tempo / Resultado</label>
-                    <input
-                      type="text"
-                      value={auditNewTime}
-                      onChange={(e) => setAuditNewTime(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500 font-mono font-bold"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-bold text-zinc-400 block mb-1">Pontuação / Colocação</label>
-                    <input
-                      type="number"
-                      value={auditNewPoints}
-                      onChange={(e) => setAuditNewPoints(parseFloat(e.target.value))}
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500 font-mono font-bold"
-                    />
-                  </div>
-                </div>
-
-                {selectedAuditScore.penaltyNotes && (
-                  <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-300">
-                    <strong>Penalidades Registradas:</strong> {selectedAuditScore.penaltyNotes} ({selectedAuditScore.penaltiesSeconds}s)
-                  </div>
-                )}
-
-                <div>
-                  <label className="text-[11px] font-bold text-zinc-400 block mb-1">
-                    Justificativa Formal da Mesa (Audit Trail):
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={auditReason}
-                    onChange={(e) => setAuditReason(e.target.value)}
-                    placeholder="Ex: Conferido e homologado pelo Head Judge com base na súmula física."
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500 placeholder:text-zinc-600"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2 pt-2">
-                  <button
-                    onClick={() => {
-                      handleApproveScore(selectedAuditScore);
-                      setSelectedAuditScore(null);
-                    }}
-                    className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-1.5 transition-transform active:scale-95"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>HOMOLOGAR COM 1 CLIQUE</span>
-                  </button>
-
-                  <button
-                    onClick={handleRectifyScore}
-                    className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black text-xs shadow-lg shadow-amber-500/20 transition-transform active:scale-95"
-                  >
-                    Salvar Retificação
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* RODAPÉ */}
-            {/* RODAPÉ */}
-            <div className="flex items-center justify-between pt-3 border-t border-zinc-800 text-xs text-zinc-500">
-              <span>Todas as homologações geram hash imutável no AuditLog do sistema.</span>
-              <button
-                onClick={() => setSelectedAuditScore(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white"
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {/* MODAL: CRIAR NOVO CAMPEONATO REAL (ORGANIZADOR / SUPER ADMIN) */}
@@ -4149,6 +3838,14 @@ export default function AdminDashboardPage() {
       <BackupRestoreModal
         isOpen={isBackupModalOpen}
         onClose={() => setIsBackupModalOpen(false)}
+        onSuccess={() => loadData()}
+      />
+
+      <ProgramTransferModal
+        isOpen={isProgramModalOpen}
+        gameCode={activeGame?.code || activeGame?.id}
+        gameName={activeGame?.name}
+        onClose={() => setIsProgramModalOpen(false)}
         onSuccess={() => loadData()}
       />
 

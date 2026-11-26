@@ -21,6 +21,7 @@ import { useBoard } from '@/lib/use-board';
 import { toLeaderboardRanks, formatTotal, parseWodTitle, type BoardResponse } from '@/lib/board';
 import { computeCategoryStandings } from '@/lib/standings-engine';
 import { storage } from '@/lib/storage';
+import { getArenaSelection } from '@/lib/arena-selection';
 import { FrozenCategorySummary, getLocalFrozenCategories } from '@/lib/screens';
 import { LeaderboardRank } from '@/types';
 
@@ -82,7 +83,12 @@ export default function LeaderboardPage() {
   const [pickedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedWodIndex, setSelectedWodIndex] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const selectedCategoryId = pickedCategoryId || String(categories[0]?.id ?? '');
+  // sem escolha aqui, abre na categoria que a operação está trabalhando (Head Judge / Baterias)
+  const sharedCategoryId = getArenaSelection(activeGame?.code).categoryId;
+  const selectedCategoryId =
+    pickedCategoryId ||
+    (sharedCategoryId && categories.some((c) => String(c.id) === sharedCategoryId) ? sharedCategoryId : '') ||
+    String(categories[0]?.id ?? '');
 
   const currentCategory = categories.find(c => String(c.id) === selectedCategoryId) || categories[0];
   const categoryWodTitles = currentCategory?.wodTitles ?? [];
@@ -124,12 +130,9 @@ export default function LeaderboardPage() {
 
   useEffect(() => {
     const checkFreeze = () => {
-      const gCode = activeGame?.code || 'SUMMER2026';
-      const localFreeze =
-        localStorage.getItem('itgames_leaderboard_frozen') === 'true' ||
-        localStorage.getItem('itgames_freeze_leaderboard') === 'true' ||
-        localStorage.getItem('itgames_freeze_leaderboard_SUMMER2026') === 'true' ||
-        (gCode ? localStorage.getItem(`itgames_freeze_leaderboard_${gCode}`) === 'true' : false);
+      const gCode = activeGame?.code || '';
+      // só a chave do campeonato atual: as chaves globais antigas ficavam presas em "true" e congelavam qualquer evento
+      const localFreeze = gCode ? localStorage.getItem(`itgames_freeze_leaderboard_${gCode}`) === 'true' : false;
       const apiFreeze =
         (activeGame?.status as string) === 'frozen' ||
         (activeGame?.status as string) === 'blocked';

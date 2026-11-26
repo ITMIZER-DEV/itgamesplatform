@@ -16,6 +16,7 @@ import {
 } from './official-logic';
 import { OfficialLockService } from './official-lock.service';
 import { PreviewRow, blockedMessage, buildPreviewRows, countScored, toSnapshotRows } from './official-rows';
+import { ACTIVE_ONLY } from '../../common/prisma-filters/active';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -68,7 +69,7 @@ export class OfficialService {
       this.boards.loadRows(code),
       this.prisma.category.findMany({ where: { gamesId: code }, select: { code: true, name: true }, orderBy: { code: 'asc' } }),
       this.prisma.event.findMany({
-        where: { game: code },
+        where: { game: code, ...ACTIVE_ONLY },
         select: { idEvent: true, workout: true, category: true, title: true },
         orderBy: { idEvent: 'asc' },
       }),

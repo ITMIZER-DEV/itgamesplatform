@@ -69,11 +69,11 @@ describe('buildBoard', () => {
       expect(r.wods[1]).toMatchObject({ status: 'none', points: 0 });
     }
     const t = (code: number) => rows.find((r) => r.teamCode === code)!;
-    // só o WOD 10 conta: 95, 100, 100, 90
-    expect([1, 2, 3, 4].map((c) => t(c).totalPoints)).toEqual([95, 100, 100, 90]);
+    // só o WOD 10 conta: 90, 100, 100, 85
+    expect([1, 2, 3, 4].map((c) => t(c).totalPoints)).toEqual([90, 100, 100, 85]);
     // desempate pelo último WOD que conta (o 10): 2 e 3 seguem empatados em 1º
     expect(rows.map((r) => r.teamCode)).toEqual([2, 3, 1, 4]);
-    expect(rows.map((r) => r.rank)).toEqual([1, 1, 2, 3]);
+    expect(rows.map((r) => r.rank)).toEqual([1, 1, 3, 4]);
   });
 });
 
@@ -142,7 +142,7 @@ describe('computeWorkoutEntries', () => {
     const entries = computeWorkoutEntries(fixtureA(), 1, 10)!;
     expect([...entries.keys()].sort()).toEqual([1, 2, 3, 4]);
     expect(entries.get(2)).toMatchObject({ rank: 1, points: 100, status: 'scored' });
-    expect(entries.get(1)).toMatchObject({ rank: 2, status: 'scored' });
-    expect(entries.get(4)).toMatchObject({ rank: 3, points: 90, status: 'wo', display: 'W.O.' });
+    expect(entries.get(1)).toMatchObject({ rank: 3, status: 'scored' });
+    expect(entries.get(4)).toMatchObject({ rank: 4, points: 85, status: 'wo', display: 'W.O.' });
   });
 });

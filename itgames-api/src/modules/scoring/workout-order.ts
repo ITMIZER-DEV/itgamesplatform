@@ -7,11 +7,21 @@ export interface WorkoutResult {
   weight: number;
   tieBreak: number;
   penalty: number;
+  /** amrap: o resultado é contado em reps (ex.: Double Trouble), não em rounds. */
+  repsUnit?: boolean;
   /** for_time: terminou dentro do time cap. */
   completed: boolean;
 }
 
 /** Negativo quando `a` fica à frente de `b`; 0 é empate. */
+// Desempate por tempo (menor vence); tempo não anotado perde para qualquer tempo anotado
+function compareTieBreak(a: WorkoutResult, b: WorkoutResult): number {
+  if (a.tieBreak > 0 && b.tieBreak > 0) return a.tieBreak - b.tieBreak;
+  if (a.tieBreak > 0) return -1;
+  if (b.tieBreak > 0) return 1;
+  return 0;
+}
+
 export function compareWithinWorkout(type: string, a: WorkoutResult, b: WorkoutResult): number {
   if (type === 'for_time') {
     if (a.completed && !b.completed) return -1;
@@ -19,16 +29,17 @@ export function compareWithinWorkout(type: string, a: WorkoutResult, b: WorkoutR
     if (a.completed && b.completed) {
       const ta = a.time + a.penalty;
       const tb = b.time + b.penalty;
-      return ta !== tb ? ta - tb : a.tieBreak - b.tieBreak;
+      return ta !== tb ? ta - tb : compareTieBreak(a, b);
     }
     // Ambos tomaram CAP:
     // Na convenção do torneio (CAP + X metros/reps faltantes), quem tem MENOS metros faltantes fica na frente
-    return a.reps !== b.reps ? a.reps - b.reps : a.tieBreak - b.tieBreak;
+    return a.reps !== b.reps ? a.reps - b.reps : compareTieBreak(a, b);
   }
   if (type === 'amrap' || type === 'emom') {
     // Maior número de rounds/reps fica na frente
     // Em caso de empate no número de rounds/reps, o menor tempo de tiebreak vence o desempate
-    return a.reps !== b.reps ? b.reps - a.reps : a.tieBreak - b.tieBreak;
+    // (tempo não anotado perde para qualquer tempo anotado)
+    return a.reps !== b.reps ? b.reps - a.reps : compareTieBreak(a, b);
   }
   if (type === 'max_load' || type === 'complex') {
     return a.weight !== b.weight ? b.weight - a.weight : a.time - b.time;

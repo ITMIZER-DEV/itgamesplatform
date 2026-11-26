@@ -66,9 +66,16 @@ class DataStorage {
     // remove os campeonatos fictícios que versões antigas gravaram neste navegador
     purgeMockData(localStorage);
 
-    if (!localStorage.getItem(STORAGE_KEYS.TEMPLATES)) {
-      this.setItem(STORAGE_KEYS.TEMPLATES, DEFAULT_SUMULA_TEMPLATES);
-    }
+    // Atualiza e sincroniza os templates padrão (garantindo que novas versões A4 e QR codes fiquem ativas)
+    const storedTemplates = this.getItem<SumulaTemplate[]>(STORAGE_KEYS.TEMPLATES, []);
+    const tmplMap = new Map<string, SumulaTemplate>();
+    DEFAULT_SUMULA_TEMPLATES.forEach(t => tmplMap.set(t.id, t));
+    storedTemplates.forEach(t => {
+      if (!tmplMap.has(t.id)) {
+        tmplMap.set(t.id, t);
+      }
+    });
+    this.setItem(STORAGE_KEYS.TEMPLATES, Array.from(tmplMap.values()));
     if (!localStorage.getItem(STORAGE_KEYS.ORGANIZATIONS)) {
       this.setItem(STORAGE_KEYS.ORGANIZATIONS, MOCK_ORGANIZATIONS);
     }
@@ -332,7 +339,19 @@ class DataStorage {
 
   // Templates de Súmula
   public getSumulaTemplates(): SumulaTemplate[] {
-    return this.getItem<SumulaTemplate[]>(STORAGE_KEYS.TEMPLATES, DEFAULT_SUMULA_TEMPLATES);
+    const list = this.getItem<SumulaTemplate[]>(STORAGE_KEYS.TEMPLATES, []);
+    const map = new Map<string, SumulaTemplate>();
+    // Sempre injeta os templates oficiais nativos atualizados (sem quebras de texto e com dimensões A4 perfeitas)
+    DEFAULT_SUMULA_TEMPLATES.forEach(dt => map.set(dt.id, dt));
+    if (list && list.length > 0) {
+      list.forEach(t => {
+        // Preserva templates personalizados extras criados pelo usuário
+        if (!map.has(t.id)) {
+          map.set(t.id, t);
+        }
+      });
+    }
+    return Array.from(map.values());
   }
 
   public saveSumulaTemplate(template: SumulaTemplate): void {

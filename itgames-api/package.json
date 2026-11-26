@@ -14,6 +14,7 @@
     "test:unit": "jest --config ./test/jest-unit.json",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
+    "simular:dia": "ts-node --transpile-only scripts/simular-dia-campeonato.ts",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",

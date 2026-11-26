@@ -35,6 +35,7 @@ import {
   parseScreenMode,
   validateScreenGames,
 } from './screens-logic';
+import { ACTIVE_ONLY } from '../../common/prisma-filters/active';
 
 export interface ScreenView {
   id: string;
@@ -496,7 +497,7 @@ export class ScreensService {
     const lanesPerHeat = Math.max(2, gameRow?.lanesCount ?? 4);
 
     const workouts = await this.prisma.workout.findMany({
-      where: { game: dto.gameCode, category: cat.id },
+      where: { game: dto.gameCode, category: cat.id, ...ACTIVE_ONLY },
       orderBy: { code: 'asc' },
     });
     const pickedWorkout =
@@ -507,9 +508,10 @@ export class ScreensService {
     let heatNumber = dto.heatNumber && dto.heatNumber > 0 ? dto.heatNumber : 1;
     let totalHeats = 1;
     let startTime = '09:00';
+    let arena: number | undefined;
 
-    if (lanes.length === 0) {
-      const dbHeats = pickedWorkout
+    // Horário e arena sempre vêm da bateria gravada, mesmo quando o Head Judge já manda as raias.
+    const dbHeats = pickedWorkout
         ? await this.prisma.heat.findMany({
             where: { gameCode: dto.gameCode, categoryId: cat.id, workoutCode: pickedWorkout.code },
             include: {
@@ -525,7 +527,16 @@ export class ScreensService {
             orderBy: { heatNumber: 'asc' },
           })
         : [];
+    if (dbHeats.length > 0) {
+      totalHeats = dbHeats.length;
+      const h = dbHeats.find((x) => x.heatNumber === heatNumber);
+      if (h) {
+        startTime = h.startTime || startTime;
+        arena = h.arena ?? undefined;
+      }
+    }
 
+    if (lanes.length === 0) {
       const rowByTeamCode = new Map(cat.rows.map((r) => [r.teamCode, r]));
 
       if (dbHeats.length > 0) {
@@ -533,6 +544,7 @@ export class ScreensService {
         const targetHeat = dbHeats.find((h) => h.heatNumber === heatNumber) ?? dbHeats[0];
         heatNumber = targetHeat.heatNumber;
         startTime = targetHeat.startTime || '09:00';
+        arena = targetHeat.arena ?? undefined;
         lanes = targetHeat.slots.map((slot) => {
           const scoreRow = rowByTeamCode.get(slot.teamCode);
           return {
@@ -577,7 +589,8 @@ export class ScreensService {
       heatNumber,
       totalHeats,
       startTime,
-      message: dto.message?.trim() || 'DIRIJAM-SE ÀS RAIAS DE LARGADA',
+      ...(arena ? { arena } : {}),
+      message: dto.message?.trim() || (arena ? `DIRIJAM-SE À ARENA ${arena}` : 'DIRIJAM-SE ÀS RAIAS DE LARGADA'),
       lanes,
       triggeredAt: new Date().toISOString(),
     };

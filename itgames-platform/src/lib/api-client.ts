@@ -16,6 +16,20 @@ export function getApiBaseUrl(): string {
   return process.env.API_INTERNAL_URL || 'http://127.0.0.1:3334';
 }
 
+export interface ProgramImportReport {
+  applied: boolean;
+  canApply: boolean;
+  blockers: string[];
+  warnings: string[];
+  summary: {
+    workouts: { create: number; update: number; unchanged: number };
+    events: { create: number; update: number; unchanged: number };
+    templates: { create: number; update: number; skip: number };
+    heats: { remove: number; create: number; lanes: number; start: string | null; end: string | null };
+  };
+  teamIssues: { teamCode: number; teamName: string; category: string; problem: string }[];
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -699,8 +713,40 @@ export class ApiClient {
     minPerHeat?: number;
     categoryId?: number;
     isFinalSeeding?: boolean;
+    arenas?: 1 | 2;
+    afternoonStart?: string;
+    minRestMinutes?: number;
   }) {
     return this.strict<any>('/heats/generate-schedule', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  // Recalcula só horário e arena das baterias existentes (duplas e raias mantidas). apply=false só simula.
+  async retimeHeatSchedule(body: {
+    gameCode: string;
+    arenas: 1 | 2;
+    startHour?: string;
+    intervalMinutes?: number;
+    afternoonStart?: string;
+    minRestMinutes?: number;
+    apply?: boolean;
+  }) {
+    return this.strict<{
+      success: boolean;
+      applied: boolean;
+      message: string;
+      problems: string[];
+      summary: {
+        start: string;
+        end: string;
+        totalMinutes: number;
+        heatsPerArena: Record<string, number>;
+        minRestMinutes: number | null;
+        avgRestMinutes: number | null;
+      };
+    }>('/heats/retime-schedule', {
       method: 'POST',
       body: JSON.stringify(body),
     });
@@ -768,6 +814,18 @@ export class ApiClient {
     return this.strict<any>('/backup/import', {
       method: 'POST',
       body: JSON.stringify(data),
+    }, true);
+  }
+
+  // Programação do campeonato (WODs, layouts de súmula e timeline), sem scores nem placar
+  async exportProgram(gameCode: string) {
+    return this.strict<any>(`/backup/program/${encodeURIComponent(gameCode)}/export`, { method: 'GET' }, true);
+  }
+
+  async importProgram(gameCode: string, pkg: any, apply: boolean): Promise<ProgramImportReport> {
+    return this.strict<ProgramImportReport>(`/backup/program/${encodeURIComponent(gameCode)}/import${apply ? '?apply=1' : ''}`, {
+      method: 'POST',
+      body: JSON.stringify(pkg),
     }, true);
   }
 

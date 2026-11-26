@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { Navbar } from '@/components/layout/Navbar';
-import { Toaster } from 'sonner';
+import { ThemedToaster } from '@/components/layout/ThemedToaster';
 
 export const metadata: Metadata = {
   title: 'ITGames Arena • Plataforma de Competições de CrossFit & HYROX',
@@ -19,26 +19,17 @@ export default function RootLayout({
         {/* Aplica o tema salvo (ou a preferência do sistema) antes da primeira pintura */}
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('itgames_theme');if(t!=='light'&&t!=='dark'){t=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();` }} />
       </head>
-      <body className="bg-[var(--background)] text-[var(--foreground)] min-h-screen flex flex-col antialiased selection:bg-amber-500 selection:text-black">
+      <body className="bg-[var(--background)] text-[var(--foreground)] min-h-screen flex flex-col antialiased">
         <Navbar />
         <main className="flex-1 pb-24 lg:pb-0">
           {children}
         </main>
-        <footer className="border-t border-zinc-800/80 py-6 text-center text-xs text-zinc-500 no-print">
-          <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <div>
-              <strong>ITGames Arena Platform</strong> © {new Date().getFullYear()} — Plataforma Unificada para CrossFit, HYROX & Fitness Racing
-            </div>
-            <div className="flex items-center gap-4 text-zinc-400">
-              <span>Súmulas Impressas & Digitais</span>
-              <span>•</span>
-              <span>Heats & Lanes</span>
-              <span>•</span>
-              <span>Live Arena LED</span>
-            </div>
+        <footer className="border-t border-zinc-800 py-5 text-center text-xs text-zinc-500 no-print">
+          <div className="max-w-7xl mx-auto px-4">
+            ITGames Arena © {new Date().getFullYear()}
           </div>
         </footer>
-        <Toaster richColors position="top-right" theme="dark" />
+        <ThemedToaster />
       </body>
     </html>
   );

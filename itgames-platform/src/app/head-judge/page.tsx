@@ -34,10 +34,12 @@ import {
   Play,
   Award,
   Megaphone,
-  Snowflake
+  Snowflake,
+  Tv
 } from 'lucide-react';
 import { storage } from '@/lib/storage';
 import { useGames } from '@/lib/use-games';
+import { getArenaSelection, pickExisting, usePersistArenaSelection } from '@/lib/arena-selection';
 import { apiClient, ApiError } from '@/lib/api-client';
 import {
   FrozenCategorySummary,
@@ -46,7 +48,7 @@ import {
   saveLocalFrozenCategories,
 } from '@/lib/screens';
 import { sortWorkoutsNaturally, parseWodTitle } from '@/lib/board';
-import { computeWorkoutRanking, computeCategoryStandings, DEFAULT_POINTS_TABLE } from '@/lib/standings-engine';
+import { computeWorkoutRanking, computeCategoryStandings, DEFAULT_POINTS_TABLE, parseKg } from '@/lib/standings-engine';
 import { 
   GameEvent, 
   Category, 
@@ -58,6 +60,7 @@ import {
 } from '@/types';
 import { toast } from 'sonner';
 import { AclGuard } from '@/components/auth/AclGuard';
+import { arenaLabel } from '@/lib/arena-data';
 
 export default function HeadJudgePage() {
   const { games, activeGame } = useGames();
@@ -71,7 +74,7 @@ export default function HeadJudgePage() {
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
 
   // Abas do Controle Total do Head Judge
-  const [activeTab, setActiveTab] = useState<'scores_desk' | 'run_standings' | 'sumulas_mgmt' | 'heats_mgmt' | 'judges_staff' | 'appeals' | 'penalties' | 'audit_log'>('scores_desk');
+  const [activeTab, setActiveTab] = useState<'scores_desk' | 'run_standings' | 'heats_mgmt' | 'appeals' | 'penalties' | 'audit_log'>('scores_desk');
   const [runningStandingsKey, setRunningStandingsKey] = useState<string | null>(null);
   const [standingsLastRunAt, setStandingsLastRunAt] = useState<string | null>(null);
   const [officialStatusData, setOfficialStatusData] = useState<any | null>(null);
@@ -277,7 +280,8 @@ export default function HeadJudgePage() {
                   ? 300 + Number(s.time.match(/CAP\s*\+(\d+)/i)![1])
                   : undefined,
             repsCount: typeof s.reps === 'number' ? s.reps : (s.reps ? Number(s.reps) : undefined),
-            weightLoadedKg: typeof s.weight === 'number' ? s.weight : (s.weight ? Number(String(s.weight).replace(/\D/g, '')) : undefined),
+            tieBreakTimeFormatted: s.tieBreakTime || undefined,
+            weightLoadedKg: parseKg(s.weight),
             isCompleted: true,
             isWO: false,
             isDisqualified: false,
@@ -306,16 +310,17 @@ export default function HeadJudgePage() {
     setAuditLogs(logs);
 
     if (cats.length > 0) {
-      setSelectedCategoryId((prev) => {
-        if (prev && cats.some((c) => c.id === prev)) return prev;
-        const defaultCat = cats.find((c) => c.id === '2') || cats[0];
-        return defaultCat.id;
-      });
+      setSelectedCategoryId((prev) => pickExisting(cats, prev, getArenaSelection(gCode).categoryId));
     }
     if (wods.length > 0) {
       setSelectedWorkoutId((prev) => {
         if (prev && wods.some((w) => w.id === prev)) return prev;
-        const defaultCat = cats.find((c) => c.id === '2') || cats[0];
+        const shared = getArenaSelection(gCode);
+        if (shared.workoutId && wods.some((w) => String(w.id) === shared.workoutId)) {
+          if (shared.heat) setDeskHeatNumber(shared.heat);
+          return String(wods.find((w) => String(w.id) === shared.workoutId)!.id);
+        }
+        const defaultCat = cats.find((c) => String(c.id) === shared.categoryId) || cats[0];
         const firstCatWods = sortWorkoutsNaturally(
           wods.filter((w) => !w.categoryId || w.categoryId === defaultCat?.id || w.categoryIds?.includes(defaultCat?.id)),
         );
@@ -342,6 +347,13 @@ export default function HeadJudgePage() {
     window.addEventListener('itgames_storage_updated', onStorageUpdated);
     return () => window.removeEventListener('itgames_storage_updated', onStorageUpdated);
   }, [activeGame]);
+
+  // Seleção compartilhada com Baterias, Súmulas, App do Juiz e Leaderboard
+  usePersistArenaSelection(
+    activeGame?.code,
+    { categoryId: selectedCategoryId, workoutId: selectedWorkoutId, heat: deskHeatNumber },
+    categories.length > 0,
+  );
 
   // Categoria e WOD ativos (com fallback para WODs gerais do campeonato caso a categoria ainda não tenha WODs próprios)
   const currentCategory = categories.find(c => c.id === selectedCategoryId) || categories[0];
@@ -370,11 +382,38 @@ export default function HeadJudgePage() {
     heatNumber: number | string;
     laneNumber: number | string;
     heatTime: string;
+    arena?: number;
   }
 
   const workoutHeats = heats.filter(
     h => h.workoutId === currentWorkout?.id && (!h.categoryId || String(h.categoryId) === String(currentCategory?.id)),
   );
+  const activeDeskHeat = workoutHeats.find(h => String(h.heatNumber) === String(deskHeatNumber));
+
+  const handleUpdateDeskHeatStatus = async (heatId: string, status: Heat['status']) => {
+    try {
+      if (status === 'calling') {
+        await handleCallCurrentHeatOnTv();
+      }
+      if (!String(heatId).startsWith('virtual_')) {
+        await apiClient.updateHeatStatus(heatId, status);
+        await loadData();
+      } else {
+        setHeats(prev => prev.map(h => (h.id === heatId ? { ...h, status } : h)));
+      }
+      const label =
+        status === 'scheduled'
+          ? 'Agendada'
+          : status === 'calling'
+            ? 'Chamando Atletas'
+            : status === 'in_progress'
+              ? 'Na Arena'
+              : 'Concluída';
+      toast.success(`Status da bateria #${deskHeatNumber} atualizado para ${label}!`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Não foi possível atualizar o status da bateria.');
+    }
+  };
   const allCategoryLanes: LaneItem[] = [];
 
   if (workoutHeats.length > 0) {
@@ -386,7 +425,8 @@ export default function HeadJudgePage() {
             team,
             heatNumber: heat.heatNumber,
             laneNumber: lane.lane,
-            heatTime: heat.startTime
+            heatTime: heat.startTime,
+            arena: heat.arena,
           });
         }
       });
@@ -452,17 +492,26 @@ export default function HeadJudgePage() {
     setIsUpdatingFreeze(true);
 
     try {
-      // 1. Atualizar no backend (Prisma Game status)
-      await apiClient.updateGameStatus(gCode, newState ? 'frozen' : 'live').catch((err) => {
-        console.warn('API updateGameStatus fallback:', err);
-      });
+      // 1. Atualizar no backend (Prisma Game status). Hoje só o Super Admin tem permissão:
+      // para os demais perfis o placar público fica congelado apenas neste navegador.
+      const statusSaved = await apiClient
+        .updateGameStatus(gCode, newState ? 'frozen' : 'live')
+        .then(() => true)
+        .catch((err) => {
+          console.warn('API updateGameStatus fallback:', err);
+          return false;
+        });
+      if (!statusSaved) {
+        toast.warning('O placar público (/leaderboard) não pôde ser alterado no servidor: o congelamento vale só para os telões e este navegador.');
+      }
 
       // 2. Persistir localmente e disparar eventos para os telões
       setIsLeaderboardFrozen(newState);
       localStorage.setItem(`itgames_freeze_leaderboard_${gCode}`, String(newState));
-      localStorage.setItem('itgames_freeze_leaderboard_SUMMER2026', String(newState));
-      localStorage.setItem('itgames_leaderboard_frozen', String(newState));
-      localStorage.setItem('itgames_freeze_leaderboard', String(newState));
+      // limpa chaves globais antigas que congelavam qualquer campeonato
+      localStorage.removeItem('itgames_freeze_leaderboard_SUMMER2026');
+      localStorage.removeItem('itgames_leaderboard_frozen');
+      localStorage.removeItem('itgames_freeze_leaderboard');
       window.dispatchEvent(new CustomEvent('itgames_freeze_changed', { detail: { frozen: newState } }));
 
       // Transmissão instantânea via BroadcastChannel para todos os telões e abas abertas
@@ -558,7 +607,10 @@ export default function HeadJudgePage() {
       heatNumber: heatNum,
       totalHeats: Math.max(1, distinctHeats.length),
       startTime: activeDeskHeatLanes[0]?.heatTime || '09:00',
-      message: 'ATLETAS DA BATERIA, DIRIJAM-SE ÀS SUAS RAIAS DE LARGADA',
+      arena: activeDeskHeatLanes[0]?.arena,
+      message: activeDeskHeatLanes[0]?.arena
+        ? `ATLETAS DA BATERIA, DIRIJAM-SE À ARENA ${activeDeskHeatLanes[0].arena}`
+        : 'ATLETAS DA BATERIA, DIRIJAM-SE ÀS SUAS RAIAS DE LARGADA',
       lanes,
       triggeredAt: new Date().toISOString(),
     };
@@ -868,6 +920,11 @@ export default function HeadJudgePage() {
         : '';
       timeFormatted = `${roundsCount}R${repsPart}${timePart}`;
       isCompleted = roundsCount >= 5;
+    } else if (/WOD\s*4|4-A|4-B/i.test(targetWod.title || '')) {
+      repsCount = Number(state.reps) || 0;
+      roundsCount = 0;
+      timeFormatted = `${repsCount} reps`;
+      isCompleted = true;
     } else if (isWod3) {
       const wA = Number(state.weightA) || 0;
       const wB = Number(state.weightB) || 0;
@@ -1239,19 +1296,7 @@ export default function HeadJudgePage() {
             }`}
           >
             <Zap className="w-4 h-4" />
-            <span>2. ⚡ Rodar Classificações &amp; Ranking</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('sumulas_mgmt')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'sumulas_mgmt'
-                ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20 font-black'
-                : 'text-zinc-400 hover:text-white'
-            }`}
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>Súmulas A4 &amp; Presets</span>
+            <span>2. Rodar Classificações &amp; Ranking</span>
           </button>
 
           <button
@@ -1263,19 +1308,7 @@ export default function HeadJudgePage() {
             }`}
           >
             <Activity className="w-4 h-4" />
-            <span>3. Baterias &amp; Raias</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('judges_staff')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'judges_staff'
-                ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20 font-black'
-                : 'text-zinc-400 hover:text-white'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>4. Juízes &amp; Escala de Pista</span>
+            <span>3. Chamada de Baterias</span>
           </button>
 
           <button
@@ -1287,7 +1320,7 @@ export default function HeadJudgePage() {
             }`}
           >
             <Scale className="w-4 h-4" />
-            <span>5. Recursos ({contestedScores.length})</span>
+            <span>4. Recursos ({contestedScores.length})</span>
           </button>
 
           <button
@@ -1299,7 +1332,7 @@ export default function HeadJudgePage() {
             }`}
           >
             <Ban className="w-4 h-4" />
-            <span>6. Penalidades ({disqualifiedScores.length})</span>
+            <span>5. Penalidades ({disqualifiedScores.length})</span>
           </button>
 
           <button
@@ -1311,8 +1344,25 @@ export default function HeadJudgePage() {
             }`}
           >
             <History className="w-4 h-4" />
-            <span>7. Trilha de Auditoria</span>
+            <span>6. Trilha de Auditoria</span>
           </button>
+        </div>
+
+        {/* Atalhos para as outras telas do dia da prova (mantêm categoria / WOD / bateria selecionados) */}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-zinc-500 font-semibold">Ir para:</span>
+          <Link href="/heats" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-600">
+            <Activity className="w-3.5 h-3.5" /> Baterias &amp; Raias
+          </Link>
+          <Link href="/sumulas" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-600">
+            <FileSpreadsheet className="w-3.5 h-3.5" /> Imprimir Súmulas
+          </Link>
+          <Link href="/judge" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-600">
+            <Users className="w-3.5 h-3.5" /> App do Juiz
+          </Link>
+          <Link href="/telas" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-600">
+            <Tv className="w-3.5 h-3.5" /> Telões
+          </Link>
         </div>
 
         {/* ────────────────────────────────────────────────────────────────────────── */}
@@ -1774,6 +1824,51 @@ export default function HeadJudgePage() {
                   />
                 </div>
               </div>
+
+              {/* CONTROLE DE STATUS DA BATERIA + CHAMADA NO TELÃO (INTEGRADO) */}
+              {activeDeskHeat && (
+                <div className="pt-3 mt-3 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCallCurrentHeatOnTv}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-black shadow-md shadow-amber-500/20"
+                      title="Transmitir chamada desta bateria com as raias e atletas nos telões Firestick e Telão Web"
+                    >
+                      <span>📢 Chamar no Telão</span>
+                    </button>
+                    <span className="text-[11px] text-zinc-400 font-semibold ml-1">Status da Bateria #{deskHeatNumber}:</span>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateDeskHeatStatus(activeDeskHeat.id, 'scheduled')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${activeDeskHeat.status === 'scheduled' ? 'bg-zinc-700 text-white' : 'bg-zinc-800/60 text-zinc-400 hover:text-white'}`}
+                    >
+                      Agendada
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateDeskHeatStatus(activeDeskHeat.id, 'calling')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${activeDeskHeat.status === 'calling' ? 'bg-amber-500 text-black font-bold animate-pulse' : 'bg-zinc-800/60 text-zinc-400 hover:text-white'}`}
+                    >
+                      Chamando Atletas
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateDeskHeatStatus(activeDeskHeat.id, 'in_progress')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${activeDeskHeat.status === 'in_progress' ? 'bg-emerald-500 text-black font-bold' : 'bg-zinc-800/60 text-zinc-400 hover:text-white'}`}
+                    >
+                      Na Arena
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateDeskHeatStatus(activeDeskHeat.id, 'completed')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${activeDeskHeat.status === 'completed' ? 'bg-purple-600 text-white font-bold' : 'bg-zinc-800/60 text-zinc-400 hover:text-white'}`}
+                    >
+                      Concluída
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* LISTA DE RAIAS DA BATERIA */}
@@ -1996,6 +2091,19 @@ export default function HeadJudgePage() {
                           {isWod1B && (
                             <div className="space-y-2">
                               <span className="text-xs font-bold text-amber-400 block">WOD 1-B (Death By Thrusters + Pull-ups):</span>
+                              {/WOD\s*4|4-A|4-B/i.test(currentWorkout?.title || '') ? (
+                                <div>
+                                  <label className="text-[11px] text-zinc-400 block mb-1">Total de Reps (AMRAP 4&apos; — não conta round):</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="0"
+                                    value={currentState.reps || ''}
+                                    onChange={(e) => handleUpdateDeskField(regId, 'reps', e.target.value)}
+                                    className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-sm font-black text-white"
+                                  />
+                                </div>
+                              ) : (
                               <div>
                                 <label className="text-[11px] text-zinc-400 block mb-1.5">Rounds Fechados dentro do tempo:</label>
                                 <div className="grid grid-cols-5 gap-1.5">
@@ -2053,6 +2161,7 @@ export default function HeadJudgePage() {
                                   </div>
                                 </div>
                               </div>
+                              )}
                             </div>
                           )}
 
@@ -2445,60 +2554,6 @@ export default function HeadJudgePage() {
         )}
 
         {/* ────────────────────────────────────────────────────────────────────────── */}
-        {/* ABA 2: SÚMULAS A4 & PRESETS (CONTROLE TOTAL) */}
-        {/* ────────────────────────────────────────────────────────────────────────── */}
-        {activeTab === 'sumulas_mgmt' && (
-          <div className="space-y-6">
-            <div className="glass-panel p-6 rounded-3xl border border-zinc-800 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800 pb-4">
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <FileSpreadsheet className="w-5 h-5 text-amber-400" />
-                    <span>Estúdio de Súmulas &amp; Impressão em Lote A4</span>
-                  </h3>
-                  <p className="text-xs text-zinc-400 mt-0.5">
-                    Gere súmulas padronizadas para pranchetas de arbitragem com nomes das equipes, raias e baterias.
-                  </p>
-                </div>
-                <Link
-                  href="/sumulas"
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-black font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>ABRIR ESTÚDIO COMPLETO DE SÚMULAS</span>
-                </Link>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-2">
-                  <div className="text-xs font-bold text-amber-400">Súmula Combo A4 (WOD 1-A + 1-B)</div>
-                  <p className="text-xs text-zinc-400">Formato oficial unificado para 800m Remo + 5 Rounds Death By em folha única A4.</p>
-                  <Link href="/sumulas?templateId=crossfit-wod1-combo-row-deathby" className="text-xs text-amber-400 font-bold hover:underline flex items-center gap-1 pt-1">
-                    <span>Imprimir em Lote</span> <ChevronRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-2">
-                  <div className="text-xs font-bold text-amber-400">Súmula WOD 3 (Maximum Lift - 10 Tentativas)</div>
-                  <p className="text-xs text-zinc-400">Tabela de 10 tentativas com Atleta A, Atleta B e Carga Total da Dupla calculada.</p>
-                  <Link href="/sumulas?templateId=crossfit-wod3-maximum-lift" className="text-xs text-amber-400 font-bold hover:underline flex items-center gap-1 pt-1">
-                    <span>Imprimir em Lote</span> <ChevronRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-2">
-                  <div className="text-xs font-bold text-amber-400">Editor Visual de Presets</div>
-                  <p className="text-xs text-zinc-400">Personalize campos, logotipos e padrões de movimento específicos da sua federação.</p>
-                  <Link href="/sumulas?tab=template_studio" className="text-xs text-amber-400 font-bold hover:underline flex items-center gap-1 pt-1">
-                    <span>Abrir Editor</span> <ChevronRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ────────────────────────────────────────────────────────────────────────── */}
         {/* ABA 3: BATERIAS & RAIAS (CONTROLE TOTAL) */}
         {/* ────────────────────────────────────────────────────────────────────────── */}
         {activeTab === 'heats_mgmt' && (
@@ -2583,7 +2638,9 @@ export default function HeadJudgePage() {
                         <div>
                           <div className="flex items-center justify-between">
                             <span className="font-black text-amber-400 text-sm">BATERIA #{hNum}</span>
-                            <span className="text-[10px] text-zinc-400 font-bold">{heatLanes.length} Raias</span>
+                            <span className="text-[10px] text-zinc-400 font-bold">
+                              {[heatLanes[0]?.heatTime, arenaLabel(heatLanes[0]?.arena), `${heatLanes.length} Raias`].filter(Boolean).join(' · ')}
+                            </span>
                           </div>
                           <div className="space-y-1 pt-2">
                             {heatLanes.map(lane => (
@@ -2619,7 +2676,10 @@ export default function HeadJudgePage() {
                               heatNumber: hNum,
                               totalHeats: Math.max(1, distinctHeats.length),
                               startTime: heatLanes[0]?.heatTime || '09:00',
-                              message: 'ATLETAS DA BATERIA, DIRIJAM-SE ÀS SUAS RAIAS DE LARGADA',
+                              arena: heatLanes[0]?.arena,
+                              message: heatLanes[0]?.arena
+                                ? `ATLETAS DA BATERIA, DIRIJAM-SE À ARENA ${heatLanes[0].arena}`
+                                : 'ATLETAS DA BATERIA, DIRIJAM-SE ÀS SUAS RAIAS DE LARGADA',
                               lanes,
                               triggeredAt: new Date().toISOString(),
                             };
@@ -2646,53 +2706,6 @@ export default function HeadJudgePage() {
                     );
                   })
                 )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ────────────────────────────────────────────────────────────────────────── */}
-        {/* ABA 4: JUÍZES DE PISTA & ESCALA (CONTROLE TOTAL) */}
-        {/* ────────────────────────────────────────────────────────────────────────── */}
-        {activeTab === 'judges_staff' && (
-          <div className="space-y-6">
-            <div className="glass-panel p-6 rounded-3xl border border-zinc-800 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800 pb-4">
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <Users className="w-5 h-5 text-amber-400" />
-                    <span>Quadro, Escala &amp; App de Arbitragem dos Juízes de Pista</span>
-                  </h3>
-                  <p className="text-xs text-zinc-400 mt-0.5">
-                    Acompanhamento das pranchetas de arbitragem e acesso direto ao aplicativo de campo dos árbitros.
-                  </p>
-                </div>
-                <Link
-                  href="/judge"
-                  className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-black text-xs border border-zinc-700 flex items-center gap-2"
-                >
-                  <Gavel className="w-4 h-4" />
-                  <span>ABRIR APP DO JUIZ DE PISTA</span>
-                </Link>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {[1, 2, 3, 4, 5, 6].map(lane => (
-                  <div key={lane} className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 font-black text-xs">
-                        RAIA #{lane}
-                      </span>
-                      <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
-                        <Check className="w-3 h-3" /> Em Pista
-                      </span>
-                    </div>
-                    <div className="text-sm font-bold text-white">Juiz Oficial - Raia {lane}</div>
-                    <div className="text-xs text-zinc-400">
-                      Súmulas entregues: <strong className="text-amber-400">100% conformes</strong>
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
           </div>

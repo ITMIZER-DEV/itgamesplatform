@@ -288,7 +288,7 @@ export default function TelasPage() {
                 <p className="text-sm font-black text-white mt-0.5">
                   {activeSpotlight.categoryName}{' '}
                   {activeSpotlight.kind === 'heat_call'
-                    ? `• ${activeSpotlight.workoutTitle} • Bateria ${activeSpotlight.heatNumber}/${activeSpotlight.totalHeats} (${activeSpotlight.startTime})`
+                    ? `• ${activeSpotlight.workoutTitle} • Bateria ${activeSpotlight.heatNumber}/${activeSpotlight.totalHeats} (${activeSpotlight.startTime}${activeSpotlight.arena ? ` · Arena ${activeSpotlight.arena}` : ''})`
                     : `• Etapa ${activeSpotlight.revealStep}/3 (${activeSpotlight.revealStep === 1 ? '3º Lugar' : activeSpotlight.revealStep === 2 ? '3º e 2º Lugares' : 'Pódio Completo 1º, 2º e 3º!'})`}
                 </p>
               </div>

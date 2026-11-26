@@ -19,6 +19,7 @@ import { UpdateRegistrationAthletesDto } from './dto/update-registration-athlete
 import { AdminCreateRegistrationDto } from './dto/admin-create-registration.dto';
 import { MigrateCategoryDto } from './dto/migrate-category.dto';
 import { SubstituteAthleteDto } from './dto/substitute-athlete.dto';
+import { ACTIVE_ONLY } from '../../common/prisma-filters/active';
 
 export interface CreateGameDto {
   code: string;
@@ -457,7 +458,7 @@ export class EventsService {
         orderBy: { code: 'asc' },
       }),
       this.prisma.workout.findMany({
-        where: { game: code },
+        where: { game: code, ...ACTIVE_ONLY },
         select: { code: true, category: true, title: true, type: true, timeCap: true, description: true },
         orderBy: { code: 'asc' },
       }),
@@ -789,12 +790,13 @@ export class EventsService {
     return { ...workout, sumulaTemplate: dto.sumulaTemplate };
   }
 
-  async listWorkouts(game: string, categoryId?: number) {
+  async listWorkouts(game: string, categoryId?: number, includeInactive = false) {
     const [workouts, events] = await Promise.all([
       this.prisma.workout.findMany({
         where: {
           game,
           ...(categoryId && { category: categoryId }),
+          ...(includeInactive ? {} : ACTIVE_ONLY),
         },
         orderBy: { code: 'asc' },
       }),
