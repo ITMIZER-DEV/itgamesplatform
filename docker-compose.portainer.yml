@@ -58,6 +58,9 @@ services:
       CORS_ORIGIN: "${CORS_ORIGIN:-*}"
       JWT_SECRET: "${JWT_SECRET:-itgames_jwt_super_secret_production_key_2026}"
       MAIL_ENCRYPTION_KEY: "${MAIL_ENCRYPTION_KEY:-}"
+    volumes:
+      # banners e fotos enviados pelo painel; sem volume eles somem a cada redeploy
+      - itgames_uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,6 +89,8 @@ services:
 
 volumes:
   itgames_pgdata_v18:
+    driver: local
+  itgames_uploads:
     driver: local
 
 networks:
