@@ -16,8 +16,11 @@ export function AclGuard({ children, resource, requiredRoleLabel }: AclGuardProp
   const router = useRouter();
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const [currentRole, setCurrentRole] = useState<UserRoleType>('GUEST');
+  // volta para a mesma página após o login, com os parâmetros (ex.: QR da súmula no /judge)
+  const [loginHref, setLoginHref] = useState('/login');
 
   useEffect(() => {
+    setLoginHref(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
     const checkAuth = () => {
       const session = getCurrentUserSession();
       if (session.role !== 'GUEST' && session.mustChangePassword) {
@@ -71,7 +74,7 @@ export function AclGuard({ children, resource, requiredRoleLabel }: AclGuardProp
             </Link>
 
             <Link
-              href="/login"
+              href={loginHref}
               className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black text-xs font-black flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 transition-transform active:scale-95"
             >
               <LogIn className="w-4 h-4" />

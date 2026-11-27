@@ -222,17 +222,23 @@ export default function JudgeAppPage() {
         const qReg = params.get('reg') || params.get('registerNumber');
         const qJudge = params.get('judge') || params.get('judgeId');
 
-        if (qCat) {
-          const matchedCat = cats.find(c => c.id === qCat || String(c.id) === String(qCat) || c.name.toUpperCase().includes(qCat.toUpperCase()));
-          if (matchedCat) initialCatId = matchedCat.id;
-        }
+        // A categoria vem da inscrição (reg) e, sem ela, do parâmetro cat
+        const regTeam = qReg ? tms.find(t => String(t.id) === qReg.replace('#', '') || String((t as any).number) === qReg) : undefined;
+        const matchedCat =
+          (regTeam && cats.find(c => String(c.id) === String(regTeam.categoryId))) ||
+          (qCat ? cats.find(c => String(c.id) === String(qCat)) || cats.find(c => c.name.toUpperCase().includes(qCat.toUpperCase())) : undefined);
+        if (matchedCat) initialCatId = matchedCat.id;
 
         if (qWod) {
-          const matchedWod = wods.find(w => 
-            w.id === qWod || 
-            String(w.id) === String(qWod) || 
-            w.title.toUpperCase().includes(qWod.toUpperCase())
-          );
+          // O título ("WOD 1-A") se repete em todas as categorias: procura primeiro dentro da categoria do link
+          const inCategory = (w: WorkoutRule) =>
+            !matchedCat || String(w.categoryId) === String(matchedCat.id) || !!w.categoryIds?.includes(matchedCat.id);
+          const byId = (w: WorkoutRule) => String(w.id) === String(qWod);
+          const byTitle = (w: WorkoutRule) => w.title.toUpperCase().includes(qWod.toUpperCase());
+          const matchedWod =
+            wods.find(w => byId(w)) ||
+            wods.find(w => inCategory(w) && byTitle(w)) ||
+            wods.find(w => byTitle(w));
           if (matchedWod) {
             initialWodId = matchedWod.id;
             if (matchedWod.categoryId && cats.some(c => c.id === matchedWod.categoryId)) {
