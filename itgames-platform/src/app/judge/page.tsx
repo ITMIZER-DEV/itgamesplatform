@@ -535,12 +535,14 @@ export default function JudgeAppPage() {
         timeFormatted = syncBurnTimeInput || '08:45';
         const parts = timeFormatted.split(':').map(Number);
         timeSeconds = (parts[0] || 0) * 60 + (parts[1] || 0);
-        repsCount = 130;
+        // terminou: sem reps faltantes (reps > 0 com tempo no cap seria lido como CAP pelo motor)
+        repsCount = 0;
         isCompleted = true;
       } else {
         timeFormatted = `CAP +${syncBurnMissingReps}`;
-        timeSeconds = 10 * 60 + syncBurnMissingReps;
-        repsCount = Math.max(0, 130 - syncBurnMissingReps);
+        timeSeconds = currentWorkout.timeCapSeconds || 10 * 60;
+        // motor de pontuação ordena o CAP pelas reps FALTANTES (menos faltantes fica na frente)
+        repsCount = syncBurnMissingReps;
         isCompleted = false;
       }
     } 

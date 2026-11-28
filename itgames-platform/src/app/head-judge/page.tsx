@@ -285,12 +285,13 @@ export default function HeadJudgePage() {
               : typeof s.time === 'string' && s.time.includes(':')
                 ? (() => { const [m, sec] = s.time.split(':').map(Number); return (m || 0) * 60 + (sec || 0); })()
                 : typeof s.time === 'string' && /CAP\s*\+(\d+)/i.test(s.time)
-                  ? 300 + Number(s.time.match(/CAP\s*\+(\d+)/i)![1])
+                  ? (wod?.timeCapSeconds || 300) + Number(s.time.match(/CAP\s*\+(\d+)/i)![1])
                   : undefined,
             repsCount: typeof s.reps === 'number' ? s.reps : (s.reps ? Number(s.reps) : undefined),
             tieBreakTimeFormatted: s.tieBreakTime || undefined,
             weightLoadedKg: parseKg(s.weight),
-            isCompleted: true,
+            // "CAP +N" não terminou: mantém o checkbox de CAP marcado ao reabrir a súmula
+            isCompleted: !(typeof s.time === 'string' && /CAP/i.test(s.time)),
             isWO: false,
             isDisqualified: false,
             scoreStatus: (s.scoreStatus === 'approved_by_head_judge' || s.scoreStatus === 'confirmed') ? 'approved_by_head_judge' : (s.scoreStatus || 'approved_by_head_judge'),
@@ -905,6 +906,53 @@ export default function HeadJudgePage() {
     }));
   };
 
+  const formatCap = (secs: number) => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+
+  // Campos do For Time genérico (ex.: WOD 2 Sync & Burn): tempo ou CAP + reps faltantes
+  const renderForTimeFields = (regId: string, currentState: { time: string; isCap: boolean; reps: string }, wod: WorkoutRule) => {
+    const capSecs = wod.timeCapSeconds || 600;
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-zinc-400">For Time (cap {formatCap(capSecs)})</span>
+          <label className="flex items-center gap-1 cursor-pointer text-xs">
+            <input
+              type="checkbox"
+              checked={currentState.isCap}
+              onChange={(e) => handleUpdateDeskField(regId, 'isCap', e.target.checked)}
+              className="rounded border-zinc-700 text-amber-500"
+            />
+            <span className="text-zinc-300 font-bold">Deu TIME CAP?</span>
+          </label>
+        </div>
+        {currentState.isCap ? (
+          <div>
+            <label className="text-[11px] text-zinc-400 block mb-1">Quantas reps FALTARAM?</label>
+            <input
+              type="number"
+              min="0"
+              placeholder="Ex: 11"
+              value={currentState.reps}
+              onChange={(e) => handleUpdateDeskField(regId, 'reps', e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white font-bold text-xs"
+            />
+          </div>
+        ) : (
+          <div>
+            <label className="text-[11px] text-zinc-400 block mb-1">Tempo de Conclusão (mm:ss):</label>
+            <input
+              type="text"
+              placeholder="08:45"
+              value={currentState.time}
+              onChange={(e) => handleUpdateDeskField(regId, 'time', e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white font-bold text-xs"
+            />
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // Homologar Score com Foto Obrigatória (Aceita WOD específico para suporte ao Lançamento por Código)
   const handleHomologateScore = async (team: TeamRegistration, laneNum: number, heatNum: number, targetWorkoutOverride?: WorkoutRule) => {
     const targetWod = targetWorkoutOverride || currentWorkout;
@@ -976,16 +1024,28 @@ export default function HeadJudgePage() {
       weightLoadedKg = wA + wB;
       timeFormatted = `${weightLoadedKg} kg`;
     } else {
-      if (state.isCap) {
+      // For Time (ex.: WOD 2): terminou → tempo; não terminou → CAP + reps faltantes.
+      // Também aceita "CAP +11" / "CAP 11" digitado direto no campo de tempo.
+      const capSecs = targetWod.timeCapSeconds || 600;
+      const typedCap = String(state.time || '').match(/^\s*CAP\s*\+?\s*(\d+)/i);
+      if (state.isCap || typedCap) {
         isCompleted = false;
-        const missingReps = Number(state.reps) || 0;
+        const missingReps = state.isCap ? Number(state.reps) || 0 : Number(typedCap![1]) || 0;
         timeFormatted = `CAP +${missingReps}`;
-        timeSeconds = 10 * 60 + missingReps;
+        timeSeconds = capSecs;
         repsCount = missingReps;
       } else {
-        timeFormatted = state.time || '08:30';
-        const parts = (timeFormatted || '0:0').split(':').map(Number);
-        timeSeconds = (parts[0] || 0) * 60 + (parts[1] || 0);
+        timeFormatted = String(state.time || '').trim();
+        const parts = timeFormatted.split(':').map(Number);
+        timeSeconds = parts.length === 2 ? (parts[0] || 0) * 60 + (parts[1] || 0) : NaN;
+        if (!timeFormatted || !Number.isFinite(timeSeconds) || timeSeconds <= 0) {
+          toast.error('Informe o tempo no formato mm:ss ou marque "Deu TIME CAP" com as reps faltantes.');
+          return;
+        }
+        if (timeSeconds > capSecs) {
+          toast.error(`Tempo ${timeFormatted} passou do cap (${formatCap(capSecs)}). Marque "Deu TIME CAP" e informe as reps faltantes.`);
+          return;
+        }
       }
     }
 
@@ -1705,18 +1765,7 @@ export default function HeadJudgePage() {
                               </div>
                             )}
 
-                            {!isWod1A && !isWod1B && !isWod3 && (
-                              <div>
-                                <label className="text-[11px] text-zinc-400 block mb-1">Tempo / Resultado:</label>
-                                <input
-                                  type="text"
-                                  placeholder="08:45"
-                                  value={currentState.time}
-                                  onChange={(e) => handleUpdateDeskField(regId, 'time', e.target.value)}
-                                  className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white font-bold text-xs"
-                                />
-                              </div>
-                            )}
+                            {!isWod1A && !isWod1B && !isWod3 && renderForTimeFields(regId, currentState, targetWod)}
 
                             <button
                               onClick={() => handleHomologateScore(quickSelectedTeam, 1, 1, targetWod)}
@@ -2244,18 +2293,7 @@ export default function HeadJudgePage() {
                             </div>
                           )}
 
-                          {!isWod1A && !isWod1B && !isWod3 && (
-                            <div>
-                              <label className="text-[11px] text-zinc-400 block mb-1">Tempo de Conclusão (mm:ss):</label>
-                              <input
-                                type="text"
-                                placeholder="08:45"
-                                value={currentState.time}
-                                onChange={(e) => handleUpdateDeskField(regId, 'time', e.target.value)}
-                                className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white font-bold text-xs"
-                              />
-                            </div>
-                          )}
+                          {!isWod1A && !isWod1B && !isWod3 && currentWorkout && renderForTimeFields(regId, currentState, currentWorkout)}
 
                           <div className="pt-2">
                             {currentPhoto ? (
