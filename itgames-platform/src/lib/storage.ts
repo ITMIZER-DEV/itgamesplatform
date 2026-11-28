@@ -49,6 +49,13 @@ class DataStorage {
   private setItem<T>(key: string, value: T, silent = false): void {
     if (!this.isBrowser()) return;
     try {
+      // Fotos de súmula embutidas (data:) estouram o limite do navegador (~5 MB) e já vêm da API:
+      // o cache local de scores guarda só o resultado
+      if (key === STORAGE_KEYS.SCORES && Array.isArray(value)) {
+        value = value.map((s: any) =>
+          typeof s?.photoSumulaUrl === 'string' && s.photoSumulaUrl.startsWith('data:') ? { ...s, photoSumulaUrl: undefined } : s,
+        ) as T;
+      }
       const serialized = JSON.stringify(value);
       if (localStorage.getItem(key) === serialized) return;
       localStorage.setItem(key, serialized);
