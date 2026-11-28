@@ -31,8 +31,13 @@ export class ScoresController {
 
   @Get('game/:gameCode')
   @ApiOperation({ summary: 'Listar scores de uma competição com histórico de auditoria' })
-  async getScoresByGame(@Param('gameCode') gameCode: string) {
-    return this.scoresService.findByGame(gameCode);
+  async getScoresByGame(@Param('gameCode') gameCode: string, @CurrentUser() user?: AuthUser) {
+    // Juiz e quem gerencia o campeonato veem tudo (dados da dupla e auditoria)
+    if (user?.role === UserRole.JUDGE || (await this.access.canManage(user, gameCode))) {
+      return this.scoresService.findByGame(gameCode);
+    }
+    // Atleta e demais: só os campos do resultado, sem dados pessoais nem auditoria, e respeitando o congelamento
+    return this.scoresService.findPublicByGame(gameCode);
   }
 
   @Roles(UserRole.JUDGE, UserRole.ORGANIZER)

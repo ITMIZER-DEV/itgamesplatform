@@ -544,6 +544,14 @@ export class EventsService {
       orderBy: { code: 'asc' },
     });
 
+    // Placar congelado: quem não gerencia não recebe os scores bloqueados (campeonato inteiro ou categoria em revisão)
+    let visibleScores = scores;
+    if (!(await this.access.canManage(user, code))) {
+      const freeze = await this.getFreezeState(code);
+      const frozenCats = new Set(freeze.categories.map((c) => c.categoryId));
+      visibleScores = freeze.frozen ? [] : scores.filter((s) => !frozenCats.has(s.category));
+    }
+
     return {
       game,
       categories,
@@ -555,7 +563,7 @@ export class EventsService {
         number: r.number,
         athletes: r.athletes.map((a) => a.name),
       })),
-      scores,
+      scores: visibleScores,
     };
   }
 

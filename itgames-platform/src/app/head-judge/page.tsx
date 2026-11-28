@@ -488,6 +488,37 @@ export default function HeadJudgePage() {
     }
   };
 
+  // Reverter o cálculo oficial (um WOD ou todos os confirmados): necessário antes de mudar a regra de pontuação
+  const confirmedOfficialEvents = (): { categoryId: number; eventId: number }[] =>
+    (officialStatusData?.categories ?? []).flatMap((c: any) =>
+      (c.events ?? [])
+        .filter((e: any) => e.state === 'confirmed')
+        .map((e: any) => ({ categoryId: Number(c.id), eventId: Number(e.eventId) })),
+    );
+
+  const handleRevertOfficial = async (targets: { categoryId: number; eventId: number }[], label: string) => {
+    if (!activeGame || targets.length === 0) return;
+    const ok = window.confirm(
+      `Reverter o cálculo oficial de ${label}?\n\nOs scores continuam gravados; só o resultado oficial volta a ser prévia. Depois é preciso rodar as classificações de novo para oficializar.`,
+    );
+    if (!ok) return;
+    const gCode = activeGame.code || activeGame.id;
+    let done = 0;
+    const failed: string[] = [];
+    for (const t of targets) {
+      try {
+        await apiClient.revertOfficialWod(gCode, t.categoryId, t.eventId, 'Revertido pela Mesa do Head Judge');
+        done++;
+      } catch (err: any) {
+        failed.push(`${t.categoryId}/${t.eventId}: ${err?.message || 'erro'}`);
+      }
+    }
+    const refreshed = await apiClient.getOfficialStatus(gCode).catch(() => null);
+    if (refreshed) setOfficialStatusData(refreshed);
+    if (failed.length) toast.error(`${done} revertido(s); falharam ${failed.length}: ${failed.slice(0, 3).join(' | ')}`);
+    else toast.success(`Cálculo oficial revertido em ${done} WOD(s). A regra de pontuação já pode ser alterada.`);
+  };
+
   // Toggle do Congelamento de Leaderboard (Atualiza Banco, Telões e Storage)
   const handleToggleFreezeLeaderboard = async () => {
     if (!activeGame) return;
@@ -2352,10 +2383,24 @@ export default function HeadJudgePage() {
             {/* CARDS DE RODAGEM INDIVIDUAL POR WOD */}
             {currentCategory && (
               <div className="space-y-3">
-                <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-amber-400" />
-                  <span>Apuração Individual por WOD — {currentCategory.name}</span>
-                </h3>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-amber-400" />
+                    <span>Apuração Individual por WOD — {currentCategory.name}</span>
+                  </h3>
+                  {confirmedOfficialEvents().length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleRevertOfficial(confirmedOfficialEvents(), `TODOS os ${confirmedOfficialEvents().length} WODs oficiais (todas as categorias)`)
+                      }
+                      className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/40 font-black text-xs min-h-[38px]"
+                      title="Necessário antes de mudar a regra de pontuação do campeonato"
+                    >
+                      Reverter oficial de todos ({confirmedOfficialEvents().length})
+                    </button>
+                  )}
+                </div>
 
                 {categoryWorkouts.length === 0 ? (
                   <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-400">
@@ -2425,6 +2470,20 @@ export default function HeadJudgePage() {
                             <Zap className="w-4 h-4" />
                             <span>{isRunningThis ? 'Calculando...' : 'Rodar Pontuação deste WOD'}</span>
                           </button>
+                          {isConfirmedApi && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleRevertOfficial(
+                                  [{ categoryId: Number(String(currentCategory.id).replace(/\D/g, '')), eventId: Number(String(wod.id).replace(/\D/g, '')) }],
+                                  `${wod.title} (${currentCategory.name})`,
+                                )
+                              }
+                              className="w-full py-2 rounded-xl text-rose-300 hover:bg-rose-500/10 border border-rose-500/30 font-bold text-xs"
+                            >
+                              Reverter oficial deste WOD
+                            </button>
+                          )}
                         </div>
                       );
                     })}

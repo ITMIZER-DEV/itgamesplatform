@@ -127,6 +127,22 @@ export class ScoresService {
     };
   }
 
+  /** Scores para quem não gerencia: sem dados pessoais/auditoria e sem as categorias com placar congelado. */
+  async findPublicByGame(gameCode: string) {
+    const game = await this.prisma.game.findUnique({ where: { code: gameCode }, select: { status: true } });
+    if (!game || game.status === 'frozen') return [];
+    const frozen = await this.prisma.category.findMany({
+      where: { gamesId: gameCode, frozenAt: { not: null } },
+      select: { code: true },
+    });
+    const scores = await this.prisma.score.findMany({
+      where: { game: gameCode, ...(frozen.length ? { category: { notIn: frozen.map((c) => c.code) } } : {}) },
+      orderBy: { code: 'desc' },
+    });
+    // a foto da súmula fica só com a arbitragem
+    return scores.map(({ photo: _photo, ...rest }: any) => rest);
+  }
+
   async findByGame(gameCode: string) {
     return this.prisma.score.findMany({
       where: { game: gameCode },

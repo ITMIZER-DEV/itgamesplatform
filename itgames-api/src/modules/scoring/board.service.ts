@@ -117,7 +117,35 @@ export class BoardService {
   // Só dados públicos: atletas apenas por nome, sem e-mail/CPF/telefone.
   async getBoard(code: string, user?: AuthUser): Promise<Board> {
     await this.access.assertCanView(user, code);
-    return this.loadBoard(code);
+    const board = await this.loadBoard(code);
+    // Congelamento vale no servidor: quem não gerencia o campeonato não recebe a classificação bloqueada
+    // (esconder só na tela deixaria os pontos acessíveis chamando a API direto)
+    if (await this.access.canManage(user, code)) return board;
+    return this.withholdFrozen(code, board);
+  }
+
+  private async withholdFrozen(code: string, board: Board): Promise<Board> {
+    const gameFrozen = board.game.status === 'frozen';
+    const frozenCats = await this.prisma.category.findMany({
+      where: { gamesId: code, frozenAt: { not: null } },
+      select: { code: true, frozenAt: true, frozenText: true },
+    });
+    if (!gameFrozen && frozenCats.length === 0) return board;
+    const byCode = new Map(frozenCats.map((c) => [c.code, c]));
+    return {
+      ...board,
+      categories: board.categories.map((cat) => {
+        const fc = byCode.get(cat.id);
+        if (!gameFrozen && !fc) return cat;
+        return {
+          ...cat,
+          rows: [],
+          frozen: true,
+          frozenAt: fc?.frozenAt?.toISOString() ?? null,
+          overlayText: fc ? fc.frozenText || 'CATEGORIA EM REVISÃO' : 'LEADERBOARD BLOQUEADO',
+        };
+      }),
+    };
   }
 
   // Calcula o placar sem checar visibilidade: quem chama já autorizou (ex.: telões).
