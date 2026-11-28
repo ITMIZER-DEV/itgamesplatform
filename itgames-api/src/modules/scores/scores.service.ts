@@ -135,12 +135,32 @@ export class ScoresService {
       where: { gamesId: gameCode, frozenAt: { not: null } },
       select: { code: true },
     });
-    const scores = await this.prisma.score.findMany({
+    // lista explícita só com os campos do resultado: foto da súmula, auditoria e dados da dupla ficam com a arbitragem
+    return this.prisma.score.findMany({
       where: { game: gameCode, ...(frozen.length ? { category: { notIn: frozen.map((c) => c.code) } } : {}) },
+      select: {
+        code: true,
+        idEvent: true,
+        game: true,
+        category: true,
+        codeTeam: true,
+        numberTeam: true,
+        time: true,
+        weight: true,
+        reps: true,
+        tieBreakTime: true,
+        penaltySeconds: true,
+        isWO: true,
+        point: true,
+        rank: true,
+        splits: true,
+        status: true,
+        scoreStatus: true,
+        judge: true,
+        dateScore: true,
+      },
       orderBy: { code: 'desc' },
     });
-    // a foto da súmula fica só com a arbitragem
-    return scores.map(({ photo: _photo, ...rest }: any) => rest);
   }
 
   async findByGame(gameCode: string) {

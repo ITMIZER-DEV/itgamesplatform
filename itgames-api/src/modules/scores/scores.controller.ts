@@ -36,7 +36,9 @@ export class ScoresController {
     if (user?.role === UserRole.JUDGE || (await this.access.canManage(user, gameCode))) {
       return this.scoresService.findByGame(gameCode);
     }
-    // Atleta e demais: só os campos do resultado, sem dados pessoais nem auditoria, e respeitando o congelamento
+    // Atleta e demais: mesma visibilidade do placar público (rascunho/bloqueado dá 404),
+    // só os campos do resultado, sem dados pessoais nem auditoria, e respeitando o congelamento
+    await this.access.assertCanView(user, gameCode);
     return this.scoresService.findPublicByGame(gameCode);
   }
 
