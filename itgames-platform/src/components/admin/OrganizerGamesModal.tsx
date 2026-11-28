@@ -79,7 +79,7 @@ export function OrganizerGamesModal({ organizer, onClose, onChanged }: Props) {
                 <div className="flex-1">
                   <div className="text-sm font-bold text-white">{g.name}</div>
                   <div className="text-[11px] text-zinc-400 font-mono">
-                    {g.code} • {g.status === 'live' ? 'Liberado' : g.status === 'draft' ? 'Rascunho' : 'Bloqueado'}
+                    {g.code} • {g.status === 'live' ? 'Liberado' : g.status === 'draft' ? 'Rascunho' : g.status === 'frozen' ? 'Placar congelado' : 'Bloqueado'}
                   </div>
                 </div>
               </label>

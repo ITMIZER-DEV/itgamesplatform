@@ -151,7 +151,7 @@ export function Navbar() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 glass-panel border-b border-white/10 no-print backdrop-blur-md bg-zinc-950/85">
+      <header className="sticky top-0 z-50 brand-bar border-b border-white/10 no-print bg-zinc-950">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 gap-2">
             {/* LOGO & SELETOR DE CAMPEONATO */}
@@ -217,13 +217,13 @@ export function Navbar() {
                     href={link.href}
                     className={`flex items-center gap-1.5 px-2.5 2xl:px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 transition-all ${
                       isActive
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                        ? 'bg-[#f47b20] text-[#2a1405] border border-[#f47b20] shadow-sm'
                         : link.highlight
-                          ? 'bg-red-500/15 text-red-400 hover:bg-red-500/25 border border-red-500/30'
+                          ? 'bg-white/10 text-white hover:bg-white/20 border border-white/25'
                           : 'text-zinc-300 hover:text-white hover:bg-white/5'
                     }`}
                   >
-                    <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-amber-400' : link.highlight ? 'text-red-400' : 'text-zinc-400'}`} />
+                    <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-[#2a1405]' : link.highlight ? 'text-white' : 'text-zinc-400'}`} />
                     <span className="2xl:hidden">{link.shortLabel}</span>
                     <span className="hidden 2xl:inline">{link.label}</span>
                     {link.badge && (
@@ -238,7 +238,7 @@ export function Navbar() {
 
             {/* AÇÕES DA DIREITA: TELÃO + PERFIL & LOGOUT */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              {(session.role === 'ORGANIZER' || session.role === 'SUPER_ADMIN' || activeGame?.status === 'live') && (
+              {(session.role === 'ORGANIZER' || session.role === 'SUPER_ADMIN' || activeGame?.status === 'live' || activeGame?.status === 'frozen') && (
                 <Link
                   href="/leaderboard/big-screen"
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 font-bold text-xs transition-colors min-h-[38px]"
@@ -298,7 +298,7 @@ export function Navbar() {
       {/* BARRA DE NAVEGAÇÃO INFERIOR MOBILE-FIRST (THUMB ZONE) */}
       <nav
         aria-label="Navegação rápida mobile"
-        className="lg:hidden fixed bottom-0 inset-x-0 z-50 bg-zinc-950/95 backdrop-blur-xl border-t border-zinc-800 px-1.5 py-1.5 flex items-center justify-around gap-1 no-print shadow-2xl"
+        className="lg:hidden fixed bottom-0 inset-x-0 z-50 brand-bar bg-zinc-950 border-t border-zinc-800 px-1.5 py-1.5 flex items-center justify-around gap-1 no-print shadow-2xl"
       >
         {mobilePrimaryLinks.map((link) => {
           const Icon = link.icon;
@@ -309,9 +309,9 @@ export function Navbar() {
               href={link.href}
               className={`flex-1 min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 transition-all ${
                 isActive
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  ? 'bg-[#f47b20] text-[#2a1405] border border-[#f47b20]'
                   : link.highlight
-                    ? 'text-red-400 hover:bg-red-500/10'
+                    ? 'text-white hover:bg-white/10'
                     : 'text-zinc-400 hover:text-white'
               }`}
             >
@@ -387,7 +387,7 @@ export function Navbar() {
                 );
               })}
 
-              {(session.role === 'ORGANIZER' || session.role === 'SUPER_ADMIN' || activeGame?.status === 'live') && (
+              {(session.role === 'ORGANIZER' || session.role === 'SUPER_ADMIN' || activeGame?.status === 'live' || activeGame?.status === 'frozen') && (
                 <Link
                   href="/leaderboard/big-screen"
                   onClick={() => setIsMobileDrawerOpen(false)}

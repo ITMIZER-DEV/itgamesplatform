@@ -24,11 +24,11 @@ export class GameAccessService {
     }
   }
 
-  // Campeonato live é público; draft/blocked só para quem gerencia (os demais veem 404).
+  // Campeonato live (ou congelado) é público; draft/blocked só para quem gerencia (os demais veem 404).
   async assertCanView(user: AuthUser | undefined, gameCode: string): Promise<void> {
     const game = await this.prisma.game.findUnique({ where: { code: gameCode }, select: { status: true } });
     if (!game) throw new NotFoundException('Campeonato não encontrado');
-    if (game.status === 'live') return;
+    if (game.status === 'live' || game.status === 'frozen') return; // congelado segue público: só o placar fica bloqueado
     if (!(await this.canManage(user, gameCode))) {
       throw new NotFoundException('Campeonato não encontrado');
     }

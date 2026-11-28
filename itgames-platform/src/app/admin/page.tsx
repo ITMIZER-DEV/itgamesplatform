@@ -1151,7 +1151,7 @@ export default function AdminDashboardPage() {
             >
               {games.map(g => (
                 <option key={g.code || g.id} value={g.code || g.id}>
-                  {g.name} ({g.code}) — {g.status === 'live' ? '🟢 LIVE' : g.status === 'draft' ? '🟡 RASCUNHO' : '🔴 BLOQUEADO'}
+                  {g.name} ({g.code}) — {g.status === 'live' ? '🟢 LIVE' : g.status === 'draft' ? '🟡 RASCUNHO' : g.status === 'frozen' ? '❄️ PLACAR CONGELADO' : '🔴 BLOQUEADO'}
                 </option>
               ))}
             </select>
@@ -1362,7 +1362,7 @@ export default function AdminDashboardPage() {
                             ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
                             : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
                         }`}>
-                          {g.status === 'live' ? '🟢 Liberado (LIVE)' : g.status === 'draft' ? '🟡 Rascunho (DRAFT)' : '🔴 Bloqueado (BLOCKED)'}
+                          {g.status === 'live' ? '🟢 Liberado (LIVE)' : g.status === 'draft' ? '🟡 Rascunho (DRAFT)' : g.status === 'frozen' ? '❄️ Placar congelado (FROZEN)' : '🔴 Bloqueado (BLOCKED)'}
                         </span>
                         <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg border ${
                           regAvail.isOpen

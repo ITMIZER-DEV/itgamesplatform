@@ -337,11 +337,7 @@ export default function HeadJudgePage() {
       });
     }
 
-    // Carregar estado de congelamento real do banco e storage
-    const frozenState = localStorage.getItem(`itgames_freeze_leaderboard_${gCode}`);
-    const isFrozenInDb = (activeGame.status as any) === 'frozen';
-    setIsLeaderboardFrozen(frozenState === 'true' || isFrozenInDb);
-    setFrozenCategoriesMap(getLocalFrozenCategories(gCode));
+    // Congelamento: só o servidor (useServerFreeze) define o estado; ler daqui (storage/status antigo) sobrescrevia o servidor
   };
 
   useEffect(() => {

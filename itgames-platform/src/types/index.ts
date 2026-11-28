@@ -247,7 +247,7 @@ export interface GameEvent {
   startDate: string;
   endDate: string;
   eventType: EventType;
-  status: 'draft' | 'open_for_registrations' | 'live' | 'finished' | 'blocked';
+  status: 'draft' | 'open_for_registrations' | 'live' | 'finished' | 'blocked' | 'frozen'; // frozen: placar congelado pela Mesa (campeonato segue público)
   bannerUrl?: string;
   logoUrl?: string;
   foto?: string;

@@ -13,49 +13,53 @@
 :root {
   color-scheme: dark;
 
-  --background: #111317;
-  --foreground: #e6e7e9;
-  --card: #181a1f;
-  --card-foreground: #e6e7e9;
-  --popover: #181a1f;
-  --popover-foreground: #e6e7e9;
-  --primary: #d9a441;
-  --primary-foreground: #111317;
-  --secondary: #23262c;
-  --secondary-foreground: #e6e7e9;
-  --muted: #23262c;
-  --muted-foreground: #9a9ea6;
+  /* Identidade: Verde folha #1E5B34 (marca), Tangerina #F47B20 (destaque), Branco quente #F8F5EC (fundo claro) */
+  --brand-green: #1E5B34;
+  --brand-tangerine: #F47B20;
+
+  --background: #0f1a14;
+  --foreground: #eceFe9;
+  --card: #16261c;
+  --card-foreground: #eceFe9;
+  --popover: #16261c;
+  --popover-foreground: #eceFe9;
+  --primary: #f47b20;
+  --primary-foreground: #2a1405;
+  --secondary: #1c3024;
+  --secondary-foreground: #eceFe9;
+  --muted: #1c3024;
+  --muted-foreground: #9fb3a6;
   --accent: #6f8fc9;
   --accent-foreground: #ffffff;
   --destructive: #d06262;
   --destructive-foreground: #ffffff;
-  --border: #2a2d34;
-  --input: #23262c;
-  --ring: #d9a441;
+  --border: #24402f;
+  --input: #1c3024;
+  --ring: #f47b20;
   --radius: 0.75rem;
 
-  /* neutros */
-  --color-white: #eceef0;
-  --color-zinc-50: #f4f5f6;
-  --color-zinc-100: #e6e7e9;
-  --color-zinc-200: #cfd2d6;
-  --color-zinc-300: #b4b8be;
-  --color-zinc-400: #9a9ea6;
-  --color-zinc-500: #7c818a;
-  --color-zinc-600: #565a62;
-  --color-zinc-700: #34373e;
-  --color-zinc-800: #272a30;
-  --color-zinc-900: #1b1d22;
-  --color-zinc-950: #131519;
+  /* neutros com leve tom de verde */
+  --color-white: #eef1ec;
+  --color-zinc-50: #f3f6f3;
+  --color-zinc-100: #eceFe9;
+  --color-zinc-200: #d2dbd4;
+  --color-zinc-300: #b5c3b9;
+  --color-zinc-400: #9fb3a6;
+  --color-zinc-500: #7d9184;
+  --color-zinc-600: #556a5c;
+  --color-zinc-700: #2f4637;
+  --color-zinc-800: #223529;
+  --color-zinc-900: #16261c;
+  --color-zinc-950: #101b15;
 
-  /* destaque (âmbar suave); orange e yellow = âmbar → gradientes ficam sólidos */
-  --accent-50: #fbf3e2; --accent-100: #f4e2bb; --accent-200: #ecd093; --accent-300: #e5be6e;
-  --accent-400: #e0b25a; --accent-500: #d9a441; --accent-600: #b98a32; --accent-700: #8f6b29;
-  --accent-800: #644b1f; --accent-900: #3f3016; --accent-950: #251c0d;
+  /* destaque (tangerina); orange e yellow = tangerina → gradientes ficam sólidos */
+  --accent-50: #fff1e6; --accent-100: #ffdcc0; --accent-200: #ffc08f; --accent-300: #ffa35e;
+  --accent-400: #f8903d; --accent-500: #f47b20; --accent-600: #d96614; --accent-700: #a84e0f;
+  --accent-800: #6e340c; --accent-900: #3d1d08; --accent-950: #241104;
 
-  /* sucesso (verde suave); teal, green e lime = verde */
-  --ok-50: #e7f5ee; --ok-100: #c6e8d6; --ok-200: #a2d9bd; --ok-300: #84cba6; --ok-400: #6cbf94;
-  --ok-500: #4fa97c; --ok-600: #3e8c65; --ok-700: #316e50; --ok-800: #24503a; --ok-900: #173426; --ok-950: #0d1f16;
+  /* sucesso (verde mais vivo que o da marca, para não confundir); teal, green e lime = verde */
+  --ok-50: #e6f7ee; --ok-100: #c2ecd5; --ok-200: #98dfb9; --ok-300: #6fd29d; --ok-400: #4cc386;
+  --ok-500: #2faa6c; --ok-600: #238a56; --ok-700: #1c6c44; --ok-800: #164f33; --ok-900: #0f3322; --ok-950: #081d13;
 
   /* erro (vermelho suave); rose = vermelho */
   --bad-50: #fbecec; --bad-100: #f4cfcf; --bad-200: #ebb0b0; --bad-300: #e39494; --bad-400: #dc7d7d;
@@ -164,38 +168,40 @@ body {
 html[data-theme="light"] {
   color-scheme: light;
 
-  --background: #f6f6f7;
-  --foreground: #1d1f23;
+  --background: #f8f5ec;
+  --foreground: #1d2a22;
   --card: #ffffff;
-  --card-foreground: #1d1f23;
+  --card-foreground: #1d2a22;
   --popover: #ffffff;
-  --popover-foreground: #1d1f23;
-  --primary: #b98a32;
-  --primary-foreground: #ffffff;
-  --secondary: #ececee;
-  --secondary-foreground: #1d1f23;
-  --muted: #ececee;
-  --muted-foreground: #5c6069;
-  --border: #e1e2e5;
-  --input: #ececee;
-  --ring: #b98a32;
+  --popover-foreground: #1d2a22;
+  --primary: #f47b20;
+  --primary-foreground: #2a1405;
+  --secondary: #efeadc;
+  --secondary-foreground: #1d2a22;
+  --muted: #efeadc;
+  --muted-foreground: #5b6b60;
+  --border: #e4dfd0;
+  --input: #efeadc;
+  --ring: #f47b20;
 
-  --color-white: #16181c;
-  --color-zinc-50: #16181c;
-  --color-zinc-100: #1d1f23;
-  --color-zinc-200: #2b2e34;
-  --color-zinc-300: #3d4047;
-  --color-zinc-400: #5c6069;
-  --color-zinc-500: #7a7e86;
-  --color-zinc-600: #a3a6ad;
-  --color-zinc-700: #d4d6da;
-  --color-zinc-800: #e6e7ea;
+  /* neutros quentes (branco quente) com texto verde-escuro */
+  --color-white: #16221a;
+  --color-zinc-50: #16221a;
+  --color-zinc-100: #1d2a22;
+  --color-zinc-200: #2b3a30;
+  --color-zinc-300: #3d4d42;
+  --color-zinc-400: #5b6b60;
+  --color-zinc-500: #7a877e;
+  --color-zinc-600: #a3ab9f;
+  --color-zinc-700: #d9d3c3;
+  --color-zinc-800: #e8e3d5;
   --color-zinc-900: #ffffff;
-  --color-zinc-950: #f6f6f7;
+  --color-zinc-950: #f8f5ec;
 
-  --accent-200: #7a5a1f; --accent-300: #7a5a1f; --accent-400: #946d25; --accent-500: #c9952f;
-  --accent-600: #a87d29; --accent-700: #f4e2bb; --accent-800: #f8ecd2; --accent-900: #fbf3e2; --accent-950: #fdf8ee;
-  --ok-200: #24503a; --ok-300: #24503a; --ok-400: #2f6b4d; --ok-700: #c6e8d6; --ok-800: #dcf0e5; --ok-900: #e7f5ee; --ok-950: #f2faf6;
+  /* tangerina: 500 é o preenchimento; 200–400 escurecem para texto legível no fundo claro */
+  --accent-200: #8a3f08; --accent-300: #8a3f08; --accent-400: #b8560c; --accent-500: #f47b20;
+  --accent-600: #d96614; --accent-700: #fbd9bd; --accent-800: #fde6d2; --accent-900: #fef1e6; --accent-950: #fff8f1;
+  --ok-200: #145234; --ok-300: #145234; --ok-400: #1c6c44; --ok-700: #c2ecd5; --ok-800: #daf3e5; --ok-900: #e9f8ef; --ok-950: #f3fbf6;
   --bad-200: #7a3434; --bad-300: #7a3434; --bad-400: #9a4242; --bad-700: #f4cfcf; --bad-800: #f8e0e0; --bad-900: #fbecec; --bad-950: #fdf5f5;
   --info-200: #2f4266; --info-300: #2f4266; --info-400: #3f5785; --info-700: #d3ddef; --info-800: #e3e9f5; --info-900: #edf1f9; --info-950: #f5f7fc;
 }
@@ -219,6 +225,22 @@ html[data-theme="light"] {
   --color-purple-50: var(--info-50); --color-purple-100: var(--info-100); --color-purple-200: var(--info-200); --color-purple-300: var(--info-300); --color-purple-400: var(--info-400); --color-purple-500: var(--info-500); --color-purple-600: var(--info-600); --color-purple-700: var(--info-700); --color-purple-800: var(--info-800); --color-purple-900: var(--info-900); --color-purple-950: var(--info-950);
   --color-fuchsia-50: var(--info-50); --color-fuchsia-100: var(--info-100); --color-fuchsia-200: var(--info-200); --color-fuchsia-300: var(--info-300); --color-fuchsia-400: var(--info-400); --color-fuchsia-500: var(--info-500); --color-fuchsia-600: var(--info-600); --color-fuchsia-700: var(--info-700); --color-fuchsia-800: var(--info-800); --color-fuchsia-900: var(--info-900); --color-fuchsia-950: var(--info-950);
   --color-pink-50: var(--info-50); --color-pink-100: var(--info-100); --color-pink-200: var(--info-200); --color-pink-300: var(--info-300); --color-pink-400: var(--info-400); --color-pink-500: var(--info-500); --color-pink-600: var(--info-600); --color-pink-700: var(--info-700); --color-pink-800: var(--info-800); --color-pink-900: var(--info-900); --color-pink-950: var(--info-950);
+}
+
+/* Barra de navegação na cor da marca (verde folha) nos dois temas: neutros viram tons de verde, texto claro */
+.brand-bar {
+  --color-white: #ffffff;
+  --color-zinc-50: #ffffff;
+  --color-zinc-100: #f3f7f4;
+  --color-zinc-200: #e2ece5;
+  --color-zinc-300: #cfe0d4;
+  --color-zinc-400: #b9d1c0;
+  --color-zinc-500: #9dbca7;
+  --color-zinc-600: #6f9a7c;
+  --color-zinc-700: #3f7a52;
+  --color-zinc-800: #2f6c44;
+  --color-zinc-900: #25633c;
+  --color-zinc-950: #1e5b34;
 }
 
 /* Foco visível em ambos os temas (acessibilidade) */

@@ -133,10 +133,10 @@ export class EventsService {
 
   // 1. Organização de Campeonatos (Games)
 
-  // Listagem pública: somente campeonatos liberados (live)
+  // Listagem pública: campeonatos liberados (live), inclusive com placar congelado (frozen)
   async listPublicGames() {
     const games = await this.prisma.game.findMany({
-      where: { status: 'live' },
+      where: { status: { in: ['live', 'frozen'] } }, // congelar o placar não tira o campeonato da lista
       include: {
         categories: true,
         organizers: this.organizersPublic,
@@ -361,7 +361,7 @@ export class EventsService {
     registrationStartAt?: string | null;
     registrationCloseAt?: string | null;
   }) {
-    if (game.status !== 'live') {
+    if (game.status !== 'live' && game.status !== 'frozen') {
       throw new BadRequestException('Inscrições indisponíveis: campeonato não liberado');
     }
     if (game.registrationLocked) {

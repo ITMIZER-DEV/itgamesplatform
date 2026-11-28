@@ -41,6 +41,15 @@ export default function BigScreenLeaderboardPage() {
   const [currentCategoryIndex, setCurrentCategoryIndex] = useState<number>(0);
   const [isAutoRotating, setIsAutoRotating] = useState<boolean>(true);
   const [currentPage, setCurrentPage] = useState<number>(0);
+  // TV/notebook mostra os WODs; tela estreita (celular) fica só com posição, dupla e total
+  const [showWods, setShowWods] = useState<boolean>(true);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const apply = () => setShowWods(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
   const pageCountRef = React.useRef(1);
   const [currentTime, setCurrentTime] = useState<string>('');
   const [localFrozen, setIsFrozen] = useState<boolean>(false);
@@ -241,7 +250,7 @@ export default function BigScreenLeaderboardPage() {
   pageCountRef.current = pageCount;
   const safePage = Math.min(currentPage, pageCount - 1);
   const pageRanks = visibleRanks.slice(safePage * TV_PAGE_SIZE, (safePage + 1) * TV_PAGE_SIZE);
-  const wodHeaders = (visibleRanks[0]?.workoutScores ?? []).map((ws, idx) => parseWodTitle(ws.workoutTitle, idx));
+  const wodHeaders = showWods ? (visibleRanks[0]?.workoutScores ?? []).map((ws, idx) => parseWodTitle(ws.workoutTitle, idx)) : [];
   const tvColumns = `minmax(4rem, 5vw) minmax(0, 1fr) repeat(${wodHeaders.length}, minmax(6.5rem, 10vw)) minmax(6.5rem, 8vw)`;
 
   const podiumCategory =
@@ -432,7 +441,7 @@ export default function BigScreenLeaderboardPage() {
                         <div className="text-xs text-zinc-400">{second.athletes.join(' • ')}</div>
                       </div>
                     )}
-                    <div className="w-full py-2.5 rounded-xl bg-black/70 border border-zinc-500/40 font-mono font-black text-xl text-zinc-200">
+                    <div className="w-full py-2.5 rounded-xl bg-zinc-950 border border-zinc-500/40 font-mono font-black text-xl text-zinc-200">
                       {revealed && second ? `${second.totalDisplay ?? second.totalPoints} ${totalSuffix}` : '•••'}
                     </div>
                   </div>
@@ -467,7 +476,7 @@ export default function BigScreenLeaderboardPage() {
                         <div className="text-sm text-zinc-300 font-bold">{first.athletes.join(' • ')}</div>
                       </div>
                     )}
-                    <div className="w-full py-3 rounded-xl bg-black/80 border border-amber-400/60 font-mono font-black text-2xl text-amber-400">
+                    <div className="w-full py-3 rounded-xl bg-zinc-950 border border-amber-400/60 font-mono font-black text-2xl text-amber-400">
                       {revealed && first ? `${first.totalDisplay ?? first.totalPoints} ${totalSuffix}` : '•••'}
                     </div>
                   </div>
@@ -499,7 +508,7 @@ export default function BigScreenLeaderboardPage() {
                         <div className="text-xs text-zinc-400">{third.athletes.join(' • ')}</div>
                       </div>
                     )}
-                    <div className="w-full py-2.5 rounded-xl bg-black/70 border border-amber-700/50 font-mono font-black text-xl text-amber-500">
+                    <div className="w-full py-2.5 rounded-xl bg-zinc-950 border border-amber-700/50 font-mono font-black text-xl text-amber-500">
                       {revealed && third ? `${third.totalDisplay ?? third.totalPoints} ${totalSuffix}` : '•••'}
                     </div>
                   </div>
@@ -520,7 +529,7 @@ export default function BigScreenLeaderboardPage() {
 
       {/* OVERLAY DE BLOQUEIO DO LEADERBOARD (TOTAL OU CATEGORIA EM REVISÃO) */}
       {isCurrentCatFrozen && (
-        <div className="fixed inset-0 z-40 bg-black/92 backdrop-blur-2xl flex flex-col items-center justify-center p-6 text-center select-none animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-40 bg-zinc-950 flex flex-col items-center justify-center p-6 text-center select-none animate-in fade-in duration-300">
           <div className="absolute top-5 left-5 sm:top-8 sm:left-8 flex items-center gap-2">
             <Link
               href="/head-judge"
@@ -535,8 +544,8 @@ export default function BigScreenLeaderboardPage() {
             <div className="w-28 h-28 sm:w-40 sm:h-40 rounded-3xl bg-rose-500/15 border-2 border-rose-500/60 flex items-center justify-center text-rose-400 mx-auto shadow-2xl shadow-rose-500/40 animate-pulse">
               <Lock className="w-14 h-14 sm:w-20 sm:h-20" />
             </div>
-            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-rose-600 text-white font-black text-xs uppercase tracking-widest shadow-xl border border-rose-400 flex items-center gap-1.5 whitespace-nowrap">
-              <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-[#c0392b] text-[#ffffff] font-black text-xs uppercase tracking-widest shadow-xl border border-[#c0392b] flex items-center gap-1.5 whitespace-nowrap">
+              <span className="w-2 h-2 rounded-full bg-[#ffffff] animate-ping" />
               {!isFrozen && currentCategory ? `CATEGORIA: ${currentCategory.name}` : 'OFICIAL'}
             </div>
           </div>
@@ -604,7 +613,7 @@ export default function BigScreenLeaderboardPage() {
       )}
 
       {/* CABEÇALHO: categoria em destaque, status e hora (leitura à distância) */}
-      <header className="flex items-center gap-6 pb-[1.2vh] border-b-2 border-amber-500/40">
+      <header className="flex flex-wrap items-center gap-x-6 gap-y-2 pb-[1.2vh] border-b-2 border-amber-500/40">
         <Link
           href="/leaderboard"
           className="p-2 rounded-xl text-zinc-500 hover:text-white hover:bg-zinc-900 transition-colors"
@@ -614,7 +623,7 @@ export default function BigScreenLeaderboardPage() {
         </Link>
         <BrandLogo variant="auto" size="lg" />
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[14rem] flex-1">
           <div className="text-[clamp(0.8rem,1.5vh,1.2rem)] font-bold uppercase tracking-[0.2em] text-zinc-400 truncate">
             {activeGame?.name || 'ITGames Arena'}
           </div>
@@ -702,7 +711,7 @@ export default function BigScreenLeaderboardPage() {
                     <div
                       className={`mx-auto flex items-center justify-center rounded-lg font-black tabular-nums h-[min(6vh,3.6rem)] aspect-square text-[clamp(1.2rem,3.2vh,2.6rem)] ${
                         r.rank === 1
-                          ? 'bg-[#d9a441] text-[#111317]'
+                          ? 'bg-[#f47b20] text-[#2a1405]'
                           : r.rank === 2
                             ? 'bg-[#c9ccd1] text-[#111317]'
                             : r.rank === 3
@@ -774,7 +783,7 @@ export default function BigScreenLeaderboardPage() {
               setCurrentPage(0);
             }}
             className={`px-3 py-1.5 rounded-lg font-black uppercase whitespace-nowrap text-[clamp(0.75rem,1.5vh,1.1rem)] transition-colors ${
-              idx === currentCategoryIndex ? 'bg-[#d9a441] text-[#111317]' : 'text-zinc-500 hover:text-white'
+              idx === currentCategoryIndex ? 'bg-[#f47b20] text-[#2a1405]' : 'text-zinc-500 hover:text-white'
             }`}
           >
             {cat.name}
