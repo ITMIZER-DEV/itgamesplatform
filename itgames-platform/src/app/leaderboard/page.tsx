@@ -23,6 +23,7 @@ import { computeCategoryStandings } from '@/lib/standings-engine';
 import { storage } from '@/lib/storage';
 import { getArenaSelection } from '@/lib/arena-selection';
 import { FrozenCategorySummary, getLocalFrozenCategories } from '@/lib/screens';
+import { useServerFreeze } from '@/lib/use-server-freeze';
 import { LeaderboardRank } from '@/types';
 
 export default function LeaderboardPage() {
@@ -125,8 +126,8 @@ export default function LeaderboardPage() {
     );
   });
 
-  const [isFrozen, setIsFrozen] = useState<boolean>(false);
-  const [frozenCategoriesMap, setFrozenCategoriesMap] = useState<Record<string, FrozenCategorySummary>>({});
+  const [localFrozen, setIsFrozen] = useState<boolean>(false);
+  const [localFrozenCats, setFrozenCategoriesMap] = useState<Record<string, FrozenCategorySummary>>({});
 
   useEffect(() => {
     const checkFreeze = () => {
@@ -170,6 +171,14 @@ export default function LeaderboardPage() {
       if (bc) bc.close();
     };
   }, [activeGame]);
+
+  // O servidor manda: congelar na Mesa do Head Judge vale para todos os aparelhos (o local só cobre até a 1ª resposta)
+  const serverFreeze = useServerFreeze(activeGame?.code);
+  const isFrozen = serverFreeze.loaded
+    ? serverFreeze.frozen || (activeGame?.status as string) === 'blocked'
+    : localFrozen;
+  const frozenCategoriesMap = serverFreeze.loaded ? serverFreeze.categories : localFrozenCats;
+
 
   const currentCatFrozenMeta = currentCategory
     ? frozenCategoriesMap[String(currentCategory.id)] ||

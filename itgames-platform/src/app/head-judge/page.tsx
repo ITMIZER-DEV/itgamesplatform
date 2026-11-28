@@ -61,6 +61,7 @@ import {
 import { toast } from 'sonner';
 import { AclGuard } from '@/components/auth/AclGuard';
 import { arenaLabel } from '@/lib/arena-data';
+import { useServerFreeze } from '@/lib/use-server-freeze';
 
 export default function HeadJudgePage() {
   const { games, activeGame } = useGames();
@@ -94,6 +95,13 @@ export default function HeadJudgePage() {
   const [isLeaderboardFrozen, setIsLeaderboardFrozen] = useState<boolean>(false);
   const [isUpdatingFreeze, setIsUpdatingFreeze] = useState<boolean>(false);
   const [frozenCategoriesMap, setFrozenCategoriesMap] = useState<Record<string, FrozenCategorySummary>>({});
+  // o servidor é a fonte da verdade (outra mesa ou aparelho pode ter congelado/liberado)
+  const serverFreeze = useServerFreeze(activeGame?.code);
+  useEffect(() => {
+    if (!serverFreeze.loaded) return;
+    setIsLeaderboardFrozen(serverFreeze.frozen);
+    setFrozenCategoriesMap(serverFreeze.categories);
+  }, [serverFreeze]);
 
   // Modal de Zoom de Foto da Súmula
   const [zoomPhotoUrl, setZoomPhotoUrl] = useState<string | null>(null);
@@ -492,17 +500,17 @@ export default function HeadJudgePage() {
     setIsUpdatingFreeze(true);
 
     try {
-      // 1. Atualizar no backend (Prisma Game status). Hoje só o Super Admin tem permissão:
-      // para os demais perfis o placar público fica congelado apenas neste navegador.
+      // 1. Gravar no servidor: é ele que congela o placar público, a área do atleta e os telões em todos os aparelhos
       const statusSaved = await apiClient
-        .updateGameStatus(gCode, newState ? 'frozen' : 'live')
+        .setFreeze(gCode, { frozen: newState })
         .then(() => true)
         .catch((err) => {
-          console.warn('API updateGameStatus fallback:', err);
+          console.warn('API setFreeze:', err);
           return false;
         });
       if (!statusSaved) {
-        toast.warning('O placar público (/leaderboard) não pôde ser alterado no servidor: o congelamento vale só para os telões e este navegador.');
+        toast.error('Não foi possível gravar o congelamento no servidor. Os atletas e o placar público não foram alterados.');
+        return;
       }
 
       // 2. Persistir localmente e disparar eventos para os telões
@@ -550,8 +558,18 @@ export default function HeadJudgePage() {
     if (!activeGame || !currentCategory) return;
     const gCode = activeGame.code || activeGame.id;
     const catNum = Number(String(currentCategory.id).replace(/\D/g, '')) || 1;
-    const currentMap = { ...getLocalFrozenCategories(gCode) };
+    const currentMap = { ...frozenCategoriesMap }; // já sincronizado com o servidor
     const isCatFrozen = Boolean(currentMap[String(catNum)] || currentMap[String(currentCategory.id)]);
+
+    // grava no servidor primeiro: é o que o placar público e a área do atleta leem
+    const saved = await apiClient
+      .setFreeze(gCode, { frozen: !isCatFrozen, categoryIds: [catNum], text: 'CATEGORIA EM REVISÃO' })
+      .then(() => true)
+      .catch(() => false);
+    if (!saved) {
+      toast.error('Não foi possível gravar no servidor. A categoria não foi alterada para os atletas e o placar público.');
+      return;
+    }
 
     if (isCatFrozen) {
       delete currentMap[String(catNum)];
@@ -1156,12 +1174,12 @@ export default function HeadJudgePage() {
               {isLeaderboardFrozen ? (
                 <>
                   <Lock className="w-4 h-4" />
-                  <span>LEADERBOARD BLOQUEADO (CLIQUE P/ LIBERAR)</span>
+                  <span>TODAS AS CATEGORIAS BLOQUEADAS (CLIQUE P/ LIBERAR)</span>
                 </>
               ) : (
                 <>
                   <Unlock className="w-4 h-4" />
-                  <span>LEADERBOARD AO VIVO (CLIQUE P/ BLOQUEAR)</span>
+                  <span>BLOQUEAR TODAS AS CATEGORIAS</span>
                 </>
               )}
             </button>
@@ -1181,8 +1199,8 @@ export default function HeadJudgePage() {
                 <span>
                   {frozenCategoriesMap[String(Number(String(currentCategory.id).replace(/\D/g, '')) || 1)] ||
                   frozenCategoriesMap[String(currentCategory.id)]
-                    ? `LIBERAR: ${currentCategory.name}`
-                    : `REVISÃO: ${currentCategory.name}`}
+                    ? `LIBERAR CATEGORIA: ${currentCategory.name}`
+                    : `BLOQUEAR SÓ: ${currentCategory.name}`}
                 </span>
               </button>
             )}

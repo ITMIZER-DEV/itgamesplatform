@@ -99,7 +99,11 @@ model Category {
   maxIndividualAge Int?          // Ex: 18 para Teen até 18
   minTeamSumAge   Int?           // Ex: 110 para Time Master soma 110+
   maxTeamSumAge   Int?
-  
+
+  // Congelamento só desta categoria pela Mesa do Head Judge (vale para placar, atletas e telões)
+  frozenAt        DateTime?
+  frozenText      String?
+
   registrations   Registration[]
   game            Game           @relation(fields: [gamesId], references: [code], onDelete: Cascade)
   events          Event[]

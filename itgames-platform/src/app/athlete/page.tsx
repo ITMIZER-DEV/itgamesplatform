@@ -43,6 +43,7 @@ import { toast } from 'sonner';
 import { AclGuard } from '@/components/auth/AclGuard';
 import { arenaLabel } from '@/lib/arena-data';
 import { parseKg } from '@/lib/standings-engine';
+import { useServerFreeze } from '@/lib/use-server-freeze';
 
 export default function AthletePortalPage() {
   const [session, setSession] = useState<UserSession>({ role: 'ATHLETE' });
@@ -403,6 +404,13 @@ export default function AthletePortalPage() {
 
   // Calcular ranking da categoria do atleta
   const currentCategory = categories.find(c => c.id === selectedTeam?.categoryId) || categories[0];
+  // congelamento gravado pela Mesa do Head Judge no servidor (vale para todos os aparelhos)
+  const serverFreeze = useServerFreeze(activeGame?.code);
+  const isCategoryFrozen = Boolean(
+    serverFreeze.loaded
+      ? serverFreeze.frozen || (currentCategory && serverFreeze.categories[String(currentCategory.id).replace(/\D/g, '')])
+      : (currentCategory as any)?.frozen || (activeGame?.status as string) === 'frozen',
+  );
   const categoryTeams = teams.filter(t => t.categoryId === currentCategory?.id);
 
   // Ranking calculado pelo servidor: usa a categoria do placar que contém a inscrição selecionada
@@ -1166,7 +1174,7 @@ export default function AthletePortalPage() {
                 <h4 className="text-sm font-bold text-white flex items-center gap-2 flex-wrap">
                   <Trophy className="w-4 h-4 text-amber-400" />
                   <span>Leaderboard da Categoria: {currentCategory?.name || 'Geral'}</span>
-                  {((currentCategory as any)?.frozen || (activeGame?.status as string) === 'frozen') ? (
+                  {isCategoryFrozen ? (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-rose-500/20 text-rose-400 border border-rose-500/30">
                       Em Revisão
                     </span>
@@ -1181,7 +1189,7 @@ export default function AthletePortalPage() {
                 </span>
               </div>
 
-              {((currentCategory as any)?.frozen || (activeGame?.status as string) === 'frozen') ? (
+              {isCategoryFrozen ? (
                 <div className="p-8 rounded-2xl border border-rose-500/30 bg-rose-500/5 text-center space-y-2">
                   <div className="text-sm font-black text-rose-400 uppercase tracking-wider">
                     Categoria em Revisão — Sigilo da Mesa

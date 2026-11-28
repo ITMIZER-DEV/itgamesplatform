@@ -31,6 +31,7 @@ import {
   getLocalFrozenCategories,
   saveLocalArenaSpotlight,
 } from '@/lib/screens';
+import { useServerFreeze } from '@/lib/use-server-freeze';
 
 export default function BigScreenLeaderboardPage() {
   const { board } = useBoard(15000);
@@ -39,9 +40,11 @@ export default function BigScreenLeaderboardPage() {
 
   const [currentCategoryIndex, setCurrentCategoryIndex] = useState<number>(0);
   const [isAutoRotating, setIsAutoRotating] = useState<boolean>(true);
+  const [currentPage, setCurrentPage] = useState<number>(0);
+  const pageCountRef = React.useRef(1);
   const [currentTime, setCurrentTime] = useState<string>('');
-  const [isFrozen, setIsFrozen] = useState<boolean>(false);
-  const [frozenCategoriesMap, setFrozenCategoriesMap] = useState<Record<string, FrozenCategorySummary>>({});
+  const [localFrozen, setIsFrozen] = useState<boolean>(false);
+  const [localFrozenCats, setFrozenCategoriesMap] = useState<Record<string, FrozenCategorySummary>>({});
   const [spotlight, setSpotlight] = useState<ScreenSpotlight | null>(null);
   const [localCategories, setLocalCategories] = useState<BoardResponse['categories']>([]);
 
@@ -95,6 +98,14 @@ export default function BigScreenLeaderboardPage() {
       if (bc) bc.close();
     };
   }, [activeGame]);
+
+  // O servidor manda: congelar na Mesa do Head Judge vale para todos os aparelhos (o local só cobre até a 1ª resposta)
+  const serverFreeze = useServerFreeze(activeGame?.code);
+  const isFrozen = serverFreeze.loaded
+    ? serverFreeze.frozen || (activeGame?.status as string) === 'blocked'
+    : localFrozen;
+  const frozenCategoriesMap = serverFreeze.loaded ? serverFreeze.categories : localFrozenCats;
+
 
   // Auto-advance no Pódio quando configurado com suspense automático
   useEffect(() => {
@@ -173,10 +184,15 @@ export default function BigScreenLeaderboardPage() {
 
   // Efeito de rotação automática de categorias a cada 15 segundos
   useEffect(() => {
-    if (!isAutoRotating || effectiveCategories.length <= 1) return;
+    if (!isAutoRotating || (effectiveCategories.length <= 1 && pageCountRef.current <= 1)) return;
 
     const interval = setInterval(() => {
-      setCurrentCategoryIndex((prev) => (prev + 1) % effectiveCategories.length);
+      // percorre as páginas da categoria e só então passa para a próxima
+      setCurrentPage((page) => {
+        if (page + 1 < pageCountRef.current) return page + 1;
+        setCurrentCategoryIndex((prev) => (prev + 1) % effectiveCategories.length);
+        return 0;
+      });
     }, 15000);
 
     return () => clearInterval(interval);
@@ -218,6 +234,16 @@ export default function BigScreenLeaderboardPage() {
   const totalUnit = activeGame?.totalUnit ?? 'PTS';
   const totalSuffix = totalUnit === 'TEMPO' ? '' : totalUnit;
 
+  // Telão: todas as duplas ativas, em páginas de até TV_PAGE_SIZE (cabe em 1080p sem rolar)
+  const TV_PAGE_SIZE = 12;
+  const visibleRanks = leaderboard.filter((r) => r.status !== 'cancelled');
+  const pageCount = Math.max(1, Math.ceil(visibleRanks.length / TV_PAGE_SIZE));
+  pageCountRef.current = pageCount;
+  const safePage = Math.min(currentPage, pageCount - 1);
+  const pageRanks = visibleRanks.slice(safePage * TV_PAGE_SIZE, (safePage + 1) * TV_PAGE_SIZE);
+  const wodHeaders = (visibleRanks[0]?.workoutScores ?? []).map((ws, idx) => parseWodTitle(ws.workoutTitle, idx));
+  const tvColumns = `minmax(4rem, 5vw) minmax(0, 1fr) repeat(${wodHeaders.length}, minmax(6.5rem, 10vw)) minmax(6.5rem, 8vw)`;
+
   const podiumCategory =
     spotlight?.kind === 'podium'
       ? effectiveCategories.find((c) => c.id === spotlight.categoryId || c.name === spotlight.categoryName) || currentCategory
@@ -233,7 +259,7 @@ export default function BigScreenLeaderboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white p-4 sm:p-10 flex flex-col justify-between select-none relative">
+    <div className="fixed inset-0 z-40 overflow-hidden bg-zinc-950 text-white px-[2vw] py-[2vh] flex flex-col select-none">
       {/* OVERLAY 1: CHAMADA OFICIAL DE ATLETAS PARA AS RAIAS (HEAT CALL) */}
       {spotlight?.kind === 'heat_call' && (
         <div className="fixed inset-0 z-50 bg-zinc-950 flex flex-col justify-between p-6 sm:p-10 select-none animate-in fade-in duration-200">
@@ -577,205 +603,184 @@ export default function BigScreenLeaderboardPage() {
         </div>
       )}
 
-      {/* CABEÇALHO DO TELÃO DE ARENA */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-2 border-amber-500/30 pb-5">
-        <div className="flex items-center gap-3 sm:gap-5">
-          <Link
-            href="/leaderboard"
-            className="p-2.5 sm:p-3 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition-colors"
-            title="Voltar ao Leaderboard padrão"
-          >
-            <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6" />
-          </Link>
+      {/* CABEÇALHO: categoria em destaque, status e hora (leitura à distância) */}
+      <header className="flex items-center gap-6 pb-[1.2vh] border-b-2 border-amber-500/40">
+        <Link
+          href="/leaderboard"
+          className="p-2 rounded-xl text-zinc-500 hover:text-white hover:bg-zinc-900 transition-colors"
+          title="Voltar ao Leaderboard padrão"
+        >
+          <ArrowLeft className="w-6 h-6" />
+        </Link>
+        <BrandLogo variant="auto" size="lg" />
 
-          <BrandLogo variant="white" size="lg" />
-
-          <div>
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              {isFrozen ? (
-                <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-600 text-white font-black text-xs uppercase tracking-widest">
-                  <Lock className="w-3.5 h-3.5" />
-                  LEADERBOARD BLOQUEADO
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-600 text-white font-black text-xs uppercase tracking-widest animate-pulse">
-                  <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-                  AO VIVO NA ARENA
-                </span>
-              )}
-              <span className="text-zinc-400 text-xs uppercase font-bold tracking-wider">
-                {activeGame?.name || 'ITGames Arena'} {activeGame?.location ? `• ${activeGame.location}` : ''}
-              </span>
-            </div>
-            <h1 className="text-xl sm:text-4xl font-black tracking-tight text-white mt-1.5 flex flex-wrap items-center gap-2 sm:gap-3">
-              <span>CATEGORIA:</span>
-              <span className="text-amber-400 bg-amber-400/10 px-3 sm:px-4 py-0.5 sm:py-1 rounded-2xl border border-amber-400/30">
-                {currentCategory?.name || 'Geral'}
-              </span>
-            </h1>
+        <div className="min-w-0 flex-1">
+          <div className="text-[clamp(0.8rem,1.5vh,1.2rem)] font-bold uppercase tracking-[0.2em] text-zinc-400 truncate">
+            {activeGame?.name || 'ITGames Arena'}
           </div>
+          <h1 className="text-[clamp(1.8rem,5vh,4.2rem)] leading-none font-black tracking-tight text-white truncate">
+            {currentCategory?.name || 'Geral'}
+          </h1>
         </div>
 
-        {/* CONTROLES DO TELÃO E RELÓGIO */}
-        <div className="flex items-center justify-between sm:justify-end gap-4">
-          <div className="text-left sm:text-right">
-            <div className="text-[10px] sm:text-xs font-bold text-zinc-400 uppercase tracking-widest">Hora Oficial</div>
-            <div className="text-xl sm:text-3xl font-black font-mono text-white">{currentTime || '12:00:00'}</div>
+        <div className="flex items-center gap-4 shrink-0">
+          {isFrozen ? (
+            <span className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#c0392b] text-[#ffffff] font-black text-[clamp(0.9rem,1.8vh,1.4rem)] uppercase">
+              <Lock className="w-5 h-5" /> Bloqueado
+            </span>
+          ) : (
+            <span className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#d32f2f] text-[#ffffff] font-black text-[clamp(0.9rem,1.8vh,1.4rem)] uppercase">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#ffffff] animate-pulse" /> Ao vivo
+            </span>
+          )}
+          {pageCount > 1 && (
+            <span className="px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-zinc-200 font-black font-mono text-[clamp(0.9rem,1.8vh,1.4rem)]">
+              {safePage + 1}/{pageCount}
+            </span>
+          )}
+          <div className="text-right">
+            <div className="text-[clamp(1.4rem,3.6vh,3rem)] leading-none font-black font-mono text-white tabular-nums">
+              {currentTime || '--:--:--'}
+            </div>
           </div>
-
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <button
               onClick={() => setIsAutoRotating(!isAutoRotating)}
-              className={`p-2.5 sm:p-3 rounded-2xl border transition-colors ${
-                isAutoRotating
-                  ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
-                  : 'bg-zinc-900 text-zinc-400 border-zinc-800'
-              }`}
+              className={`p-2 rounded-xl transition-colors ${isAutoRotating ? 'text-amber-400' : 'text-zinc-500'} hover:bg-zinc-900`}
               title={isAutoRotating ? 'Pausar rotação de categorias' : 'Ativar rotação automática'}
             >
-              {isAutoRotating ? <Pause className="w-5 h-5 sm:w-6 sm:h-6" /> : <Play className="w-5 h-5 sm:w-6 sm:h-6" />}
+              {isAutoRotating ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
             </button>
-
             <button
               onClick={toggleFullScreen}
-              className="p-2.5 sm:p-3 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white transition-colors"
+              className="p-2 rounded-xl text-zinc-500 hover:text-white hover:bg-zinc-900 transition-colors"
               title="Tela Cheia (Full Screen)"
             >
-              <Maximize2 className="w-5 h-5 sm:w-6 sm:h-6" />
+              <Maximize2 className="w-6 h-6" />
             </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* GRADE GIGANTE DE CLASSIFICAÇÃO */}
-      <div className="my-6 sm:my-8 flex-1 flex flex-col justify-center">
-        {leaderboard.length === 0 ? (
-          <div className="rounded-3xl bg-zinc-900/60 border border-zinc-800 p-10 text-center space-y-3 max-w-2xl mx-auto">
-            <Trophy className="w-12 h-12 text-amber-400/70 mx-auto" />
-            <h2 className="text-xl sm:text-2xl font-black text-white">
-              Aguardando Pontuações Homologadas
-            </h2>
-            <p className="text-xs sm:text-sm text-zinc-400">
-              Assim que as primeiras súmulas forem lançadas e validadas pela arbitragem, o ranking desta categoria aparecerá automaticamente no telão.
-            </p>
+      {/* TABELA: todas as duplas da categoria (até TV_PAGE_SIZE por tela; acima disso, pagina sozinha) */}
+      <main className="flex-1 min-h-0 flex flex-col pt-[1.2vh]">
+        {visibleRanks.length === 0 ? (
+          <div className="m-auto text-center space-y-3">
+            <Trophy className="w-16 h-16 text-amber-400/70 mx-auto" />
+            <h2 className="text-[clamp(1.4rem,3.5vh,2.6rem)] font-black text-white">Aguardando resultados</h2>
+            <p className="text-[clamp(1rem,2vh,1.4rem)] text-zinc-400">A classificação aparece aqui assim que as súmulas forem homologadas.</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {leaderboard.slice(0, 7).map((rankItem) => {
-              const isTop1 = rankItem.rank === 1;
-              const isTop2 = rankItem.rank === 2;
-              const isTop3 = rankItem.rank === 3;
+          <>
+            <div
+              className="grid items-end gap-x-[1vw] px-[1vw] pb-[0.8vh] text-[clamp(0.8rem,1.6vh,1.25rem)] font-black uppercase tracking-wider text-zinc-400"
+              style={{ gridTemplateColumns: tvColumns }}
+            >
+              <div className="text-center">Pos</div>
+              <div>Dupla</div>
+              {wodHeaders.map((w, i) => (
+                <div key={i} className="text-center leading-tight">
+                  <div className="text-zinc-200">{w.shortTitle}</div>
+                </div>
+              ))}
+              <div className="text-right">Total</div>
+            </div>
 
-              return (
-                <div
-                  key={rankItem.registrationId}
-                  className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 sm:p-5 rounded-2xl transition-all ${
-                    isTop1
-                      ? 'bg-gradient-to-r from-amber-500/30 via-zinc-900 to-zinc-900 border-2 border-amber-500 shadow-2xl shadow-amber-500/20 sm:scale-[1.01]'
-                      : isTop2
-                        ? 'bg-zinc-900/90 border border-zinc-500/50'
-                        : isTop3
-                          ? 'bg-zinc-900/90 border border-amber-700/50'
-                          : 'bg-zinc-950/80 border border-zinc-800/80'
-                  }`}
-                >
-                  {/* RANKING & ATLETA */}
-                  <div className="flex items-center gap-4 sm:gap-5">
+            <div className="flex-1 min-h-0 flex flex-col gap-[0.5vh]">
+              {pageRanks.map((r) => {
+                const podium = r.rank <= 3;
+                return (
+                  <div
+                    key={r.registrationId}
+                    className={`grid items-center gap-x-[1vw] px-[1vw] rounded-xl border flex-1 min-h-0 max-h-[9vh] ${
+                      r.rank === 1
+                        ? 'bg-amber-500/15 border-amber-500'
+                        : 'bg-zinc-900 border-zinc-800'
+                    }`}
+                    style={{ gridTemplateColumns: tvColumns }}
+                  >
                     <div
-                      className={`w-11 sm:w-14 h-11 sm:h-14 rounded-2xl flex items-center justify-center font-black text-xl sm:text-2xl shadow-lg shrink-0 ${
-                        isTop1
-                          ? 'bg-amber-500 text-black shadow-amber-500/50'
-                          : isTop2
-                            ? 'bg-zinc-300 text-black'
-                            : isTop3
-                              ? 'bg-amber-700 text-white'
-                              : 'bg-zinc-800 text-zinc-400'
+                      className={`mx-auto flex items-center justify-center rounded-lg font-black tabular-nums h-[min(6vh,3.6rem)] aspect-square text-[clamp(1.2rem,3.2vh,2.6rem)] ${
+                        r.rank === 1
+                          ? 'bg-[#d9a441] text-[#111317]'
+                          : r.rank === 2
+                            ? 'bg-[#c9ccd1] text-[#111317]'
+                            : r.rank === 3
+                              ? 'bg-[#a8743a] text-[#ffffff]'
+                              : 'text-white'
                       }`}
                     >
-                      {rankItem.rank}º
+                      {r.rank}º
                     </div>
 
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-lg sm:text-3xl font-black text-white truncate">
-                          {rankItem.teamName}
+                      <div className="flex items-baseline gap-3 min-w-0">
+                        <span className={`truncate font-black text-white leading-none text-[clamp(1.1rem,2.7vh,2.2rem)] ${podium ? '' : ''}`}>
+                          {r.teamName}
                         </span>
-                        <span className="text-xs sm:text-base font-bold text-amber-400 bg-amber-400/20 px-2.5 py-0.5 rounded-lg border border-amber-400/30">
-                          {rankItem.registerNumber}
-                        </span>
-                        {rankItem.status === 'cancelled' && (
-                          <span className="text-xs sm:text-sm font-black text-rose-300 bg-rose-500/20 px-2.5 py-0.5 rounded-lg border border-rose-500/40 uppercase">
-                            CANCELADA
-                          </span>
-                        )}
+                        <span className="shrink-0 font-bold text-amber-400 text-[clamp(0.8rem,1.7vh,1.3rem)]">{r.registerNumber}</span>
                       </div>
-                      <div className="text-xs sm:text-sm text-zinc-400 mt-0.5 font-medium truncate">
-                        {rankItem.athletes.join(', ')}
-                        {rankItem.boxOrAffiliate && (
-                          <>
-                            {' '}
-                            • <strong className="text-zinc-300">{rankItem.boxOrAffiliate}</strong>
-                          </>
-                        )}
+                      <div className="truncate text-zinc-400 font-medium leading-tight mt-[0.3vh] text-[clamp(0.75rem,1.35vh,1.05rem)]">
+                        {r.athletes.join(' • ')}
                       </div>
                     </div>
-                  </div>
 
-                  {/* PONTUAÇÃO GIGANTE */}
-                  <div className="text-right flex items-center justify-end gap-4 sm:gap-6">
-                    <div className="hidden lg:flex items-center gap-3">
-                      {rankItem.workoutScores.map((ws, idx) => {
-                        const parsed = parseWodTitle(ws.workoutTitle, idx);
-                        return (
-                          <div key={idx} className="bg-zinc-950 px-3 py-1.5 rounded-xl border border-zinc-800 text-center min-w-[70px]">
-                            <div className="text-[10px] text-zinc-400 font-bold uppercase">{parsed.shortTitle}</div>
-                            <div className="text-xs font-black text-zinc-200">{ws.scoreDisplay}</div>
+                    {wodHeaders.map((_, i) => {
+                      const ws = r.workoutScores[i];
+                      const has = ws && ws.status !== 'none' && ws.scoreDisplay && ws.scoreDisplay !== '-';
+                      // "4R + 9 reps (10:58)": resultado em cima; tempo, posição e pontos embaixo
+                      const split = has ? /^(.*?)\s*\(([^)]*)\)\s*$/.exec(ws.scoreDisplay) : null;
+                      const main = split ? split[1] : ws?.scoreDisplay;
+                      const sub = has
+                        ? [split?.[2], ws.rank > 0 ? `${ws.rank}º` : null, totalUnit === 'PTS' && ws.rank > 0 ? `${ws.points} pts` : null]
+                            .filter(Boolean)
+                            .join(' • ')
+                        : '';
+                      return (
+                        <div key={i} className="text-center leading-tight min-w-0">
+                          <div className={`truncate font-black tabular-nums text-[clamp(0.9rem,2vh,1.6rem)] ${has ? 'text-white' : 'text-zinc-600'}`}>
+                            {has ? main : '—'}
                           </div>
-                        );
-                      })}
-                    </div>
+                          {sub && (
+                            <div className="truncate text-zinc-400 font-bold tabular-nums text-[clamp(0.7rem,1.35vh,1.05rem)]">{sub}</div>
+                          )}
+                        </div>
+                      );
+                    })}
 
-                    <div className="bg-black/60 px-4 sm:px-6 py-2 rounded-2xl border border-amber-500/40">
-                      <div className="text-[10px] uppercase font-bold text-zinc-400">Total Acumulado</div>
-                      <div className="text-xl sm:text-4xl font-black text-amber-400 font-mono">
-                        {rankItem.totalDisplay ?? rankItem.totalPoints}
-                        {totalSuffix && <span className="text-xs sm:text-sm font-bold text-zinc-400"> {totalSuffix}</span>}
-                      </div>
+                    <div className="text-right">
+                      <span className="font-black font-mono tabular-nums text-amber-400 text-[clamp(1.4rem,3.8vh,3.2rem)] leading-none">
+                        {r.totalDisplay ?? r.totalPoints}
+                      </span>
+                      {totalSuffix && (
+                        <span className="ml-1 font-bold text-zinc-400 text-[clamp(0.75rem,1.5vh,1.1rem)]">{totalSuffix}</span>
+                      )}
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          </>
         )}
-      </div>
+      </main>
 
-      {/* RODAPÉ INFORMATIVO COM ROTAÇÃO DE CATEGORIAS */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-zinc-800 pt-4 text-xs text-zinc-400">
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <span className="font-bold text-white">Categorias da Competição:</span>
-          <div className="flex flex-wrap items-center gap-2">
-            {effectiveCategories.map((cat, idx) => (
-              <button
-                key={cat.id}
-                onClick={() => setCurrentCategoryIndex(idx)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  idx === currentCategoryIndex
-                    ? 'bg-amber-500 text-black'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-white'
-                }`}
-              >
-                {cat.name}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 font-bold text-zinc-300">
-          <Sparkles className="w-4 h-4 text-amber-400" />
-          <span>ITGames Broadcast Engine • Atualização Instantânea</span>
-        </div>
-      </div>
+      {/* RODAPÉ: categorias na rotação (a atual em destaque) */}
+      <footer className="flex items-center gap-2 pt-[0.8vh] mt-[0.6vh] border-t border-zinc-800 overflow-hidden">
+        {effectiveCategories.map((cat, idx) => (
+          <button
+            key={cat.id}
+            onClick={() => {
+              setCurrentCategoryIndex(idx);
+              setCurrentPage(0);
+            }}
+            className={`px-3 py-1.5 rounded-lg font-black uppercase whitespace-nowrap text-[clamp(0.75rem,1.5vh,1.1rem)] transition-colors ${
+              idx === currentCategoryIndex ? 'bg-[#d9a441] text-[#111317]' : 'text-zinc-500 hover:text-white'
+            }`}
+          >
+            {cat.name}
+          </button>
+        ))}
+      </footer>
     </div>
   );
 }

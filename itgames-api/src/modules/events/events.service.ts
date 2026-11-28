@@ -288,6 +288,54 @@ export class EventsService {
   }
 
   // Super Admin: Liberar ('live'), Pausar ('draft') ou Bloquear ('blocked')
+  /** Estado de congelamento do placar, lido por todos os painéis (público, atletas, telões). */
+  async getFreezeState(code: string) {
+    const game = await this.prisma.game.findUnique({ where: { code }, select: { status: true } });
+    if (!game) throw new NotFoundException('Campeonato não encontrado');
+    const cats = await this.prisma.category.findMany({
+      where: { gamesId: code, frozenAt: { not: null } },
+      select: { code: true, name: true, frozenAt: true, frozenText: true },
+      orderBy: { code: 'asc' },
+    });
+    return {
+      gameCode: code,
+      frozen: game.status === 'frozen',
+      categories: cats.map((c) => ({
+        categoryId: c.code,
+        categoryName: c.name,
+        frozenAt: c.frozenAt!.toISOString(),
+        overlayText: c.frozenText || 'CATEGORIA EM REVISÃO',
+      })),
+    };
+  }
+
+  /** Congela/libera o campeonato inteiro (status frozen) ou só algumas categorias. */
+  async setFreeze(code: string, frozen: boolean, categoryIds?: number[], text?: string) {
+    const game = await this.prisma.game.findUnique({ where: { code }, select: { status: true } });
+    if (!game) throw new NotFoundException('Campeonato não encontrado');
+    if (categoryIds?.length) {
+      await this.prisma.category.updateMany({
+        where: { gamesId: code, code: { in: categoryIds } },
+        data: frozen ? { frozenAt: new Date(), frozenText: text || 'CATEGORIA EM REVISÃO' } : { frozenAt: null, frozenText: null },
+      });
+      this.notifier.gameStatusChanged(code, game.status ?? 'live');
+      this.screens.gameChanged(code);
+    } else if (frozen) {
+      // só congela campeonato liberado: senão, descongelar viraria um atalho para publicar (live) um rascunho ou bloqueado
+      if (game.status !== 'frozen') {
+        if ((game.status ?? 'live') !== 'live') {
+          throw new BadRequestException('Só é possível congelar o placar de um campeonato liberado (live).');
+        }
+        await this.updateGameStatus(code, 'frozen');
+      }
+    } else {
+      // liberar o campeonato reabre também as categorias em revisão
+      await this.prisma.category.updateMany({ where: { gamesId: code }, data: { frozenAt: null, frozenText: null } });
+      if (game.status === 'frozen') await this.updateGameStatus(code, 'live');
+    }
+    return this.getFreezeState(code);
+  }
+
   async updateGameStatus(code: string, status: string) {
     const existing = await this.prisma.game.findUnique({ where: { code } });
     if (!existing) throw new NotFoundException('Campeonato não encontrado');

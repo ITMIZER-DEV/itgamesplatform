@@ -13,6 +13,7 @@ import { BoardService } from '../scoring/board.service';
 import { AddOrganizerDto } from './dto/add-organizer.dto';
 import { SetOrganizerActiveDto } from './dto/set-organizer-active.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
+import { FreezeBoardDto } from './dto/freeze-board.dto';
 import { UpdateRegistrationLockDto } from './dto/update-registration-lock.dto';
 import { UpdateRegistrationAthletesDto } from './dto/update-registration-athletes.dto';
 import { AdminCreateRegistrationDto } from './dto/admin-create-registration.dto';
@@ -103,6 +104,21 @@ export class EventsController {
   @ApiOperation({ summary: 'Placar calculado pela regra de pontuação do campeonato (público, sem dados pessoais)' })
   async getBoard(@Param('code') code: string, @CurrentUser() user?: AuthUser) {
     return this.boards.getBoard(code, user);
+  }
+
+  @Public()
+  @Get(':code/freeze')
+  @ApiOperation({ summary: 'Estado de congelamento do placar (campeonato e categorias em revisão)' })
+  async getFreeze(@Param('code') code: string) {
+    return this.eventsService.getFreezeState(code);
+  }
+
+  @Roles(UserRole.ORGANIZER)
+  @Patch(':code/freeze')
+  @ApiOperation({ summary: 'Mesa do Head Judge: congelar/liberar o placar do campeonato ou de categorias' })
+  async setFreeze(@Param('code') code: string, @Body() dto: FreezeBoardDto, @CurrentUser() user: AuthUser) {
+    await this.access.assertCanManage(user, code);
+    return this.eventsService.setFreeze(code, dto.frozen, dto.categoryIds, dto.text);
   }
 
   @Roles(UserRole.SUPER_ADMIN)

@@ -16,6 +16,12 @@ export function getApiBaseUrl(): string {
   return process.env.API_INTERNAL_URL || 'http://127.0.0.1:3334';
 }
 
+export interface ServerFreezeState {
+  gameCode: string;
+  frozen: boolean;
+  categories: { categoryId: number; categoryName: string; frozenAt: string; overlayText: string }[];
+}
+
 export interface ProgramImportReport {
   applied: boolean;
   canApply: boolean;
@@ -387,6 +393,18 @@ export class ApiClient {
     return this.strict<any>(`/events/${code}`, {
       method: 'PUT',
       body: JSON.stringify(gameData),
+    });
+  }
+
+  // Congelamento do placar gravado no servidor: vale para todos os aparelhos (público, atletas, telões)
+  async getFreezeState(code: string): Promise<ServerFreezeState | null> {
+    return this.request<ServerFreezeState>(`/events/${code}/freeze`);
+  }
+
+  async setFreeze(code: string, body: { frozen: boolean; categoryIds?: number[]; text?: string }): Promise<ServerFreezeState> {
+    return this.strict<ServerFreezeState>(`/events/${code}/freeze`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
     });
   }
 
